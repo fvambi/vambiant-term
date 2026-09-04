@@ -6,5 +6,8 @@
 //! exists; that is the point of M2.
 
 fn main() {
-    println!("vterm {} (M0 scaffold; CLI lands in M2)", env!("CARGO_PKG_VERSION"));
+    println!(
+        "vterm {} (M0 scaffold; CLI lands in M2)",
+        env!("CARGO_PKG_VERSION")
+    );
 }

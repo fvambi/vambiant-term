@@ -11,5 +11,8 @@
 //! CI and `cargo deny` see the real dependency graph from day one.
 
 fn main() {
-    println!("vtermd {} (M0 scaffold; daemon lands in M2)", env!("CARGO_PKG_VERSION"));
+    println!(
+        "vtermd {} (M0 scaffold; daemon lands in M2)",
+        env!("CARGO_PKG_VERSION")
+    );
 }

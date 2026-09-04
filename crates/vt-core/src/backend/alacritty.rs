@@ -8,4 +8,5 @@
 //! * `Term::reset_damage(&mut self)` must be called after consuming it;
 //! * `Term::new(Config, &dyn Dimensions, EventListener)`; resize via
 //!   `Term::resize(TermSize)`.
+//!
 //! See docs/10-research-notes.md §1 for the full record.

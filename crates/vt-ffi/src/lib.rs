@@ -34,6 +34,9 @@ pub struct VtGridSize {
 
 impl From<vt_core::cell::GridSize> for VtGridSize {
     fn from(s: vt_core::cell::GridSize) -> Self {
-        Self { cols: s.cols, rows: s.rows }
+        Self {
+            cols: s.cols,
+            rows: s.rows,
+        }
     }
 }
