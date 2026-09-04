@@ -1,0 +1,1 @@
+Error: approval_policy = "untrusted" is no longer supported; remove this setting

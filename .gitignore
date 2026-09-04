@@ -1,0 +1,15 @@
+# Rust
+/target/
+**/*.rs.bk
+# Swift (app/ lands in M4)
+/app/.build/
+/app/*.xcodeproj
+/app/*.xcworkspace
+# Benchmark inputs are generated, never committed (docs/08 §7)
+/target-bench/
+/bench-inputs/
+# macOS
+.DS_Store
+# Local scratch
+/.mise.local.toml
+/scratch/

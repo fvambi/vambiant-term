@@ -1,0 +1,28 @@
+# Mirrors docs/08 §9. Every job is a `mise run` task so it runs identically locally.
+name: ci
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"   # nightly
+jobs:
+  fast:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run ci-fast
+  full:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run ci-full
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run ci-nightly

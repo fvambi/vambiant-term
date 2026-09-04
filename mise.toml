@@ -1,0 +1,78 @@
+# mise.toml — the single source of truth for toolchain versions (ADR-0010).
+# Every entry point is `mise run <task>`; CI runs the same tasks.
+
+[tools]
+rust = "1.98.1"          # must match rust-toolchain.toml; ≥ 1.98.1 is non-negotiable
+hyperfine = "1.20.0"
+"cargo:cargo-deny" = "0.20.2"
+"cargo:cbindgen" = "0.29.4"
+
+
+# ── Tasks ──────────────────────────────────────────────────────────────────
+# docs/08 §9: `fast` on every push, `full` on every PR, `nightly` on schedule.
+# `mise run ci` == fast + full, exactly what CI runs.
+
+[tasks.build]
+description = "Build every crate"
+run = "cargo build --workspace --all-targets"
+
+[tasks.test]
+description = "All Rust tests"
+run = "cargo test --workspace"
+
+[tasks."test:unit"]
+description = "Unit tests only (lib + bin targets)"
+run = "cargo test --workspace --lib --bins"
+
+[tasks."test:integration"]
+description = "Integration, snapshot, fixture-replay and property tests"
+run = "cargo test --workspace --tests"
+
+[tasks.fmt]
+description = "Format Rust (Swift formatting joins in M4)"
+run = "cargo fmt --all"
+
+[tasks.lint]
+description = "fmt --check, clippy -D warnings, SwiftLint/SwiftFormat --lint"
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "scripts/ci/swift-lint.sh",
+]
+
+[tasks.deny]
+description = "cargo-deny: licences, advisories, bans, sources"
+run = "cargo deny check"
+
+[tasks."abi:check"]
+description = "Regenerate vt_ffi.h with cbindgen and fail on drift"
+run = "scripts/ci/abi-check.sh"
+
+[tasks."abi:update"]
+description = "Regenerate and overwrite the checked-in vt_ffi.h"
+run = "scripts/ci/abi-check.sh --update"
+
+[tasks.bench]
+description = "Throughput benchmarks, Ghostty methodology (hyperfine, medians, serial)"
+run = "scripts/bench/run.sh"
+
+[tasks."ci-fast"]
+description = "docs/08 §9 `fast` job"
+depends = ["lint", "test:unit"]
+
+[tasks."ci-full"]
+description = "docs/08 §9 `full` job"
+depends = ["ci-fast", "test:integration", "deny", "abi:check"]
+run = "scripts/ci/swift-build.sh"
+
+[tasks."ci-nightly"]
+description = "docs/08 §9 `nightly` job (fuzzing, sanitizers, real-agent round trips) — lands with M3/M-SEC"
+run = "scripts/ci/nightly.sh"
+
+[tasks.ci]
+description = "Everything CI runs, locally"
+depends = ["ci-full"]
+
+[tasks.release]
+description = "Build, sign, notarize (M9)"
+run = "scripts/release.sh"

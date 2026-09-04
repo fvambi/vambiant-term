@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+import json, os, sys, time, glob
+FIX = "/Users/fwartner/Documents/Projects/DEVTOOLS/vambiant-term/tests/fixtures/codex/hooks"
+MODE_FILE = "/tmp/vt-m0/codex/hooks/mode"      # contents: "deny" | "exit2" | "" (observe only)
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except Exception:
+    data = {"_unparsed_stdin": raw}
+ev = data.get("hook_event_name") if isinstance(data, dict) else None
+ev = ev or "UnknownEvent"
+os.makedirs(FIX, exist_ok=True)
+n = len(glob.glob(os.path.join(FIX, f"{ev}.*.json"))) + 1
+scenario = os.environ.get("VT_SCENARIO") or (open("/tmp/vt-m0/codex/hooks/scenario").read().strip() if os.path.exists("/tmp/vt-m0/codex/hooks/scenario") else "unknown")
+with open(os.path.join(FIX, f"{ev}.{n}.json"), "w") as f:
+    json.dump({"_captured_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "_scenario": scenario, "_argv": sys.argv[1:], "stdin": data}, f, indent=2)
+    f.write("\n")
+with open("/tmp/vt-m0/codex/hooks/log.txt", "a") as f:
+    f.write(f"{time.strftime('%H:%M:%S')} {scenario} {ev} -> {ev}.{n}.json\n")
+mode = open(MODE_FILE).read().strip() if os.path.exists(MODE_FILE) else ""
+if ev == "PreToolUse" and mode == "deny":
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "vt-m0 fixture: denied by PreToolUse hook (JSON)"}}))
+    sys.exit(0)
+if ev == "PreToolUse" and mode == "exit2":
+    sys.stderr.write("vt-m0 fixture: denied by PreToolUse hook (exit 2)\n")
+    sys.exit(2)
+if ev == "PermissionRequest" and mode == "permdeny":
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": "vt-m0 fixture: denied by PermissionRequest hook"}}}))
+    sys.exit(0)
+if ev in ("Stop", "SubagentStop", "Interrupt"):
+    print("{}")   # these events require JSON on stdout when exit 0
+sys.exit(0)

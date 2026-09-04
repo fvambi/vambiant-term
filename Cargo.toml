@@ -1,0 +1,59 @@
+# Vambiant Term — Rust workspace.
+#
+# Layout follows docs/02-architecture.md §3. Nothing under crates/ may depend on
+# app/ (the Swift shell); the Rust side must stay headless-testable in full.
+#
+# Licence policy: the project licence is declared ONCE here (`license`) and in
+# the top-level LICENSE file. Source files carry no per-file licence headers —
+# headers drift, get copy-pasted wrongly and add nothing SPDX metadata does not.
+# TODO(florian): choose the licence — no document in docs/ decides it (M0 open item).
+
+[workspace]
+resolver = "3"
+members = ["crates/*", "spikes/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.1"
+publish = false
+repository = "https://github.com/vambiant/vambiant-term"
+
+[workspace.dependencies]
+# Internal crates
+vt-core = { path = "crates/vt-core" }
+vt-pty = { path = "crates/vt-pty" }
+vt-blocks = { path = "crates/vt-blocks" }
+vt-proto = { path = "crates/vt-proto" }
+vt-ipc = { path = "crates/vt-ipc" }
+vt-agent = { path = "crates/vt-agent" }
+vt-ai = { path = "crates/vt-ai" }
+vt-redact = { path = "crates/vt-redact" }
+vt-policy = { path = "crates/vt-policy" }
+vt-store = { path = "crates/vt-store" }
+vt-worktree = { path = "crates/vt-worktree" }
+vt-config = { path = "crates/vt-config" }
+vt-ffi = { path = "crates/vt-ffi" }
+
+# External. Every entry here has a note in docs/10-research-notes.md.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[workspace.lints.rust]
+unsafe_code = "warn"                 # vt-ffi and vt-pty opt in explicitly
+missing_docs = "warn"
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+
+[profile.release]
+debug = 1                            # symbols for profiling; stripped at bundle time
+lto = "thin"
+codegen-units = 4
+
+[profile.bench]
+inherits = "release"

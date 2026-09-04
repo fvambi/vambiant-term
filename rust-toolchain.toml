@@ -1,0 +1,6 @@
+# 1.98.1 fixed a vtable miscompilation that emitted null pointers into
+# trait-object vtables. Never pin below it (CLAUDE.md, ADR-0010).
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

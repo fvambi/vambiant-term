@@ -1,0 +1,4 @@
+Error: failed to connect to /Users/fwartner/.codex/app-server-control/app-server-control.sock
+
+Caused by:
+    No such file or directory (os error 2)

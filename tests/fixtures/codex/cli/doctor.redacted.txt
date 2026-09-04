@@ -1,0 +1,169 @@
+Codex Doctor v0.153.2 · macos-aarch64
+
+Notes
+   [!!] sandbox      filesystem unrestricted · network enabled
+-------------------------------------------------------------
+
+Environment
+  [ok] system       de-DE
+      os                       Mac OS 26.5.1 [64-bit]
+      OS language              de-DE
+      LANG                     C.UTF-8
+      VISUAL                   not set
+      EDITOR                   not set
+  [ok] disk         sufficient free disk space (716.9 GiB)
+      warning threshold        5.0 GiB
+      failure threshold        1.0 GiB
+      CODEX_HOME available     716.9 GiB
+      worktree available       716.9 GiB
+  [ok] security     no supported endpoint protection detected
+      endpoint products        none detected
+  [ok] runtime      npm (package /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin, bin /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin, resources /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-resources, path /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path)
+      version                  0.153.2
+      install method           npm (package /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin, bin /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin, resources /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-resources, path /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path)
+      commit                   unknown
+      executable               ~/Library/Application Su…-apple-darwin/bin/codex
+  [ok] install      consistent
+      context                  npm (package /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin, bin /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin, resources /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-resources, path /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path)
+      managed by               npm: yes · bun: no · pnpm: no · Vite+: no · package root /Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex
+      PATH entries (4)         ~/Library/Application Su…node/v22.23.2/bin/codex
+                               ~/.local/state/fnm_multi…1788537053783/bin/codex
+                               ~/.local/bin/codex
+                               … (full list with --all)
+      npm update target        ~/Library/Application Su…e_modules/@openai/codex
+  [ok] search       file exists (bundled, `/Users/fwartner/Library/Application Support/Herd/config/nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path/rg`)
+      search command           ~/Library/Application Su…le-darwin/codex-path/rg
+      search provider          bundled
+      search command readiness file exists
+  [ok] git          git version 2.50.1 (Apple Git-155)
+      selected git             /usr/bin/git
+      version                  git version 2.50.1 (Apple Git-155)
+      exec path                /Library/Developer/Comma…ls/usr/libexec/git-core
+      repo detected            true
+      repo root                /private/tmp/vt-m0/codex/work
+      .git entry               directory
+      branch                   main
+      PATH entries (2)         /usr/bin/git
+                               /opt/homebrew/bin/git
+  [ok] terminal     unknown
+      terminal                 unknown
+      stdin is terminal        false
+      stdout is terminal       false
+      stderr is terminal       false
+      terminal size            unavailable (Resource temporarily unavailable (os error 35))
+      color output             disabled (--no-color)
+      effective locale         C.UTF-8
+  [ok] title        default | project work
+      title source             default
+      title items              activity, project-name
+      activity item            true
+      project source           git repo root
+      project value            work
+  [ok] state        databases healthy
+      CODEX_HOME               ~/.codex (dir)
+      log dir                  ~/.codex/log (dir)
+      sqlite home              ~/.codex (dir)
+      state DB                 ~/.codex/state_5.sqlite (file) · integrity ok
+      log DB                   ~/.codex/logs_2.sqlite (file) · integrity ok
+      goals DB                 ~/.codex/goals_1.sqlite (file) · integrity ok
+      memories DB              ~/.codex/memories_1.sqlite (file) · integrity ok
+      active rollouts          15 files · 21.99 MB (avg 1.47 MB)
+      archived rollouts        0 files · 0 B (avg 0 B)
+      queue DB                 ~/.codex/queue_1.sqlite (file)
+      queue DB integrity       ok
+      thread history DB        ~/.codex/thread_history_1.sqlite (file)
+      thread history DB integrity ok
+  [ok] threads      rollout files and state DB thread inventory agree
+      default model provider   openai
+      rollout DB active files  15
+      rollout DB archived files 0
+      rollout DB scan errors   0
+      rollout DB malformed file names 0
+      rollout DB scan cap reached false
+      rollout DB rows          15
+      rollout DB active rows   15
+      rollout DB archived rows 0
+      rollout DB missing active rows 0
+      rollout DB missing archived rows 0
+      rollout DB stale rows    0
+      rollout DB archive mismatches 0
+      rollout DB duplicate rollout thread ids 0
+      rollout DB duplicate DB paths 0
+      rollout DB model providers openai=15
+      rollout DB sources       exec=12, subagent:thread_spawn=2, subagent:review=1
+
+Configuration
+  [ok] config       loaded
+      model                    <default> · openai
+      cwd                      /private/tmp/vt-m0/codex/work
+      config.toml              ~/.codex/config.toml
+      config.toml parse        ok
+      MCP servers              2
+      feature flags            47 enabled · 0 overridden (full list with --all)
+  [ok] auth  <redacted>
+      auth storage mode  <redacted>
+      auth file  <redacted>
+      stored auth mode  <redacted>
+      stored API key           false
+      stored ChatGPT tokens  <redacted>
+      stored agent identity    false
+  [ok] mcp          2 server (2 stdio) · 0 disabled
+      configured servers       2
+      disabled servers         0
+      stdio servers            2
+  [ok] sandbox      unrestricted fs + enabled network · approval Never
+      approval policy          Never
+      filesystem sandbox       unrestricted
+      network sandbox          enabled
+      linux helper             none
+      execve wrapper helper    ~/.codex/tmp/arg0/codex-…T2/codex-execve-wrapper
+
+Updates
+  [ok] updates      update configuration is locally consistent
+      startup update check     true
+      update action            npm install -g @openai/codex
+      version cache            ~/.codex/version.json
+      cached latest version    0.152.0
+      last checked at          2026-09-01 06:55 UTC
+      npm update target        ~/Library/Application Su…e_modules/@openai/codex
+      latest version           0.153.2
+      latest version status    current version is not older
+
+Connectivity
+  [ok] network      no proxy env vars
+      proxy env vars           none
+      system proxy             direct
+      respect system proxy     disabled
+      managed proxy            not configured
+  [ok] websocket    connected (HTTP 101 Switching Protocols) · 15s timeout
+      model provider           openai
+      provider name            OpenAI
+      wire API                 responses
+      supports websockets      true
+      proxy env vars           none
+      connect timeout          15000 ms
+      auth mode  <redacted>
+      endpoint  <redacted>
+      DNS                      2 IPv4, 2 IPv6, first IPv4
+      handshake result         HTTP 101 Switching Protocols
+      reasoning header         false
+      server model present     false
+  [ok] reachability active provider endpoints are reachable over HTTP
+      reachability mode  <redacted>
+      ChatGPT inference URL  <redacted>
+
+Background Server
+  [--] app-server   not running (ephemeral mode)
+      daemon state dir         ~/.codex/app-server-daemon
+      settings                 ~/.codex/app-server-daemon/settings.json (missing)
+      pid file                 ~/.codex/app-server-daemon/app-server.pid (missing)
+      update-loop pid file     ~/.codex/app-server-daem…/app-server-updater.pid (missing)
+      control socket           ~/.codex/app-server-cont…app-server-control.sock
+      status                   not running
+      mode                     ephemeral
+
+-------------------------------------------------------------
+19 ok | 1 idle | 1 notes | 0 warn | 0 fail ok
+
+--summary compact output           --all expand truncated lists
+--json redacted report

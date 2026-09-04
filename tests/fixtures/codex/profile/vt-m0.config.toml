@@ -1,0 +1,20 @@
+# vt-m0 verification profile (Vambiant Term M0). Selected with `codex --profile vt-m0`.
+# Layered over the user's config.toml (approval_policy="never", sandbox_mode="danger-full-access").
+# NOTE: approval_policy = "untrusted" is rejected by codex-cli 0.153.2:
+#   Error: approval_policy = "untrusted" is no longer supported; remove this setting
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+
+# Make /tmp and $TMPDIR NOT writable so that writes outside the workspace root
+# (/tmp/vt-m0/codex/work) require an escalation approval.
+[sandbox_workspace_write]
+exclude_slash_tmp = true
+exclude_tmpdir_env_var = true
+network_access = false
+
+[projects."/tmp/vt-m0/codex/work"]
+trust_level = "trusted"
+
+[projects."/private/tmp/vt-m0/codex/work"]
+trust_level = "trusted"
