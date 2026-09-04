@@ -1,0 +1,38 @@
+# M0 spike: exercise alacritty_terminal 0.26 and libghostty-vt 0.2.1 against a
+# real PTY and a shared benchmark corpus (docs/07 M0, ADR-0001 revisit).
+# Throwaway by design: nothing in crates/ depends on it. It stays in the tree as
+# the benchmark harness M1 grows from.
+[package]
+name = "term-core-spike"
+description = "M0 terminal-core spike and benchmark harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Requires `zig` 0.15.2 (mise) and network access on first build: the sys crate
+# clones Ghostty at a pinned commit and runs `zig build`.
+ghostty = ["dep:libghostty-vt"]
+
+[dependencies]
+alacritty_terminal = { version = "0.26.0", default-features = false }
+libghostty-vt = { version = "0.2.1", optional = true, default-features = false }
+
+[[bin]]
+name = "alacritty-spike"
+path = "src/bin/alacritty_spike.rs"
+
+[[bin]]
+name = "ghostty-spike"
+path = "src/bin/ghostty_spike.rs"
+required-features = ["ghostty"]
+
+[[bin]]
+name = "gen-corpus"
+path = "src/bin/gen_corpus.rs"
+
+[lints]
+workspace = true
