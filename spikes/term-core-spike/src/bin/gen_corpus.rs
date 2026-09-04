@@ -4,6 +4,9 @@
 //!
 //! Usage: `gen-corpus <out-dir>`. Deterministic; no randomness.
 
+// Throwaway spike: pedantic lints are noise here. Product crates keep them.
+#![allow(clippy::pedantic, clippy::type_complexity, unsafe_code)]
+
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -22,14 +25,20 @@ fn repeat_to(target: usize, mut f: impl FnMut(&mut String, usize)) -> Vec<u8> {
 
 fn ascii_lines() -> Vec<u8> {
     repeat_to(TARGET_BYTES, |s, i| {
-        let _ = writeln!(s, "{i:08} lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod");
+        let _ = writeln!(
+            s,
+            "{i:08} lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod"
+        );
     })
 }
 
 fn japanese_lines() -> Vec<u8> {
     // Wide characters exercise width lookup and the wide-spacer path.
     repeat_to(TARGET_BYTES, |s, i| {
-        let _ = writeln!(s, "{i:08} 吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。");
+        let _ = writeln!(
+            s,
+            "{i:08} 吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。"
+        );
     })
 }
 
@@ -77,13 +86,18 @@ fn scrolling_region() -> Vec<u8> {
     // DECSTBM plus output inside it: the scroll path without full-screen clears.
     let mut v = b"\x1b[5;20r\x1b[5;1H".to_vec();
     v.extend(repeat_to(TARGET_BYTES, |s, i| {
-        let _ = writeln!(s, "region line {i:08} ------------------------------------------------");
+        let _ = writeln!(
+            s,
+            "region line {i:08} ------------------------------------------------"
+        );
     }));
     v
 }
 
 fn main() {
-    let out = std::env::args().nth(1).expect("usage: gen-corpus <out-dir>");
+    let out = std::env::args()
+        .nth(1)
+        .expect("usage: gen-corpus <out-dir>");
     let out = Path::new(&out);
     fs::create_dir_all(out).expect("create out dir");
     let cases: [(&str, fn() -> Vec<u8>); 6] = [
@@ -94,9 +108,9 @@ fn main() {
         ("long-lines.vt", long_lines),
         ("scrolling-region.vt", scrolling_region),
     ];
-    for (name, gen) in cases {
+    for (name, generate) in cases {
         let path = out.join(name);
-        let data = gen();
+        let data = generate();
         fs::write(&path, &data).expect("write corpus file");
         println!("{} {} bytes", path.display(), data.len());
     }

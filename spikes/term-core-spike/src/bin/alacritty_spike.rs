@@ -9,18 +9,21 @@
 //!   corpus file as fast as possible and print a grid checksum. Timed by
 //!   hyperfine from `scripts/bench/run.sh`; nothing is timed in-process.
 
+// Throwaway spike: pedantic lints are noise here. Product crates keep them.
+#![allow(clippy::pedantic, clippy::type_complexity, unsafe_code)]
+
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use alacritty_terminal::event::{Event, EventListener, WindowSize};
+use alacritty_terminal::event::{Event, EventListener, OnResize, WindowSize};
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::test::TermSize;
 use alacritty_terminal::term::{Config, Term, TermDamage};
-use alacritty_terminal::tty::{self, EventedReadWrite, OnResize, Options, Shell};
+use alacritty_terminal::tty::{self, EventedReadWrite, Options, Shell};
 use alacritty_terminal::vte::ansi::{Processor, StdSyncHandler};
 
 /// Collects the events `Term` emits so the spike can print them. `Term` takes
@@ -75,8 +78,12 @@ fn print_damage<T>(term: &mut Term<T>, label: &str) {
             let lines: Vec<String> = iter
                 .map(|d| format!("{}:{}-{}", d.line, d.left, d.right))
                 .collect();
-            println!("[{label}] damage: Partial {} line(s) {}", lines.len(), lines.join(" "));
-        },
+            println!(
+                "[{label}] damage: Partial {} line(s) {}",
+                lines.len(),
+                lines.join(" ")
+            );
+        }
     }
     term.reset_damage();
 }
@@ -91,17 +98,17 @@ fn drain_pty(pty: &mut tty::Pty, mut on_chunk: impl FnMut(&[u8])) {
             Ok(0) => break,
             Ok(n) => on_chunk(&buf[..n]),
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                if pty.child().try_wait().ok().flatten().is_some() {
+                if child_exited(pty) {
                     // Child gone; one last read pass then stop (drain_on_exit).
-                    if let Ok(n) = pty.reader().read(&mut buf) {
-                        if n > 0 {
-                            on_chunk(&buf[..n]);
-                        }
+                    if let Ok(n) = pty.reader().read(&mut buf)
+                        && n > 0
+                    {
+                        on_chunk(&buf[..n]);
                     }
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(2));
-            },
+            }
             // EIO on macOS once the slave side closes.
             Err(_) => break,
         }
@@ -112,17 +119,41 @@ fn drain_pty(pty: &mut tty::Pty, mut on_chunk: impl FnMut(&[u8])) {
     }
 }
 
+/// `Pty::child()` only hands out `&Child`, and `try_wait` needs `&mut`, so ask
+/// the kernel directly. This is exactly the gap `vt-pty` exists to close.
+fn child_exited(pty: &tty::Pty) -> bool {
+    let pid = pty.child().id();
+    let mut status = 0i32;
+    // SAFETY: waitpid on a pid we own with WNOHANG; no memory is shared.
+    let r = unsafe {
+        waitpid(pid.cast_signed(), &raw mut status, 1 /* WNOHANG */)
+    };
+    r == pid.cast_signed()
+}
+
+unsafe extern "C" {
+    fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+}
+
 fn spike_pty() {
     let script = "printf 'hello from pty\\n'; printf '\\033]0;spike-title\\007'; \
                   for i in 1 2 3 4 5; do printf 'line %d: the quick brown fox jumps over the lazy dog again and again\\n' $i; done; \
                   printf '\\033[3;5Hinserted\\033[0m'; printf '\\a'; sleep 0.2; echo done";
     let options = Options {
-        shell: Some(Shell::new("/bin/sh".into(), vec!["-c".into(), script.into()])),
+        shell: Some(Shell::new(
+            "/bin/sh".into(),
+            vec!["-c".into(), script.into()],
+        )),
         working_directory: None,
         drain_on_exit: true,
         env: HashMap::new(),
     };
-    let window = WindowSize { num_lines: 10, num_cols: 80, cell_width: 8, cell_height: 16 };
+    let window = WindowSize {
+        num_lines: 10,
+        num_cols: 80,
+        cell_width: 8,
+        cell_height: 16,
+    };
     let mut pty = tty::new(&options, window, 0).expect("spawn pty");
     println!("spawned child pid {}", pty.child().id());
 
@@ -140,16 +171,31 @@ fn spike_pty() {
 
     // Resize narrower: long lines must reflow (wrap) and damage must be Full.
     term.resize(TermSize::new(40, 10));
-    pty.on_resize(WindowSize { num_lines: 10, num_cols: 40, cell_width: 8, cell_height: 16 });
+    pty.on_resize(WindowSize {
+        num_lines: 10,
+        num_cols: 40,
+        cell_width: 8,
+        cell_height: 16,
+    });
     print_damage(&mut term, "after resize 40x10");
     println!("--- grid at 40x10 (reflowed) ---\n{}", dump_grid(&term));
 
     term.resize(TermSize::new(80, 10));
     print_damage(&mut term, "after resize 80x10");
-    println!("--- grid at 80x10 (reflowed back) ---\n{}", dump_grid(&term));
+    println!(
+        "--- grid at 80x10 (reflowed back) ---\n{}",
+        dump_grid(&term)
+    );
 
-    println!("history_size={} total_lines={}", term.grid().history_size(), term.grid().total_lines());
-    println!("events: {:?}", recorder.0.lock().expect("recorder poisoned"));
+    println!(
+        "history_size={} total_lines={}",
+        term.grid().history_size(),
+        term.grid().total_lines()
+    );
+    println!(
+        "events: {:?}",
+        recorder.0.lock().expect("recorder poisoned")
+    );
 }
 
 fn spike_bench(path: &str, cols: usize, rows: usize) {
@@ -166,16 +212,23 @@ fn spike_bench(path: &str, cols: usize, rows: usize) {
     for line in 0..grid.screen_lines() {
         let row = &grid[Line(line as i32)];
         for c in 0..grid.columns() {
-            checksum = checksum.wrapping_mul(31).wrapping_add(row[Column(c)].c as u64);
+            checksum = checksum
+                .wrapping_mul(31)
+                .wrapping_add(row[Column(c)].c as u64);
         }
     }
+    let history = grid.history_size();
     let damaged = match term.damage() {
         TermDamage::Full => "full".to_string(),
         TermDamage::Partial(it) => it.count().to_string(),
     };
     let mut out = std::io::stdout().lock();
-    writeln!(out, "alacritty bytes={} checksum={checksum:016x} history={} damage={damaged}", data.len(), grid.history_size())
-        .ok();
+    writeln!(
+        out,
+        "alacritty bytes={} checksum={checksum:016x} history={history} damage={damaged}",
+        data.len(),
+    )
+    .ok();
 }
 
 fn main() {
@@ -187,10 +240,10 @@ fn main() {
             let cols = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(200);
             let rows = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(50);
             spike_bench(path, cols, rows);
-        },
+        }
         _ => {
             eprintln!("usage: alacritty-spike pty | bench <file> [cols] [rows]");
             std::process::exit(2);
-        },
+        }
     }
 }
