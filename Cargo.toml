@@ -47,6 +47,8 @@ missing_docs = "warn"
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
+struct_excessive_bools = "allow"     # capability tables are legitimately bool-heavy
+doc_markdown = "allow"               # too many proper-noun false positives (FinalTerm, iTerm2, …)
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 
