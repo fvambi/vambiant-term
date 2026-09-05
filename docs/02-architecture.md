@@ -119,7 +119,7 @@ Fonts, shaping and glyphs never cross the FFI boundary. Rust sends cell content 
 
 ## 7. Storage
 
-Runtime (not persisted): the daemon socket is `$TMPDIR/vambiant-term-<uid>/vtermd.sock` — macOS gives every user a private `$TMPDIR` under `/var/folders`, the closest thing to `$XDG_RUNTIME_DIR` the platform has. `VAMBIANT_TERM_RUNTIME` overrides the directory (tests, multiple daemons). The directory is forced to `0700` and the socket to `0600` on bind, and `getpeereid` rejects any peer whose uid is not the daemon's (`vt-ipc::auth`, decided 2026-09-05). Framing is one JSON object per line.
+Runtime (not persisted): the daemon socket is `$TMPDIR/vambiant-term-<uid>/vtermd.sock` — macOS gives every user a private `$TMPDIR` under `/var/folders`, the closest thing to `$XDG_RUNTIME_DIR` the platform has. `VAMBIANT_TERM_RUNTIME` overrides the directory (tests, multiple daemons). The directory is forced to `0700` and the socket to `0600` on bind, and `getpeereid` rejects any peer whose uid is not the daemon's (`vt-ipc::auth`, decided 2026-09-05). Framing is one JSON object per line. Each connection has its own writer thread behind a bounded outbox (512 messages): publishers never block on a slow viewer, and a viewer that falls that far behind is disconnected and must re-attach for a fresh snapshot — an explicit gap, never a silently dropped delta. Output deltas go only to connections that attached to that session; lifecycle notifications go to everyone.
 
 `~/.local/state/vambiant-term/`
 
