@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct ApprovalId(pub String);
 
 /// A decision the agent is blocked on.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalRequest {
     /// Id.
     pub id: ApprovalId,
@@ -23,7 +23,7 @@ pub struct ApprovalRequest {
 }
 
 /// What the human (or policy) decided.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "behavior", rename_all = "snake_case")]
 pub enum Decision {
     /// Allow, optionally with edited input.

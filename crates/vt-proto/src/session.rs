@@ -33,7 +33,7 @@ pub struct Capabilities {
 }
 
 /// A session as listed by `vterm ls --json`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionInfo {
     /// Id.
     pub id: SessionId,

@@ -9,7 +9,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+rusqlite.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+vt-proto.workspace = true
 
 [lints]
 workspace = true
