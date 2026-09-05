@@ -172,6 +172,6 @@ Per-repo: `.vambiant-term/policy.toml` (committable, narrows but never widens th
 | macOS SDK | 26.x | |
 | mise | manages rust/node/swift-tool versions — `mise.toml` is the source of truth | |
 | cbindgen | 0.29.x | generates `vt_ffi.h` in a build step, checked in and diffed in CI |
-| swift-bridge | 0.1.59 | cold path only |
+| swift-bridge | 0.1.59 | deferred — the cold path is a JSON-RPC passthrough (ADR-0002 amendment, 2026-09-05) |
 | SwiftLint / SwiftFormat | latest | already installed |
 | gh | latest | releases, PRs |

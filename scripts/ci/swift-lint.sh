@@ -9,5 +9,9 @@ if [[ ! -f app/Package.swift ]]; then
 fi
 # SwiftLint needs sourcekitdInProc; under the Command Line Tools it only
 # finds it when told where the toolchain is.
-TOOLCHAIN_DIR="$(xcode-select -p)" swiftlint lint --strict --quiet app
-swiftformat --lint app
+# Both tools read their config from the directory they run in, so run
+# them inside app/ where .swiftlint.yml and .swiftformat live (and where
+# .build is excluded).
+cd app
+TOOLCHAIN_DIR="$(xcode-select -p)" swiftlint lint --strict --quiet .
+swiftformat --lint .

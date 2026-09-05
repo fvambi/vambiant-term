@@ -8,7 +8,9 @@ It is also a fast, correct, GPU-rendered terminal. In a plain shell pane it shou
 
 ## Status
 
-**M1 in progress** (terminal core). M0 verified the spec against the real binaries and benchmarked the two terminal cores — `docs/10-research-notes.md` has every finding with an *as verified on* line; `docs/07-implementation-plan.md` tracks the milestones. The core is `libghostty-vt` behind a `TerminalCore` trait (ADR-0001 amendment); `vt-pty`, the headless harness, snapshot fixtures and the esctest2 conformance runner exist and run in `mise run ci`.
+**M4 built, M5 next.** M0 verified the spec against the real binaries; M1–M3 delivered the terminal core (`libghostty-vt` behind a `TerminalCore` trait), the `vtermd` daemon with crash-surviving sessions, the `vterm` CLI, and the Claude Code / Codex adapters with the approval inbox (exit criteria measured, see `docs/07-implementation-plan.md`). M4 adds the native macOS shell: a Metal-rendered grid attached to the daemon, tabs and splits, both keymap profiles, and a Settings window generated from the config schema. Its latency exit criterion is **not** met and `docs/07` says why with numbers. `docs/10-research-notes.md` has every vendor finding with an *as verified on* line.
+
+Build and run: `mise run app:bundle` assembles `app/build/Vambiant Term.app` (Command Line Tools suffice; no Xcode, no `.xcodeproj`); `mise run ci` runs everything CI runs.
 
 ## Design
 
