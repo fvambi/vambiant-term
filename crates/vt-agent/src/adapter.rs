@@ -7,7 +7,7 @@
 use vt_proto::agent::{AgentEvent, AgentKind};
 use vt_proto::session::Capabilities;
 
-use crate::hooks::Ingested;
+use crate::hooks::{Ingested, Warning};
 
 /// Something an adapter can ingest.
 #[derive(Clone, Debug)]
@@ -60,6 +60,7 @@ impl AgentAdapter for ClaudeAdapter {
                     .get("session_id")
                     .and_then(|s| s.as_str())
                     .map(str::to_owned),
+                ..Ingested::default()
             },
             AdapterInput::StreamLine(line) => {
                 match serde_json::from_str::<serde_json::Value>(&line) {
@@ -73,6 +74,41 @@ impl AgentAdapter for ClaudeAdapter {
                 }
             }
             AdapterInput::Rpc(_) | AdapterInput::PtyChunk(_) => Ingested::default(),
+        }
+    }
+}
+
+/// Codex adapter state: app-server messages arrive as [`AdapterInput::Rpc`].
+#[derive(Debug, Default)]
+pub struct CodexAdapter {
+    counter: u64,
+}
+
+impl AgentAdapter for CodexAdapter {
+    fn kind(&self) -> AgentKind {
+        AgentKind::Codex
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        crate::codex::CAPABILITIES
+    }
+
+    fn ingest(&mut self, input: AdapterInput) -> Ingested {
+        self.counter += 1;
+        match input {
+            AdapterInput::Rpc(v) | AdapterInput::HookPayload(v) => {
+                crate::codex::ingest(&v, self.counter)
+            }
+            AdapterInput::StreamLine(line) => {
+                match serde_json::from_str::<serde_json::Value>(&line) {
+                    Ok(v) => crate::codex::ingest(&v, self.counter),
+                    Err(e) => Ingested {
+                        warnings: vec![Warning(format!("codex exec line is not JSON: {e}"))],
+                        ..Ingested::default()
+                    },
+                }
+            }
+            AdapterInput::StatusLine(_) | AdapterInput::PtyChunk(_) => Ingested::default(),
         }
     }
 }

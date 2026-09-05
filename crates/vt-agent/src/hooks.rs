@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-use vt_proto::agent::{AgentEvent, ErrorKind};
+use vt_proto::agent::{AgentEvent, AgentState, ErrorKind};
 use vt_proto::approval::{ApprovalId, ApprovalRequest};
 
 /// A non-fatal parsing problem worth logging.
@@ -26,6 +26,11 @@ pub struct Ingested {
     pub warnings: Vec<Warning>,
     /// The vendor's session id, when present.
     pub agent_session_id: Option<String>,
+    /// A lifecycle state the vendor reported outright (Codex thread status).
+    pub state: Option<AgentState>,
+    /// Approvals the vendor resolved elsewhere (the user answered in the
+    /// agent's own UI): drop them from the inbox.
+    pub withdrawn: Vec<ApprovalId>,
 }
 
 fn str_field(v: &Value, key: &str) -> Option<String> {

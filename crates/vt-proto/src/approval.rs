@@ -49,4 +49,6 @@ pub enum DecisionSource {
         /// Rule name.
         rule: String,
     },
+    /// The agent's own prompt: the user answered there, not in the inbox.
+    Agent,
 }
