@@ -15,11 +15,36 @@ pub enum PtyError {
         #[source]
         source: std::io::Error,
     },
+    /// The program or an argument contained a NUL byte.
+    #[error("cannot spawn session {session}: argument contains a NUL byte: {what}")]
+    NulByte {
+        /// Session name.
+        session: String,
+        /// Offending argument, truncated.
+        what: String,
+    },
     /// `TIOCSWINSZ` failed.
-    #[error("failed to resize pty for session {session}: {source}")]
+    #[error("failed to resize pty for session {session} to {cols}x{rows}: {source}")]
     Resize {
         /// Session name.
         session: String,
+        /// Requested columns.
+        cols: u16,
+        /// Requested rows.
+        rows: u16,
+        /// Underlying OS error.
+        #[source]
+        source: std::io::Error,
+    },
+    /// `waitpid` or `kill` failed.
+    #[error("failed to {op} child {pid} of session {session}: {source}")]
+    Child {
+        /// Session name.
+        session: String,
+        /// Child pid.
+        pid: i32,
+        /// Operation.
+        op: &'static str,
         /// Underlying OS error.
         #[source]
         source: std::io::Error,

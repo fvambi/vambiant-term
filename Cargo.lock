@@ -549,6 +549,7 @@ dependencies = [
 name = "vt-pty"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "thiserror",
 ]
 

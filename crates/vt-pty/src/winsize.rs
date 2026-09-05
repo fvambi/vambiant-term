@@ -12,3 +12,24 @@ pub struct WinSize {
     /// Height in pixels (0 when unknown).
     pub y_px: u16,
 }
+
+impl WinSize {
+    /// Size in cells with unknown pixel dimensions.
+    pub const fn cells(cols: u16, rows: u16) -> Self {
+        Self {
+            cols,
+            rows,
+            x_px: 0,
+            y_px: 0,
+        }
+    }
+
+    pub(crate) fn to_raw(self) -> libc::winsize {
+        libc::winsize {
+            ws_row: self.rows,
+            ws_col: self.cols,
+            ws_xpixel: self.x_px,
+            ws_ypixel: self.y_px,
+        }
+    }
+}
