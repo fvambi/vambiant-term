@@ -3,6 +3,7 @@
 use crate::cell::{CellSnapshot, GridSize};
 use crate::damage::DamageSet;
 use crate::error::CoreError;
+use crate::event::TermEvent;
 
 /// A VT state machine: bytes in, grid + damage out.
 ///
@@ -33,4 +34,8 @@ pub trait TerminalCore {
     /// such as DA, DSR, XTGETTCAP). Drained by the reader thread after every
     /// [`TerminalCore::advance`].
     fn take_responses(&mut self) -> Vec<u8>;
+
+    /// Out-of-band events raised while parsing (bell, title, cwd, clipboard
+    /// writes). Drained alongside [`TerminalCore::take_responses`].
+    fn take_events(&mut self) -> Vec<TermEvent>;
 }

@@ -2,6 +2,8 @@
 //! text. Every terminal bug fixed adds a fixture under `tests/fixtures/vt/`
 //! (CLAUDE.md § Testing); `crates/vt-core/tests/snapshots.rs` replays them.
 
+use std::fmt::Write as _;
+
 use crate::cell::CellSnapshot;
 use crate::core::TerminalCore;
 
@@ -16,10 +18,11 @@ pub fn dump(snapshot: &CellSnapshot) -> String {
         out.push_str(line.trim_end());
         out.push('\n');
     }
-    out.push_str(&format!(
-        "#cursor {},{}\n",
+    let _ = writeln!(
+        out,
+        "#cursor {},{}",
         snapshot.cursor.row, snapshot.cursor.col
-    ));
+    );
     out
 }
 

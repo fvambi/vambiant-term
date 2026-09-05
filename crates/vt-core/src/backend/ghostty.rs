@@ -15,12 +15,13 @@ use std::rc::Rc;
 use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
 use libghostty_vt::screen::CellWide;
 use libghostty_vt::style::{StyleColor, Underline};
-use libghostty_vt::terminal::{Options, Terminal};
+use libghostty_vt::terminal::{ClipboardLocation, Options, Terminal};
 
 use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize};
 use crate::core::TerminalCore;
 use crate::damage::{DamageSet, LineDamage};
 use crate::error::CoreError;
+use crate::event::{ClipboardTarget, TermEvent, pwd_from_osc7};
 
 /// Scrollback budget in bytes (libghostty counts bytes, not lines).
 const DEFAULT_SCROLLBACK_BYTES: usize = 32 * 1024 * 1024;
@@ -32,6 +33,7 @@ pub struct GhosttyCore {
     rows_it: RowIterator<'static>,
     cells_it: CellIterator<'static>,
     responses: Rc<RefCell<Vec<u8>>>,
+    events: Rc<RefCell<Vec<TermEvent>>>,
     size: GridSize,
     /// Set by resize; the next `take_damage` reports `Full` regardless of rows.
     force_full: bool,
@@ -77,6 +79,48 @@ impl GhosttyCore {
             what: "on_pty_write",
             detail: e.to_string(),
         })?;
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let backend = |what: &'static str| {
+            move |e: libghostty_vt::Error| CoreError::Backend {
+                what,
+                detail: e.to_string(),
+            }
+        };
+        let ev = Rc::clone(&events);
+        term.on_bell(move |_t| ev.borrow_mut().push(TermEvent::Bell))
+            .map_err(backend("on_bell"))?;
+        let ev = Rc::clone(&events);
+        term.on_title_changed(move |t| {
+            if let Ok(title) = t.title() {
+                ev.borrow_mut().push(TermEvent::Title(title.to_owned()));
+            }
+        })
+        .map_err(backend("on_title_changed"))?;
+        let ev = Rc::clone(&events);
+        term.on_pwd_changed(move |t| {
+            if let Ok(pwd) = t.pwd() {
+                ev.borrow_mut().push(TermEvent::Pwd(pwd_from_osc7(pwd)));
+            }
+        })
+        .map_err(backend("on_pwd_changed"))?;
+        let ev = Rc::clone(&events);
+        term.on_clipboard_write(move |_t, write| {
+            let target = match write.location() {
+                ClipboardLocation::Standard => ClipboardTarget::Clipboard,
+                _ => ClipboardTarget::Selection,
+            };
+            // OSC 52 payloads arrive already base64-decoded, one entry per
+            // mime type; text/plain is the only one a terminal clipboard takes.
+            let contents = write
+                .contents()
+                .find(|c| c.mime.starts_with("text/plain") || c.mime.is_empty())
+                .map(|c| c.data.as_bytes().to_vec())
+                .unwrap_or_default();
+            ev.borrow_mut()
+                .push(TermEvent::ClipboardWrite { target, contents });
+            Ok(())
+        })
+        .map_err(backend("on_clipboard_write"))?;
         let render = RenderState::new().map_err(|e| CoreError::Backend {
             what: "RenderState::new",
             detail: e.to_string(),
@@ -95,6 +139,7 @@ impl GhosttyCore {
             rows_it,
             cells_it,
             responses,
+            events,
             size,
             force_full: true,
         })
@@ -217,6 +262,10 @@ impl TerminalCore for GhosttyCore {
 
     fn take_responses(&mut self) -> Vec<u8> {
         std::mem::take(&mut *self.responses.borrow_mut())
+    }
+
+    fn take_events(&mut self) -> Vec<TermEvent> {
+        std::mem::take(&mut *self.events.borrow_mut())
     }
 }
 
@@ -341,6 +390,26 @@ mod tests {
         assert_eq!(snap.cells[1].ch, '日');
         assert_ne!(snap.cells[1].attrs.0 & Attrs::WIDE, 0);
         assert_ne!(snap.cells[2].attrs.0 & Attrs::WIDE_SPACER, 0);
+    }
+
+    #[test]
+    fn events_bell_title_pwd_clipboard() {
+        let mut core = GhosttyCore::new(GridSize { cols: 10, rows: 2 }).unwrap();
+        core.advance(b"\x07\x1b]2;t1\x07\x1b]7;file://localhost/tmp/x\x07\x1b]52;c;aGVsbG8=\x07");
+        let events = core.take_events();
+        assert_eq!(
+            events,
+            vec![
+                TermEvent::Bell,
+                TermEvent::Title("t1".into()),
+                TermEvent::Pwd("/tmp/x".into()),
+                TermEvent::ClipboardWrite {
+                    target: ClipboardTarget::Clipboard,
+                    contents: b"hello".to_vec()
+                },
+            ]
+        );
+        assert!(core.take_events().is_empty());
     }
 
     #[test]
