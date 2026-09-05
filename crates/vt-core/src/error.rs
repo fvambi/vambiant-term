@@ -11,4 +11,12 @@ pub enum CoreError {
         /// Requested rows.
         rows: u16,
     },
+    /// The backend refused an operation; `what` names the call.
+    #[error("terminal backend error in {what}: {detail}")]
+    Backend {
+        /// Backend call that failed.
+        what: &'static str,
+        /// Backend-supplied detail.
+        detail: String,
+    },
 }

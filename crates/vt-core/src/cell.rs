@@ -51,6 +51,17 @@ pub struct Cell {
     pub attrs: Attrs,
 }
 
+impl Default for Cell {
+    fn default() -> Self {
+        Self {
+            ch: ' ',
+            fg: Color::Default,
+            bg: Color::Default,
+            attrs: Attrs::default(),
+        }
+    }
+}
+
 /// Colour as the terminal specified it — the renderer resolves the palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Color {

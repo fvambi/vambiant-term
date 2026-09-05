@@ -24,5 +24,13 @@ pub trait TerminalCore {
     fn take_damage(&mut self) -> DamageSet;
 
     /// Snapshot the visible grid (plus cursor) for a viewer.
-    fn snapshot(&self) -> CellSnapshot;
+    fn snapshot(&mut self) -> CellSnapshot;
+
+    /// Window title set through OSC 0/2, if any.
+    fn title(&self) -> Option<String>;
+
+    /// Bytes the terminal wants written back to the PTY (query responses
+    /// such as DA, DSR, XTGETTCAP). Drained by the reader thread after every
+    /// [`TerminalCore::advance`].
+    fn take_responses(&mut self) -> Vec<u8>;
 }

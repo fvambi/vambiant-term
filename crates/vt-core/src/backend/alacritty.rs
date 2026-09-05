@@ -1,6 +1,8 @@
-//! `alacritty_terminal` backend (ADR-0001).
+//! `alacritty_terminal` backend — the documented fallback (ADR-0001).
 //!
-//! Implementation lands in M1. The M0 spike established (verified on
+//! Not implemented: the M1 gates in the ADR-0001 amendment were met and
+//! `libghostty-vt` is the primary backend. The verified API shapes stay here so
+//! a fallback implementation is a mechanical task. The M0 spike established (verified on
 //! 2026-09-04, `alacritty_terminal` 0.26.0):
 //! * `Term::damage(&mut self) -> TermDamage<'_>` with
 //!   `TermDamage::{Full, Partial(TermDamageIterator)}`, iterator item

@@ -1,0 +1,354 @@
+//! `libghostty-vt` backend — the primary [`TerminalCore`] (ADR-0001 amendment).
+//!
+//! Damage comes from Ghostty's render state: a persistent [`RenderState`] is
+//! updated after every write, its `dirty()` verdict maps to
+//! [`DamageSet::Full`] or per-row entries, and row dirt is cleared once
+//! consumed. Ghostty tracks dirt per row, not per column span, so every
+//! partial entry covers the full row width.
+//!
+//! All libghostty types are `!Send + !Sync`; a [`GhosttyCore`] therefore lives
+//! on the reader thread that created it (docs/02 §4).
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
+use libghostty_vt::screen::CellWide;
+use libghostty_vt::style::{StyleColor, Underline};
+use libghostty_vt::terminal::{Options, Terminal};
+
+use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize};
+use crate::core::TerminalCore;
+use crate::damage::{DamageSet, LineDamage};
+use crate::error::CoreError;
+
+/// Scrollback budget in bytes (libghostty counts bytes, not lines).
+const DEFAULT_SCROLLBACK_BYTES: usize = 32 * 1024 * 1024;
+
+/// A terminal backed by libghostty-vt.
+pub struct GhosttyCore {
+    term: Terminal<'static, 'static>,
+    render: RenderState<'static>,
+    rows_it: RowIterator<'static>,
+    cells_it: CellIterator<'static>,
+    responses: Rc<RefCell<Vec<u8>>>,
+    size: GridSize,
+    /// Set by resize; the next `take_damage` reports `Full` regardless of rows.
+    force_full: bool,
+}
+
+impl std::fmt::Debug for GhosttyCore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GhosttyCore")
+            .field("size", &self.size)
+            .finish_non_exhaustive()
+    }
+}
+
+impl GhosttyCore {
+    /// Create a terminal of `size` with the default scrollback budget.
+    pub fn new(size: GridSize) -> Result<Self, CoreError> {
+        Self::with_scrollback(size, DEFAULT_SCROLLBACK_BYTES)
+    }
+
+    /// Create a terminal with an explicit scrollback budget in bytes.
+    pub fn with_scrollback(size: GridSize, scrollback_bytes: usize) -> Result<Self, CoreError> {
+        if size.cols == 0 || size.rows == 0 {
+            return Err(CoreError::InvalidSize {
+                cols: size.cols,
+                rows: size.rows,
+            });
+        }
+        let mut term = Terminal::new(Options {
+            cols: size.cols,
+            rows: size.rows,
+            max_scrollback: scrollback_bytes,
+        })
+        .map_err(|e| CoreError::Backend {
+            what: "Terminal::new",
+            detail: e.to_string(),
+        })?;
+        let responses = Rc::new(RefCell::new(Vec::new()));
+        let sink = Rc::clone(&responses);
+        term.on_pty_write(move |_t, data: &[u8]| {
+            sink.borrow_mut().extend_from_slice(data);
+        })
+        .map_err(|e| CoreError::Backend {
+            what: "on_pty_write",
+            detail: e.to_string(),
+        })?;
+        let render = RenderState::new().map_err(|e| CoreError::Backend {
+            what: "RenderState::new",
+            detail: e.to_string(),
+        })?;
+        let rows_it = RowIterator::new().map_err(|e| CoreError::Backend {
+            what: "RowIterator::new",
+            detail: e.to_string(),
+        })?;
+        let cells_it = CellIterator::new().map_err(|e| CoreError::Backend {
+            what: "CellIterator::new",
+            detail: e.to_string(),
+        })?;
+        Ok(Self {
+            term,
+            render,
+            rows_it,
+            cells_it,
+            responses,
+            size,
+            force_full: true,
+        })
+    }
+
+    /// Number of scrollback rows currently retained.
+    pub fn scrollback_rows(&self) -> usize {
+        self.term.scrollback_rows().unwrap_or(0)
+    }
+}
+
+impl TerminalCore for GhosttyCore {
+    fn advance(&mut self, bytes: &[u8]) {
+        self.term.vt_write(bytes);
+    }
+
+    fn resize(&mut self, size: GridSize) -> Result<(), CoreError> {
+        if size.cols == 0 || size.rows == 0 {
+            return Err(CoreError::InvalidSize {
+                cols: size.cols,
+                rows: size.rows,
+            });
+        }
+        // Cell pixel size only matters for kitty graphics placement; the
+        // renderer owns real pixel metrics on the Swift side.
+        self.term
+            .resize(size.cols, size.rows, 0, 0)
+            .map_err(|e| CoreError::Backend {
+                what: "resize",
+                detail: e.to_string(),
+            })?;
+        self.size = size;
+        self.force_full = true;
+        Ok(())
+    }
+
+    fn size(&self) -> GridSize {
+        self.size
+    }
+
+    fn take_damage(&mut self) -> DamageSet {
+        let Ok(snap) = self.render.update(&self.term) else {
+            return DamageSet::Full;
+        };
+        let dirty = snap.dirty().unwrap_or(Dirty::Full);
+        let full = self.force_full || matches!(dirty, Dirty::Full);
+        self.force_full = false;
+        let mut lines = Vec::new();
+        if let Ok(mut rows) = self.rows_it.update(&snap) {
+            let mut row_idx: u16 = 0;
+            while let Some(row) = rows.next() {
+                if !full && row.dirty().unwrap_or(true) {
+                    lines.push(LineDamage {
+                        row: row_idx,
+                        left: 0,
+                        right: self.size.cols.saturating_sub(1),
+                    });
+                }
+                let _ = row.set_dirty(false);
+                row_idx = row_idx.saturating_add(1);
+            }
+        }
+        let _ = snap.set_dirty(Dirty::Clean);
+        if full {
+            DamageSet::Full
+        } else {
+            DamageSet::Lines(lines)
+        }
+    }
+
+    fn snapshot(&mut self) -> CellSnapshot {
+        let cols = usize::from(self.size.cols);
+        let rows = usize::from(self.size.rows);
+        let mut cells = vec![Cell::default(); cols * rows];
+        let mut cursor = Cursor {
+            col: 0,
+            row: 0,
+            visible: true,
+        };
+        if let Ok(snap) = self.render.update(&self.term) {
+            if let Ok(Some(cv)) = snap.cursor_viewport() {
+                cursor.col = cv.x;
+                cursor.row = cv.y;
+            }
+            cursor.visible = snap.cursor_visible().unwrap_or(true);
+            if let Ok(mut it) = self.rows_it.update(&snap) {
+                let mut r = 0usize;
+                while let Some(row) = it.next() {
+                    if r >= rows {
+                        break;
+                    }
+                    if let Ok(mut cit) = self.cells_it.update(row) {
+                        let mut c = 0usize;
+                        while let Some(cell) = cit.next() {
+                            if c >= cols {
+                                break;
+                            }
+                            cells[r * cols + c] = convert_cell(cell);
+                            c += 1;
+                        }
+                    }
+                    r += 1;
+                }
+            }
+        }
+        CellSnapshot {
+            size: self.size,
+            cursor,
+            cells,
+        }
+    }
+
+    fn title(&self) -> Option<String> {
+        self.term
+            .title()
+            .ok()
+            .filter(|t| !t.is_empty())
+            .map(str::to_owned)
+    }
+
+    fn take_responses(&mut self) -> Vec<u8> {
+        std::mem::take(&mut *self.responses.borrow_mut())
+    }
+}
+
+fn convert_cell(cell: &libghostty_vt::render::CellIteration<'_, '_>) -> Cell {
+    let raw = cell.raw_cell().ok();
+    let cp = raw.and_then(|c| c.codepoint().ok()).unwrap_or(0);
+    let ch = char::from_u32(cp).filter(|c| *c != '\0').unwrap_or(' ');
+    let mut attrs = Attrs::default();
+    match raw.and_then(|c| c.wide().ok()) {
+        Some(CellWide::Wide) => attrs.0 |= Attrs::WIDE,
+        Some(CellWide::SpacerTail | CellWide::SpacerHead) => attrs.0 |= Attrs::WIDE_SPACER,
+        _ => {}
+    }
+    let (fg, bg) = match cell.style() {
+        Ok(style) => {
+            if style.bold {
+                attrs.0 |= Attrs::BOLD;
+            }
+            if style.italic {
+                attrs.0 |= Attrs::ITALIC;
+            }
+            if style.faint {
+                attrs.0 |= Attrs::DIM;
+            }
+            if style.inverse {
+                attrs.0 |= Attrs::INVERSE;
+            }
+            if style.invisible {
+                attrs.0 |= Attrs::HIDDEN;
+            }
+            if style.strikethrough {
+                attrs.0 |= Attrs::STRIKEOUT;
+            }
+            if !matches!(style.underline, Underline::None) {
+                attrs.0 |= Attrs::UNDERLINE;
+            }
+            (convert_color(style.fg_color), convert_color(style.bg_color))
+        }
+        Err(_) => (Color::Default, Color::Default),
+    };
+    Cell { ch, fg, bg, attrs }
+}
+
+fn convert_color(c: StyleColor) -> Color {
+    match c {
+        StyleColor::None => Color::Default,
+        StyleColor::Palette(idx) => Color::Indexed(idx.0),
+        StyleColor::Rgb(rgb) => Color::Rgb(rgb.r, rgb.g, rgb.b),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(core: &mut GhosttyCore) -> Vec<String> {
+        let snap = core.snapshot();
+        let cols = usize::from(snap.size.cols);
+        snap.cells
+            .chunks(cols)
+            .map(|row| {
+                row.iter()
+                    .map(|c| c.ch)
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn writes_land_in_the_grid() {
+        let mut core = GhosttyCore::new(GridSize { cols: 20, rows: 3 }).unwrap();
+        core.advance(b"hello\r\nworld");
+        let rows = text(&mut core);
+        assert_eq!(rows, vec!["hello", "world", ""]);
+        let snap = core.snapshot();
+        assert_eq!((snap.cursor.row, snap.cursor.col), (1, 5));
+    }
+
+    #[test]
+    fn damage_is_full_first_then_per_row() {
+        let mut core = GhosttyCore::new(GridSize { cols: 20, rows: 3 }).unwrap();
+        core.advance(b"a");
+        assert_eq!(core.take_damage(), DamageSet::Full);
+        assert!(core.take_damage().is_clean());
+        core.advance(b"\x1b[3;1Hz");
+        match core.take_damage() {
+            DamageSet::Lines(lines) => {
+                assert!(lines.iter().any(|l| l.row == 2), "row 2 damaged: {lines:?}");
+            }
+            DamageSet::Full => panic!("expected partial damage"),
+        }
+        assert!(core.take_damage().is_clean());
+    }
+
+    #[test]
+    fn resize_reflows_and_reports_full() {
+        let mut core = GhosttyCore::new(GridSize { cols: 10, rows: 2 }).unwrap();
+        core.advance(b"abcdefghij0123");
+        let _ = core.take_damage();
+        core.resize(GridSize { cols: 20, rows: 2 }).unwrap();
+        assert_eq!(core.take_damage(), DamageSet::Full);
+        assert_eq!(text(&mut core)[0], "abcdefghij0123");
+        assert!(matches!(
+            core.resize(GridSize { cols: 0, rows: 2 }),
+            Err(CoreError::InvalidSize { cols: 0, rows: 2 })
+        ));
+    }
+
+    #[test]
+    fn attributes_colours_and_wide_chars() {
+        let mut core = GhosttyCore::new(GridSize { cols: 10, rows: 1 }).unwrap();
+        core.advance(b"\x1b[1;4;38;5;9;48;2;1;2;3mX\x1b[0m\xe6\x97\xa5");
+        let snap = core.snapshot();
+        let x = snap.cells[0];
+        assert_eq!(x.ch, 'X');
+        assert_ne!(x.attrs.0 & Attrs::BOLD, 0);
+        assert_ne!(x.attrs.0 & Attrs::UNDERLINE, 0);
+        assert_eq!(x.fg, Color::Indexed(9));
+        assert_eq!(x.bg, Color::Rgb(1, 2, 3));
+        assert_eq!(snap.cells[1].ch, '日');
+        assert_ne!(snap.cells[1].attrs.0 & Attrs::WIDE, 0);
+        assert_ne!(snap.cells[2].attrs.0 & Attrs::WIDE_SPACER, 0);
+    }
+
+    #[test]
+    fn title_and_query_responses() {
+        let mut core = GhosttyCore::new(GridSize { cols: 10, rows: 2 }).unwrap();
+        core.advance(b"\x1b]0;hello\x07\x1b[6n");
+        assert_eq!(core.title().as_deref(), Some("hello"));
+        assert_eq!(core.take_responses(), b"\x1b[1;1R".to_vec());
+        assert!(core.take_responses().is_empty());
+    }
+}

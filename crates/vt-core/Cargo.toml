@@ -8,7 +8,14 @@ publish.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["ghostty"]
+# Primary backend (ADR-0001 amendment). Needs zig 0.15.2 and the vendored
+# third_party/ghostty submodule; `mise` exports the build environment.
+ghostty = ["dep:libghostty-vt"]
+
 [dependencies]
+libghostty-vt = { version = "0.2.1", optional = true, default-features = false }
 thiserror.workspace = true
 
 [lints]
