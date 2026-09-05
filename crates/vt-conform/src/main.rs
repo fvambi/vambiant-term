@@ -128,33 +128,131 @@ fn main() {
     }
 }
 
-/// Reduce esctest's log to counts plus the failing test names.
-fn summarize(log: &str) -> String {
-    let mut passed = 0usize;
-    let mut failed = Vec::new();
-    let mut known = 0usize;
+/// Per-test outcome parsed from esctest's log grammar (`Run test: X`, then
+/// `Passed.`, `Fails as expected: …`, `Skipped because …`, or
+/// `*** TEST X FAILED:` + traceback).
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    Passed,
+    KnownBug,
+    Skipped,
+    Failed(String),
+}
+
+fn parse_outcomes(log: &str) -> Vec<(String, Outcome)> {
+    let mut out: Vec<(String, Outcome)> = Vec::new();
+    let mut current: Option<(String, Vec<&str>)> = None;
+    let flush = |cur: Option<(String, Vec<&str>)>, out: &mut Vec<(String, Outcome)>| {
+        if let Some((name, body)) = cur {
+            let text = body.join("\n");
+            let outcome = if text.contains("*** TEST") && text.contains("FAILED:") {
+                let reason = body
+                    .iter()
+                    .rev()
+                    .find(|l| !l.trim().is_empty() && !l.starts_with(' '))
+                    .map_or("unknown", |l| l.trim());
+                Outcome::Failed(reason.to_string())
+            } else if text.contains("Fails as expected") {
+                Outcome::KnownBug
+            } else if text.contains("Skipped because") {
+                Outcome::Skipped
+            } else {
+                Outcome::Passed
+            };
+            out.push((name, outcome));
+        }
+    };
     for line in log.lines() {
-        if line.contains("Passed.") {
-            passed += 1;
-        } else if let Some(rest) = line.strip_prefix("Failed: ") {
-            failed.push(rest.trim().to_string());
-        } else if line.contains("known bug") || line.contains("KnownBug") {
-            known += 1;
+        if let Some(name) = line.strip_prefix("Run test: ") {
+            flush(current.take(), &mut out);
+            current = Some((name.trim().to_string(), Vec::new()));
+        } else if let Some((_, body)) = current.as_mut() {
+            body.push(line);
         }
     }
-    // Zero tests means the harness itself broke (esctest never ran); never green.
-    let status = if failed.is_empty() && passed > 0 {
-        "PASS"
-    } else {
-        "FAIL"
-    };
-    let mut out = format!(
-        "{status}: {passed} passed, {} failed, {known} known-bug-skipped",
-        failed.len()
+    flush(current, &mut out);
+    out
+}
+
+/// Triaged known failures: one test name per line, `#` comments. A listed
+/// test that passes is reported so the list cannot rot.
+fn known_fail_list() -> std::collections::HashSet<String> {
+    let path = std::env::var_os("VT_ESCTEST_KNOWN_FAIL").map_or_else(
+        || {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/conformance/esctest-known-fail.txt")
+        },
+        PathBuf::from,
     );
-    for f in failed {
-        out.push_str("\n  failed: ");
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Reduce esctest's log to counts plus the untriaged failures.
+fn summarize(log: &str) -> String {
+    let known = known_fail_list();
+    let outcomes = parse_outcomes(log);
+    let (mut passed, mut known_bug, mut skipped, mut triaged) = (0usize, 0usize, 0usize, 0usize);
+    let mut untriaged = Vec::new();
+    let mut stale = Vec::new();
+    for (name, outcome) in &outcomes {
+        match outcome {
+            Outcome::Passed => {
+                passed += 1;
+                if known.contains(name) {
+                    stale.push(name.clone());
+                }
+            }
+            Outcome::KnownBug => known_bug += 1,
+            Outcome::Skipped => skipped += 1,
+            Outcome::Failed(reason) => {
+                if known.contains(name) {
+                    triaged += 1;
+                } else {
+                    untriaged.push(format!("{name}: {reason}"));
+                }
+            }
+        }
+    }
+    let ok = !outcomes.is_empty() && untriaged.is_empty() && stale.is_empty();
+    let status = if ok { "PASS" } else { "FAIL" };
+    let mut out = format!(
+        "{status}: {} tests — {passed} passed, {triaged} failed-and-triaged, {} failed-untriaged, {known_bug} esctest-known-bug, {skipped} skipped",
+        outcomes.len(),
+        untriaged.len()
+    );
+    for f in untriaged {
+        out.push_str("\n  UNTRIAGED: ");
         out.push_str(&f);
     }
+    for s in stale {
+        out.push_str("\n  STALE (passes now, remove from the known-fail list): ");
+        out.push_str(&s);
+    }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_esctest_log_grammar() {
+        let log = "Run test: A.t1\nPassed.\n\nRun test: B.t2\n*** TEST B.t2 FAILED:\nTraceback\n  File x\nesctypes.InternalError: Timeout waiting to read.\n\nRun test: C.t3\nFails as expected: nope\n\nRun test: D.t4\nSkipped because terminal lacks requisite capability: VT5\n";
+        let o = parse_outcomes(log);
+        assert_eq!(o[0], ("A.t1".into(), Outcome::Passed));
+        assert_eq!(
+            o[1],
+            (
+                "B.t2".into(),
+                Outcome::Failed("esctypes.InternalError: Timeout waiting to read.".into())
+            )
+        );
+        assert_eq!(o[2], ("C.t3".into(), Outcome::KnownBug));
+        assert_eq!(o[3], ("D.t4".into(), Outcome::Skipped));
+    }
 }

@@ -1,0 +1,91 @@
+# esctest2 triaged known failures for vt-core (libghostty-vt 0.2.1 backend).
+# One test per line; `#` starts a comment. vt-conform treats a listed failure as
+# triaged, an unlisted failure as a regression, and a listed pass as stale.
+# Baseline 2026-09-05: 568 run, 487 pass, 70 fail (all read timeouts on
+# unanswered queries), 11 esctest-known-bug. Full log: `vt-conform` prints its path.
+
+# ChangeSpecialColor: OSC 5 (special colour) query replies: libghostty does not report special colours → read timeout.
+ChangeSpecialColorTests.test_ChangeSpecialColor_Multiple2
+
+# DECDSR: Extended DECDSR reports (CSI ? 15/25/26/53/55/56/62/63/75/85 n): libghostty answers only CSI 5 n / 6 n → read timeout. Printer/UDK/locator/macro-space reports are not needed by real programs.
+DECDSRTests.test_DECDSR_DECCKSR
+DECDSRTests.test_DECDSR_DECMSR
+DECDSRTests.test_DECDSR_DECXCPR
+DECDSRTests.test_DECDSR_DSRDECLocatorStatus
+DECDSRTests.test_DECDSR_DSRDataIntegrity
+DECDSRTests.test_DECDSR_DSRKeyboard
+DECDSRTests.test_DECDSR_DSRMultipleSessionStatus
+DECDSRTests.test_DECDSR_DSRPrinterPort
+DECDSRTests.test_DECDSR_DSRUDKLocked
+DECDSRTests.test_DECDSR_DSRXtermLocatorStatus
+DECDSRTests.test_DECDSR_LocatorType
+
+# DECRQM: DECRQM (CSI Ps $ p / CSI ? Ps $ p) mode reports: libghostty-vt 0.2.1 sends no reply → esctest read timeout. Upstream gap; revisit on libghostty bump.
+DECRQMTests.test_DECRQM
+DECRQMTests.test_DECRQM_ANSI_EBM
+DECRQMTests.test_DECRQM_ANSI_FEAM
+DECRQMTests.test_DECRQM_ANSI_FETM
+DECRQMTests.test_DECRQM_ANSI_GATM
+DECRQMTests.test_DECRQM_ANSI_HEM
+DECRQMTests.test_DECRQM_ANSI_IRM
+DECRQMTests.test_DECRQM_ANSI_KAM
+DECRQMTests.test_DECRQM_ANSI_LNM
+DECRQMTests.test_DECRQM_ANSI_MATM
+DECRQMTests.test_DECRQM_ANSI_PUM
+DECRQMTests.test_DECRQM_ANSI_SATM
+DECRQMTests.test_DECRQM_ANSI_SRM
+DECRQMTests.test_DECRQM_ANSI_SRTM
+DECRQMTests.test_DECRQM_ANSI_TSM
+DECRQMTests.test_DECRQM_ANSI_TTM
+DECRQMTests.test_DECRQM_ANSI_VEM
+
+# DECRQSS: DECRQSS (DCS $ q … ST) status-string requests: not implemented in libghostty-vt 0.2.1 → read timeout.
+DECRQSSTests.test_DECRQSS_DECSACE
+DECRQSSTests.test_DECRQSS_DECSASD
+DECRQSSTests.test_DECRQSS_DECSCA
+DECRQSSTests.test_DECRQSS_DECSCL
+DECRQSSTests.test_DECRQSS_DECSCUSR
+DECRQSSTests.test_DECRQSS_DECSLPP
+DECRQSSTests.test_DECRQSS_DECSLRM
+DECRQSSTests.test_DECRQSS_DECSNLS
+DECRQSSTests.test_DECRQSS_DECSSDT
+DECRQSSTests.test_DECRQSS_DECSTBM
+DECRQSSTests.test_DECRQSS_SGR
+
+# DECSCL: DECSCL test reads a DECRQM reply after changing the conformance level → same DECRQM gap.
+DECSCLTests.test_DSCSCL_Level3_SupportsDECRQMDoesntSupportDECSLRM
+
+# RIS: RIS test reads a DECRQM reply after reset → same DECRQM gap.
+RISTests.test_RIS_ResetTitleMode
+
+# ResetSpecialColor: OSC 105 / OSC 5 query replies: same as ChangeSpecialColor.
+ResetSpecialColorTests.test_ResetSpecialColor_Dynamic
+ResetSpecialColorTests.test_ResetSpecialColor_Multiple2
+ResetSpecialColorTests.test_ResetSpecialColor_Single2
+
+# XtermWinops: xterm window operations (CSI 11/13/14/19/20/21 t reports, iconify/move/resize): host-level features that docs/09 ships disabled (window_ops = false); only the size reports (14/16/18 t) are answered.
+XtermWinopsTests.test_XtermWinops_Fullscreen
+XtermWinopsTests.test_XtermWinops_IconifyDeiconfiy
+XtermWinopsTests.test_XtermWinops_MaximizeWindow_Horizontally
+XtermWinopsTests.test_XtermWinops_MaximizeWindow_HorizontallyAndVertically
+XtermWinopsTests.test_XtermWinops_MaximizeWindow_Vertically
+XtermWinopsTests.test_XtermWinops_MoveToXY
+XtermWinopsTests.test_XtermWinops_MoveToXY_Defaults
+XtermWinopsTests.test_XtermWinops_PushIconAndWindow_PopIcon
+XtermWinopsTests.test_XtermWinops_PushIconAndWindow_PopIconAndWindow
+XtermWinopsTests.test_XtermWinops_PushIconAndWindow_PopWindow
+XtermWinopsTests.test_XtermWinops_PushIconThenWindowThenPopBoth
+XtermWinopsTests.test_XtermWinops_PushIcon_PopIcon
+XtermWinopsTests.test_XtermWinops_PushMultiplePopMultiple_Icon
+XtermWinopsTests.test_XtermWinops_PushWindow_PopWindow
+XtermWinopsTests.test_XtermWinops_ReportIconLabel
+XtermWinopsTests.test_XtermWinops_ResizeChars_BothParameters
+XtermWinopsTests.test_XtermWinops_ResizeChars_DefaultHeight
+XtermWinopsTests.test_XtermWinops_ResizeChars_DefaultWidth
+XtermWinopsTests.test_XtermWinops_ResizeChars_ZeroHeight
+XtermWinopsTests.test_XtermWinops_ResizeChars_ZeroWidth
+XtermWinopsTests.test_XtermWinops_ResizePixels_BothParameters
+XtermWinopsTests.test_XtermWinops_ResizePixels_OmittedHeight
+XtermWinopsTests.test_XtermWinops_ResizePixels_OmittedWidth
+XtermWinopsTests.test_XtermWinops_ResizePixels_ZeroHeight
+XtermWinopsTests.test_XtermWinops_ResizePixels_ZeroWidth

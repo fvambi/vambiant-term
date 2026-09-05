@@ -68,13 +68,17 @@ run = "scripts/ci/abi-check.sh --update"
 description = "Throughput benchmarks, Ghostty methodology (hyperfine, medians, serial)"
 run = "scripts/bench/run.sh"
 
+[tasks.conformance]
+description = "esctest2 against the headless core over a PTY (docs/08 §2); triaged list in tests/conformance"
+run = "cargo run -q --release -p vt-conform"
+
 [tasks."ci-fast"]
 description = "docs/08 §9 `fast` job"
 depends = ["lint", "test:unit"]
 
 [tasks."ci-full"]
 description = "docs/08 §9 `full` job"
-depends = ["ci-fast", "test:integration", "deny", "abi:check"]
+depends = ["ci-fast", "test:integration", "deny", "abi:check", "conformance"]
 run = "scripts/ci/swift-build.sh"
 
 [tasks."ci-nightly"]

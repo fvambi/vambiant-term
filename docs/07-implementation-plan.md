@@ -33,7 +33,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 - [x] Headless renderer harness: feed a byte stream, dump the grid as text. This is the test substrate for everything after. *(`vt_core::harness`, `tests/fixtures/vt/`)*
 - [x] Kitty keyboard protocol push/pop; OSC 7/8/52-write/133/633/777/1337 handling. *(kitty + DECCKM + modifyOtherKeys via the backend encoder; OSC 7/1337 cwd, OSC 52 write and OSC 1337 Copy as `TermEvent`s; OSC 133/633 and OSC 8 exposed per row/cell for vt-blocks; ⚠️ OSC 777 notifications not surfaced by libghostty-vt 0.2.1 — docs/10 §1)*
 - [x] `terminfo` entry. *(`terminfo/vambiant-term.terminfo`, derived from Ghostty's since the core is libghostty; `scripts/terminfo-install.sh`)*
-- [ ] esctest2 + vttest run and triaged (100% is not the bar — no shipping terminal clears it; a triaged known-fail list is).
+- [x] esctest2 run and triaged: **568 run, 487 pass, 70 triaged failures, 11 esctest-known-bug** on 2026-09-05 (`mise run conformance`, list with reasons in `tests/conformance/esctest-known-fail.txt`; every failure is an unanswered query — DECRQM, DECRQSS, extended DECDSR, xterm window ops, OSC 5 — not a rendering error). ⚠️ vttest is a manual per-release run (docs/08 §2); not yet done.
 - [x] vtebench-style throughput harness following Ghostty's methodology: pre-generated inputs, hyperfine, medians, serial runs. *(`scripts/bench/run.sh`; `vtcore-spike` measures the trait overhead over bare libghostty)*
 
 **Exit:** headless terminal passes the triaged conformance set; throughput within 2× of Ghostty on the same corpus.
