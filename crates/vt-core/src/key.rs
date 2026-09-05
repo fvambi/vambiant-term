@@ -4,8 +4,11 @@
 //! backend's encoder, which reads the live terminal modes, so the caller never
 //! tracks protocol state.
 
+use serde::{Deserialize, Serialize};
+
 /// Key press/release/repeat.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum KeyAction {
     /// Key went down.
     Press,
@@ -16,7 +19,7 @@ pub enum KeyAction {
 }
 
 /// Modifier bits. Values match the W3C-style order the renderer uses.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyMods(pub u16);
 
 impl KeyMods {
@@ -39,7 +42,7 @@ impl KeyMods {
 ///
 /// Only the keys a terminal must distinguish are named here; everything the
 /// renderer cannot map sends [`KeyCode::Unidentified`] plus `utf8` text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u16)]
 #[allow(missing_docs)]
 pub enum KeyCode {
@@ -122,7 +125,7 @@ pub enum KeyCode {
 }
 
 /// One key event from the renderer.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyEvent {
     /// Press / release / repeat.
     pub action: KeyAction,

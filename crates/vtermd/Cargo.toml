@@ -9,7 +9,18 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+base64.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+vt-core.workspace = true
+vt-ipc.workspace = true
 vt-proto.workspace = true
+vt-pty.workspace = true
+vt-store.workspace = true
+
+[dev-dependencies]
+vt-ipc.workspace = true
 
 [lints]
 workspace = true
