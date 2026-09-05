@@ -477,6 +477,25 @@ mod tests {
     }
 
     #[test]
+    fn signal_reaches_the_whole_process_group() {
+        // The shell forks `sleep`; killing only the leader would leave the
+        // slave open and this read would block for 20 s.
+        let spec = SpawnSpec::program(
+            "test-group",
+            vec!["/bin/sh".into(), "-c".into(), "sleep 20; sleep 20".into()],
+        );
+        let mut pty = Pty::spawn(&spec, WinSize::cells(80, 24)).expect("spawn");
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        pty.signal(libc::SIGKILL).expect("signal");
+        let started = std::time::Instant::now();
+        let _ = drain(&mut pty);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "slave stayed open: grandchild survived"
+        );
+    }
+
+    #[test]
     fn nul_in_argument_is_a_typed_error() {
         let spec = SpawnSpec::program("test-nul", vec!["/bin/sh\0".into()]);
         match Pty::spawn(&spec, WinSize::cells(80, 24)) {

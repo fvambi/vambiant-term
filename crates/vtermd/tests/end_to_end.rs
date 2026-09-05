@@ -28,7 +28,9 @@ impl Daemon {
             .env("VAMBIANT_TERM_STATE", dir.join("state"))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(
+                std::fs::File::create(dir.join("vtermd.stderr")).map_or(Stdio::null(), Stdio::from),
+            )
             .spawn()
             .expect("spawn vtermd");
         let start = Instant::now();
@@ -98,6 +100,7 @@ fn create_list_input_logs_kill() {
     let daemon = Daemon::start("basic");
     let mut c = daemon.client();
 
+    eprintln!("[e2e] status");
     let status = c.call(method::DAEMON_STATUS, None).unwrap();
     assert_eq!(
         status.get("sessions").and_then(serde_json::Value::as_u64),
@@ -129,7 +132,9 @@ fn create_list_input_logs_kill() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, info.id);
 
+    eprintln!("[e2e] wait READY");
     wait_for_text(&mut c, &info.id.0, "READY");
+    eprintln!("[e2e] attach");
 
     // Attach returns a full snapshot of the right size.
     let snap: OutputDelta = serde_json::from_value(
@@ -144,6 +149,7 @@ fn create_list_input_logs_kill() {
     assert_eq!((snap.cols, snap.rows), (60, 10));
     assert_eq!(snap.lines.len(), 10);
 
+    eprintln!("[e2e] input");
     // Input by name, observed via logs.
     let b64 = base64::engine::general_purpose::STANDARD.encode(b"hello world\n");
     c.call(
@@ -154,6 +160,7 @@ fn create_list_input_logs_kill() {
     let text = wait_for_text(&mut c, &info.id.0, "GOT:hello world");
     assert!(text.contains("READY"));
 
+    eprintln!("[e2e] resize");
     // Resize is reflected in the next snapshot.
     c.call(
         method::SESSION_RESIZE,
@@ -170,6 +177,7 @@ fn create_list_input_logs_kill() {
     .unwrap();
     assert_eq!((snap.cols, snap.rows), (100, 20));
 
+    eprintln!("[e2e] watcher+kill");
     // A second connection sees output notifications and the exit.
     let mut watcher = daemon.client();
     watcher
@@ -194,6 +202,7 @@ fn create_list_input_logs_kill() {
             "no exit notification"
         );
     }
+    eprintln!("[e2e] exited seen; list");
     // Ended sessions stay listed (from the store) as stopped, never dropped.
     let start = Instant::now();
     loop {

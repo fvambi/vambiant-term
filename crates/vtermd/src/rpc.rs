@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
 use vt_core::key::KeyEvent;
-use vt_ipc::Handler;
+use vt_ipc::{ConnId, Handler};
 use vt_proto::jsonrpc::{Request, RpcError};
 use vt_proto::session::{NewSession, method};
 use vt_store::Store;
@@ -56,7 +56,7 @@ impl Rpc {
 
 impl Handler for Rpc {
     #[allow(clippy::too_many_lines)] // one arm per RPC method; splitting hides the table
-    fn handle(&self, req: &Request) -> Result<serde_json::Value, RpcError> {
+    fn handle(&self, conn: ConnId, req: &Request) -> Result<serde_json::Value, RpcError> {
         match req.method.as_str() {
             method::DAEMON_STATUS => Ok(serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION"),
@@ -157,10 +157,22 @@ impl Handler for Rpc {
                     .unwrap_or_else(PoisonError::into_inner)
                     .id
                     .clone();
+                if let Some(server) = self.registry.server() {
+                    server.subscribe(conn, &id.0);
+                }
                 serde_json::to_value(wire::full(&id, &snap, 0)).map_err(|e| internal(&e))
             }
             method::SESSION_DETACH => {
-                let _ = self.session(req)?;
+                let h = self.session(req)?;
+                let id = h
+                    .info
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .id
+                    .clone();
+                if let Some(server) = self.registry.server() {
+                    server.unsubscribe(conn, &id.0);
+                }
                 Ok(serde_json::json!({}))
             }
             method::SESSION_LOGS => {

@@ -5,13 +5,14 @@ use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use vt_ipc::server::ConnId;
 use vt_ipc::{Client, Handler, Server};
 use vt_proto::jsonrpc::{Request, RpcError};
 
 struct Echo;
 
 impl Handler for Echo {
-    fn handle(&self, request: &Request) -> Result<serde_json::Value, RpcError> {
+    fn handle(&self, _conn: ConnId, request: &Request) -> Result<serde_json::Value, RpcError> {
         match request.method.as_str() {
             "echo" => Ok(request.params.clone().unwrap_or(serde_json::Value::Null)),
             "fail" => Err(RpcError::new(
@@ -89,4 +90,61 @@ fn malformed_line_gets_a_parse_error_not_a_hangup() {
     let mut line2 = String::new();
     BufReader::new(raw).read_line(&mut line2).unwrap();
     assert!(line2.contains(r#""result":7"#), "got: {line2}");
+}
+
+#[test]
+fn a_stalled_client_never_blocks_the_others() {
+    let path = temp_socket("stalled");
+    let server = Server::start(&path, Arc::new(Echo)).expect("start");
+    // A raw connection that never reads.
+    let _stalled = std::os::unix::net::UnixStream::connect(&path).unwrap();
+    let mut live = Client::connect(&path).expect("connect");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(server.connections(), 2);
+    // Far more than any socket buffer plus the outbox can hold.
+    let blob = "x".repeat(4096);
+    let started = std::time::Instant::now();
+    for i in 0..(vt_ipc::server::OUTBOX_CAPACITY + 64) {
+        server.broadcast("flood", Some(serde_json::json!({ "i": i, "blob": blob })));
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "broadcast blocked on the stalled client"
+    );
+    // The stalled client was dropped; the live one is still served.
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(server.connections(), 1);
+    let mut got = 0;
+    while let Some(n) = live.next_notification().unwrap() {
+        if n.method == "flood" {
+            got += 1;
+            if got == vt_ipc::server::OUTBOX_CAPACITY + 64 {
+                break;
+            }
+        }
+    }
+    assert_eq!(got, vt_ipc::server::OUTBOX_CAPACITY + 64);
+    let v = live.call("echo", Some(serde_json::json!(1))).unwrap();
+    assert_eq!(v, serde_json::json!(1));
+}
+
+#[test]
+fn publish_reaches_subscribers_only() {
+    let path = temp_socket("publish");
+    let server = Server::start(&path, Arc::new(Echo)).expect("start");
+    let mut a = Client::connect(&path).expect("a");
+    let mut b = Client::connect(&path).expect("b");
+    std::thread::sleep(Duration::from_millis(50));
+    // Connection ids are 1 and 2 in accept order.
+    server.subscribe(ConnId(1), "s1");
+    server.publish(
+        "s1",
+        "session.output",
+        Some(serde_json::json!({ "id": "s1" })),
+    );
+    server.broadcast("session.changed", None);
+    let n = a.next_notification().unwrap().unwrap();
+    assert_eq!(n.method, "session.output");
+    let n = b.next_notification().unwrap().unwrap();
+    assert_eq!(n.method, "session.changed", "b must not receive s1 output");
 }

@@ -19,4 +19,4 @@ pub mod transport;
 
 pub use client::Client;
 pub use error::IpcError;
-pub use server::{Handler, Server};
+pub use server::{ConnId, Handler, Server};

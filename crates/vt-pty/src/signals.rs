@@ -21,10 +21,17 @@ pub(crate) fn try_wait(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
     }
 }
 
-/// Send a signal to the child.
+/// Send a signal to the child's whole process group.
+///
+/// The child called `setsid`, so its pgid is its pid and `kill(-pid)` reaches
+/// every descendant still in the group (a `sleep` started by the shell, a
+/// build the agent kicked off). Signalling only the leader would leave those
+/// holding the PTY slave open and the session would never see EOF.
 pub(crate) fn kill(pid: libc::pid_t, signal: libc::c_int) -> io::Result<()> {
-    // SAFETY: plain syscall on a pid we own.
-    if unsafe { libc::kill(pid, signal) } == 0 {
+    // SAFETY: plain syscalls on a pid/pgid we own.
+    let group = unsafe { libc::kill(-pid, signal) };
+    let leader = unsafe { libc::kill(pid, signal) };
+    if group == 0 || leader == 0 {
         Ok(())
     } else {
         Err(io::Error::last_os_error())

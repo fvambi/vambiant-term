@@ -211,7 +211,8 @@ fn run(
             pending = DamageSet::Lines(Vec::new());
             last_flush = Instant::now();
             if let Some(server) = registry.server() {
-                server.broadcast(
+                server.publish(
+                    &id.0,
                     notification::SESSION_OUTPUT,
                     serde_json::to_value(delta).ok(),
                 );
