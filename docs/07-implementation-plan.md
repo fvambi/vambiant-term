@@ -31,10 +31,10 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 - [x] `vt-pty`: spawn under `login`, `-q` with `~/.hushlogin`, winsize, `SIGWINCH`/`SIGCHLD`, drain-on-exit. *(2026-09-05; libc only, five tests)*
 - [x] `vt-core`: `TerminalCore` trait; **`libghostty-vt` implementation** behind it (ADR-0001 amendment, gates met); grid, scrollback, damage, events. `alacritty_terminal` stays the documented fallback, unimplemented.
 - [x] Headless renderer harness: feed a byte stream, dump the grid as text. This is the test substrate for everything after. *(`vt_core::harness`, `tests/fixtures/vt/`)*
-- [ ] Kitty keyboard protocol push/pop; OSC 7/8/52-write/133/633/777/1337 handling.
+- [x] Kitty keyboard protocol push/pop; OSC 7/8/52-write/133/633/777/1337 handling. *(kitty + DECCKM + modifyOtherKeys via the backend encoder; OSC 7/1337 cwd, OSC 52 write and OSC 1337 Copy as `TermEvent`s; OSC 133/633 and OSC 8 exposed per row/cell for vt-blocks; ⚠️ OSC 777 notifications not surfaced by libghostty-vt 0.2.1 — docs/10 §1)*
 - [x] `terminfo` entry. *(`terminfo/vambiant-term.terminfo`, derived from Ghostty's since the core is libghostty; `scripts/terminfo-install.sh`)*
 - [ ] esctest2 + vttest run and triaged (100% is not the bar — no shipping terminal clears it; a triaged known-fail list is).
-- [ ] vtebench-style throughput harness following Ghostty's methodology: pre-generated inputs, hyperfine, medians, serial runs.
+- [x] vtebench-style throughput harness following Ghostty's methodology: pre-generated inputs, hyperfine, medians, serial runs. *(`scripts/bench/run.sh`; `vtcore-spike` measures the trait overhead over bare libghostty)*
 
 **Exit:** headless terminal passes the triaged conformance set; throughput within 2× of Ghostty on the same corpus.
 

@@ -1,0 +1,4 @@
+abcdefghij
+日x
+
+#cursor 2,0

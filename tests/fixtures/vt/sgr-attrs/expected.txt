@@ -1,0 +1,5 @@
+bold italic under inv
+red256 rgb
+
+
+#cursor 2,0
