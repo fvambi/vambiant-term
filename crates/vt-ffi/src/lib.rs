@@ -11,6 +11,12 @@
 
 #![allow(unsafe_code)]
 
+mod daemon;
+mod viewer;
+
+pub use daemon::*;
+pub use viewer::*;
+
 /// ABI version. Bumped on every incompatible change to any exported type
 /// or function; Swift asserts equality at startup.
 pub const VT_FFI_ABI_VERSION: u32 = 1;

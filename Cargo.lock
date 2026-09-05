@@ -823,7 +823,11 @@ dependencies = [
 name = "vt-ffi"
 version = "0.0.0"
 dependencies = [
+ "base64",
+ "serde_json",
  "vt-core",
+ "vt-ipc",
+ "vt-proto",
 ]
 
 [[package]]
