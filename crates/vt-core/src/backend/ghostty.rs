@@ -16,7 +16,9 @@ use libghostty_vt::key::{self, Action, Encoder, Key, Mods, OptionAsAlt};
 use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
 use libghostty_vt::screen::{CellWide, RowSemanticPrompt};
 use libghostty_vt::style::{StyleColor, Underline};
-use libghostty_vt::terminal::{ClipboardLocation, Options, SizeReportSize, Terminal};
+use libghostty_vt::terminal::{
+    ClipboardLocation, Options, Point, PointCoordinate, SizeReportSize, Terminal,
+};
 
 use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize, PromptMark, RowMeta};
 use crate::core::TerminalCore;
@@ -252,6 +254,20 @@ impl TerminalCore for GhosttyCore {
 
     fn take_responses(&mut self) -> Vec<u8> {
         std::mem::take(&mut *self.responses.borrow_mut())
+    }
+
+    fn hyperlink_at(&self, row: u16, col: u16) -> Option<String> {
+        let point = Point::Viewport(PointCoordinate {
+            x: col,
+            y: u32::from(row),
+        });
+        let cell = self.term.grid_ref(point).ok()?;
+        let mut buf = [0u8; 4096];
+        let len = cell.hyperlink_uri(&mut buf).ok()?;
+        if len == 0 {
+            return None;
+        }
+        std::str::from_utf8(&buf[..len]).ok().map(str::to_owned)
     }
 
     fn take_events(&mut self) -> Vec<TermEvent> {
@@ -599,6 +615,23 @@ mod tests {
         assert_eq!(snap.rows[1].prompt, PromptMark::None);
         assert!(snap.rows[1].wrapped, "row 1 soft-wraps: {:?}", snap.rows);
         assert!(snap.rows[2].wrap_continuation);
+    }
+
+    #[test]
+    fn hyperlinks_are_looked_up_per_cell() {
+        let mut core = GhosttyCore::new(GridSize { cols: 20, rows: 2 }).unwrap();
+        core.advance(b"ab\x1b]8;;https://example.com/x\x07link\x1b]8;;\x07cd");
+        assert_eq!(core.hyperlink_at(0, 0), None);
+        assert_eq!(
+            core.hyperlink_at(0, 2).as_deref(),
+            Some("https://example.com/x")
+        );
+        assert_eq!(
+            core.hyperlink_at(0, 5).as_deref(),
+            Some("https://example.com/x")
+        );
+        assert_eq!(core.hyperlink_at(0, 6), None);
+        assert_eq!(core.hyperlink_at(1, 0), None);
     }
 
     #[test]

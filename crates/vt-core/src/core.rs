@@ -45,4 +45,8 @@ pub trait TerminalCore {
     /// `modifyOtherKeys`, kitty keyboard flags). Empty when the key produces
     /// nothing (a lone modifier, a release the program did not ask for).
     fn encode_key(&mut self, event: &KeyEvent) -> Vec<u8>;
+
+    /// OSC 8 hyperlink target under a visible cell, if any. Looked up on
+    /// demand (hover/click) rather than carried per cell across the snapshot.
+    fn hyperlink_at(&self, row: u16, col: u16) -> Option<String>;
 }
