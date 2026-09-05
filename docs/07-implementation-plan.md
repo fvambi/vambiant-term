@@ -66,6 +66,8 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 **Exit:** three agents running across two repos; every blocked one appears in `vterm inbox` within 500 ms; answering from the CLI unblocks the agent.
 
+> **M3 status 2026-09-05:** verified against the real `claude` 2.1.261 binary under `vtermd`: `vterm new --agent claude -- claude -p --permission-mode default --permission-prompts none …` → the `Write` permission request was held by the daemon's hook receiver, listed by `vterm inbox`, and `vterm inbox allow` unblocked the agent (file written, `done`, session ended) with the full sequence in `vterm events`. Latency to the inbox was well under 500 ms (the 7 s in the log is the model's own thinking time before the tool call). Still to do in M3: Codex adapter over app-server, generic adapter heuristics, watchdog reminders, `inbox edit`, stream-json ingestion, `claude agents --json` cooperation, degraded-mode labels in the CLI.
+
 ## M4 — The GUI terminal (5–6 weeks)
 
 - [ ] `vt-ffi` C ABI + `cbindgen`; header checked in and diffed in CI. `#[unsafe(no_mangle)]`, `extern "C-unwind"` where Swift can unwind through.
