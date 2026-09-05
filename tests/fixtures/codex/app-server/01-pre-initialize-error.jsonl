@@ -1,0 +1,2 @@
+>>> 18:03:15.408 {"method":"thread/list","id":1,"params":{"limit":1}}
+<<< 18:03:15.416 {"error":{"code":-32600,"message":"Not initialized"},"id":1}

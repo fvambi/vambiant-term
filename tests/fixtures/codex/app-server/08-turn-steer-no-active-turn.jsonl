@@ -1,0 +1,2 @@
+>>> 18:03:46.869 {"method":"turn/steer","id":11,"params":{"threadId":"01a06d28-f36d-7971-82c0-20c0b27aecda","expectedTurnId":"01a06d29-41c5-7f91-8584-667474ed977d","input":[{"type":"text","text":"noop"}]}}
+<<< 18:03:46.871 {"error":{"code":-32600,"message":"no active turn to steer"},"id":11}

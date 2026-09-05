@@ -1,0 +1,21 @@
+{
+  "_captured_at": "2026-09-04T18:16:24+0200",
+  "_scenario": "diag",
+  "_argv": [
+    "PreToolUse"
+  ],
+  "stdin": {
+    "session_id": "01a06d34-dc93-7170-8b1e-b03e9bad9e7b",
+    "turn_id": "01a06d34-de6b-78f1-8502-1ebb775a2c81",
+    "transcript_path": "/Users/fwartner/.codex/sessions/2026/09/04/rollout-2026-09-04T18-16-16-01a06d34-dc93-7170-8b1e-b03e9bad9e7b.jsonl",
+    "cwd": "/tmp/vt-m0/codex/work",
+    "hook_event_name": "PreToolUse",
+    "model": "gpt-5.6-sol",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo hi"
+    },
+    "tool_use_id": "exec-18a41c49-ae0b-4b0e-9116-7eb4f1f7b62e"
+  }
+}

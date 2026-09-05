@@ -1,0 +1,6 @@
+2026-09-04T16:03:14.980030Z ERROR codex_app_server: Project-local config, hooks, and exec policies are disabled in the following folders until the project is trusted, but skills still load.
+    1. /private/tmp/vt-m0/codex/work/.codex
+       To load project-local config, hooks, and exec policies, add /private/tmp/vt-m0/codex/work as a trusted project in /Users/fwartner/.codex/config.toml.
+
+2026-09-04T16:03:33.856997Z ERROR codex_core::tools::router: error=exec_command failed: CreateProcess { message: "Rejected(\"rejected by user\")" }
+2026-09-04T16:04:15.088618Z ERROR codex_core::tools::router: error=write_stdin failed: Unknown process id 43354

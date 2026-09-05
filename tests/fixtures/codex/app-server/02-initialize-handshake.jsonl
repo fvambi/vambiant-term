@@ -1,0 +1,7 @@
+>>> 18:03:15.416 {"method":"initialize","id":2,"params":{"clientInfo":{"name":"vambiant_term_m0","title":"Vambiant Term M0 verify","version":"0.0.0"},"capabilities":{"experimentalApi":true}}}
+<<< 18:03:15.419 {"id":2,"result":{"userAgent":"vambiant_term_m0/0.153.2 (Mac OS 26.5.1; arm64) unknown (vambiant_term_m0; 0.0.0)","codexHome":"/Users/fwartner/.codex","platformFamily":"unix","platformOs":"macos"}}
+>>> 18:03:15.419 {"method":"initialized","params":{}}
+>>> 18:03:15.419 {"method":"initialize","id":3,"params":{"clientInfo":{"name":"vambiant_term_m0","version":"0.0.0"}}}
+<<< 18:03:15.420 {"method":"configWarning","params":{"summary":"Project-local config, hooks, and exec policies are disabled in the following folders until the project is trusted, but skills still load.\n    1. /private/tmp/vt-m0/codex/work/.codex\n       To load project-local config, hooks, and exec policies, add /private/tmp/vt-m0/codex/work as a trusted project in /Users/fwartner/.codex/config.toml.\n","details":null},"emittedAtMs":1788537795418}
+<<< 18:03:15.420 {"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"Delur.local","installationId":"049994be-cbd1-4087-9c86-8289abf0314c","environmentId":null},"emittedAtMs":1788537795419}
+<<< 18:03:15.420 {"error":{"code":-32600,"message":"Already initialized"},"id":3}

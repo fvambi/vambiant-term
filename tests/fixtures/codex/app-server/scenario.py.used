@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import sys, time, json, os
+sys.path.insert(0, "/tmp/vt-m0/codex")
+from wsclient import UnixWS
+SOCK = "/tmp/vt-m0/codex/app.sock"
+LOG = "/tmp/vt-m0/codex/app-server-full.jsonl"
+WORK = "/tmp/vt-m0/codex/work"
+ws = UnixWS(SOCK, LOG)
+def phase(name): ws._note("PHASE", name); print("PHASE", name, flush=True)
+approvals = []          # server->client approval requests seen
+approval_decisions = ["accept", "decline"]   # 1st accept, 2nd decline
+responses = {}
+def pump(until=None, timeout=240, quiet_after=None):
+    """Read until predicate(msg) true, answering server requests. Returns the matched message."""
+    t0 = time.time(); last = time.time()
+    while time.time() - t0 < timeout:
+        m = ws.next(timeout=5)
+        if m is None: print("CONNECTION CLOSED", flush=True); return None
+        if m == "TIMEOUT":
+            if quiet_after and time.time() - last > quiet_after: return "QUIET"
+            continue
+        last = time.time()
+        if "method" in m and "id" in m:              # server -> client request
+            meth = m["method"]
+            if meth in ("item/commandExecution/requestApproval", "execCommandApproval"):
+                dec = approval_decisions[min(len(approvals), len(approval_decisions)-1)]
+                approvals.append(m)
+                ws.respond(m["id"], {"decision": dec})
+            elif meth in ("item/fileChange/requestApproval", "applyPatchApproval"):
+                approvals.append(m); ws.respond(m["id"], {"decision": "accept"})
+            elif meth == "item/tool/requestUserInput":
+                ws.respond(m["id"], {"answers": {}})
+            elif meth == "currentTime/read":
+                ws.respond(m["id"], {"currentTime": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+            else:
+                ws.send({"id": m["id"], "error": {"code": -32601, "message": "vt-m0 client: unhandled server request " + meth}})
+        elif "id" in m and "method" not in m:
+            responses[m["id"]] = m
+        if until and until(m): return m
+    return "TIMEOUT"
+def resp(rid, timeout=120):
+    r = pump(until=lambda m: m.get("id") == rid and "method" not in m, timeout=timeout)
+    return r
+def turn_done(m): return m.get("method") == "turn/completed"
+def started(m): return m.get("method") == "turn/started"
+
+phase("pre-initialize request must fail")
+rid = ws.request("thread/list", {"limit": 1}); print(resp(rid, 20))
+
+phase("initialize")
+rid = ws.request("initialize", {"clientInfo": {"name": "vambiant_term_m0", "title": "Vambiant Term M0 verify", "version": "0.0.0"}, "capabilities": {"experimentalApi": True}})
+print("initialize ->", json.dumps(resp(rid, 30))[:400])
+ws.notify("initialized", {})
+rid = ws.request("initialize", {"clientInfo": {"name": "vambiant_term_m0", "version": "0.0.0"}}); print("second initialize ->", resp(rid, 20))
+
+phase("thread/start")
+rid = ws.request("thread/start", {"cwd": WORK, "approvalPolicy": "on-request"})
+r = resp(rid, 90); print("thread/start ->", json.dumps(r)[:600])
+thread_id = r["result"]["thread"]["id"] if r and "result" in r else None
+print("thread_id", thread_id)
+
+phase("turn/start trivial")
+rid = ws.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "Run `echo hi` then stop. Do nothing else."}]})
+print("turn/start ->", json.dumps(resp(rid, 60))[:300])
+print("turn done:", json.dumps(pump(until=turn_done, timeout=240))[:300])
+
+phase("turn/start approval (write outside workspace)")
+rid = ws.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "Run exactly this shell command: `mkdir -p /tmp/vt-m0/codex/outside && touch /tmp/vt-m0/codex/outside/created.txt`. The path is outside the workspace, so if the sandbox blocks it, retry once requesting escalated permissions (approval). Then stop."}]})
+print("turn/start ->", json.dumps(resp(rid, 60))[:300])
+print("turn done:", json.dumps(pump(until=turn_done, timeout=300))[:300])
+print("approvals so far:", len(approvals))
+
+phase("turn/start approval #2 (declined)")
+rid = ws.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "Run exactly this shell command: `touch /tmp/vt-m0/codex/outside/created2.txt` with escalated permissions (request approval) since it is outside the workspace. If declined, just stop."}]})
+print("turn/start ->", json.dumps(resp(rid, 60))[:300])
+print("turn done:", json.dumps(pump(until=turn_done, timeout=300))[:300])
+print("approvals so far:", len(approvals))
+
+phase("turn/start long + turn/steer + turn/interrupt")
+rid = ws.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": "Run this shell command and wait for it to finish: `for i in $(seq 1 90); do echo tick $i; sleep 1; done`. Then say done."}]})
+r = resp(rid, 60); print("turn/start ->", json.dumps(r)[:300])
+turn_id = r["result"]["turn"]["id"] if r and "result" in r else None
+pump(until=lambda m: m.get("method") == "item/started" and m.get("params", {}).get("item", {}).get("type") == "commandExecution", timeout=120)
+time.sleep(4)
+rid = ws.request("turn/steer", {"threadId": thread_id, "expectedTurnId": turn_id, "input": [{"type": "text", "text": "Steer: when the command finishes, also print the word STEERED."}]})
+print("turn/steer ->", json.dumps(resp(rid, 30))[:400])
+time.sleep(4)
+rid = ws.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+print("turn/interrupt ->", json.dumps(resp(rid, 30))[:300])
+print("turn done:", json.dumps(pump(until=turn_done, timeout=120))[:400])
+
+phase("turn/steer with no active turn")
+rid = ws.request("turn/steer", {"threadId": thread_id, "expectedTurnId": turn_id, "input": [{"type": "text", "text": "noop"}]}); print(resp(rid, 20))
+phase("turn/interrupt with no active turn")
+rid = ws.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id}); print(resp(rid, 20))
+
+phase("thread/list")
+rid = ws.request("thread/list", {"limit": 3}); print(json.dumps(resp(rid, 60))[:500])
+phase("model/list")
+rid = ws.request("model/list", {}); print(json.dumps(resp(rid, 60))[:500])
+phase("config/read")
+rid = ws.request("config/read", {"cwd": WORK, "includeLayers": True}); print(json.dumps(resp(rid, 60))[:500])
+phase("hooks/list")
+rid = ws.request("hooks/list", {"cwds": [WORK]}); print(json.dumps(resp(rid, 60))[:1500])
+phase("thread/read")
+rid = ws.request("thread/read", {"threadId": thread_id}); print(json.dumps(resp(rid, 60))[:300])
+phase("unknown method")
+rid = ws.request("vt/doesNotExist", {}); print(resp(rid, 20))
+phase("drain")
+pump(timeout=8, quiet_after=3)
+ws.close()
+print("DONE approvals:", len(approvals))

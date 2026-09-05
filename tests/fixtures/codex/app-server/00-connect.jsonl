@@ -1,0 +1,2 @@
+### 18:03:15.408 HTTP-UPGRADE-RESPONSE: 'HTTP/1.1 101 Switching Protocols\r\nconnection: Upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: +Z8fFECi/PWTxIXe+H5s4aEHzdE='
+### 18:03:15.408 SEC-WEBSOCKET-ACCEPT-OK: 'True'

@@ -1,0 +1,16 @@
+{
+  "_captured_at": "2026-09-04T18:16:20+0200",
+  "_scenario": "diag",
+  "_argv": [
+    "SessionStart"
+  ],
+  "stdin": {
+    "session_id": "01a06d34-dc93-7170-8b1e-b03e9bad9e7b",
+    "transcript_path": "/Users/fwartner/.codex/sessions/2026/09/04/rollout-2026-09-04T18-16-16-01a06d34-dc93-7170-8b1e-b03e9bad9e7b.jsonl",
+    "cwd": "/tmp/vt-m0/codex/work",
+    "hook_event_name": "SessionStart",
+    "model": "gpt-5.6-sol",
+    "permission_mode": "bypassPermissions",
+    "source": "startup"
+  }
+}

@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Minimal stdlib WebSocket-over-AF_UNIX JSON-RPC client for `codex app-server --listen unix://PATH`.
+Logs every message both directions as JSONL: `>>> <ts> <json>` (client->server), `<<< <ts> <json>` (server->client).
+"""
+import socket, os, base64, struct, json, sys, time, threading, queue, hashlib
+
+class UnixWS:
+    def __init__(self, path, log_path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+        self.log = open(log_path, "a")
+        key = base64.b64encode(os.urandom(16)).decode()
+        req = (f"GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
+        self.sock.sendall(req.encode())
+        resp = b""
+        while b"\r\n\r\n" not in resp:
+            chunk = self.sock.recv(4096)
+            if not chunk: raise RuntimeError("closed during handshake")
+            resp += chunk
+        head, _, rest = resp.partition(b"\r\n\r\n")
+        self._note("HTTP-UPGRADE-RESPONSE", head.decode(errors="replace"))
+        if b" 101 " not in head.split(b"\r\n")[0]:
+            raise RuntimeError("upgrade failed: " + head.decode(errors="replace"))
+        expect = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+        self._note("SEC-WEBSOCKET-ACCEPT-OK", str(expect.encode() in head))
+        self.buf = rest
+        self.inq = queue.Queue()
+        self.next_id = 1
+        self.pending = {}
+        self.stop = False
+        self.t = threading.Thread(target=self._reader, daemon=True); self.t.start()
+
+    def _ts(self): return time.strftime("%H:%M:%S") + f".{int((time.time()%1)*1000):03d}"
+    def _note(self, tag, msg):
+        self.log.write(f"### {self._ts()} {tag}: {msg!r}\n"); self.log.flush()
+
+    def _recv_exact(self, n):
+        while len(self.buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk: raise EOFError
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def _read_frame(self):
+        b1, b2 = self._recv_exact(2)
+        fin = b1 & 0x80; op = b1 & 0x0F; masked = b2 & 0x80; ln = b2 & 0x7F
+        if ln == 126: ln = struct.unpack(">H", self._recv_exact(2))[0]
+        elif ln == 127: ln = struct.unpack(">Q", self._recv_exact(8))[0]
+        mask = self._recv_exact(4) if masked else None
+        data = self._recv_exact(ln)
+        if mask: data = bytes(c ^ mask[i % 4] for i, c in enumerate(data))
+        return fin, op, data
+
+    def _reader(self):
+        frag = b""; fragop = None
+        try:
+            while not self.stop:
+                fin, op, data = self._read_frame()
+                if op == 0x9:  # ping
+                    self._send_frame(0xA, data); continue
+                if op == 0x8:
+                    self._note("CLOSE-FRAME", data); self.inq.put(None); return
+                if op in (0x1, 0x2, 0x0):
+                    if op != 0x0: fragop = op; frag = b""
+                    frag += data
+                    if fin:
+                        text = frag.decode("utf-8", errors="replace")
+                        self.log.write(f"<<< {self._ts()} {text}\n"); self.log.flush()
+                        try: msg = json.loads(text)
+                        except Exception: msg = {"_raw": text}
+                        self.inq.put(msg)
+        except EOFError:
+            self._note("EOF", ""); self.inq.put(None)
+        except Exception as e:
+            self._note("READER-ERROR", repr(e)); self.inq.put(None)
+
+    def _send_frame(self, op, data: bytes):
+        mask = os.urandom(4)
+        hdr = bytes([0x80 | op])
+        ln = len(data)
+        if ln < 126: hdr += bytes([0x80 | ln])
+        elif ln < 65536: hdr += bytes([0x80 | 126]) + struct.pack(">H", ln)
+        else: hdr += bytes([0x80 | 127]) + struct.pack(">Q", ln)
+        masked = bytes(c ^ mask[i % 4] for i, c in enumerate(data))
+        self.sock.sendall(hdr + mask + masked)
+
+    def send(self, obj):
+        text = json.dumps(obj, separators=(",", ":"))
+        self.log.write(f">>> {self._ts()} {text}\n"); self.log.flush()
+        self._send_frame(0x1, text.encode())
+
+    def request(self, method, params=None):
+        rid = self.next_id; self.next_id += 1
+        self.send({"method": method, "id": rid, "params": params if params is not None else {}})
+        return rid
+
+    def notify(self, method, params=None):
+        self.send({"method": method, "params": params if params is not None else {}})
+
+    def respond(self, rid, result):
+        self.send({"id": rid, "result": result})
+
+    def next(self, timeout=60):
+        try: return self.inq.get(timeout=timeout)
+        except queue.Empty: return "TIMEOUT"
+
+    def close(self):
+        self.stop = True
+        try: self._send_frame(0x8, b"")
+        except Exception: pass
+        self.sock.close(); self.log.close()
