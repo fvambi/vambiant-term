@@ -112,6 +112,8 @@ pub struct Agents {
     by_token: Mutex<HashMap<String, (SessionId, Arc<AgentSession>)>>,
     pending: Mutex<HashMap<ApprovalId, Arc<PendingApproval>>>,
     watchdog: Mutex<Watchdog>,
+    /// Last question text notified per session (generic adapter).
+    last_question: Mutex<HashMap<SessionId, String>>,
     /// Loopback receiver base URL, e.g. `http://127.0.0.1:4711`.
     pub receiver: Mutex<String>,
 }
@@ -124,6 +126,7 @@ impl Agents {
             by_token: Mutex::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
             watchdog: Mutex::new(Watchdog::default()),
+            last_question: Mutex::new(HashMap::new()),
             receiver: Mutex::new(String::new()),
         }
     }
@@ -205,6 +208,64 @@ impl Agents {
                 );
             }
         }
+    }
+
+    /// A heuristic verdict from the generic adapter: state plus the evidence,
+    /// recorded as a labelled guess. A recognised question also raises a
+    /// desktop notification, once per distinct question text.
+    pub fn heuristic(
+        &self,
+        session: &SessionId,
+        state: AgentState,
+        why: &str,
+        question: Option<&str>,
+    ) {
+        self.set_state(session, state);
+        self.record_event(
+            session,
+            &AgentEvent::Notification {
+                title: Some("guess".into()),
+                body: why.to_string(),
+            },
+        );
+        if let Some(q) = question {
+            let mut last = self
+                .last_question
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if last.get(session).map(String::as_str) != Some(q) {
+                last.insert(session.clone(), q.to_string());
+                let name = self
+                    .registry
+                    .find(&session.0)
+                    .map(|h| {
+                        h.info
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .name
+                            .clone()
+                    })
+                    .unwrap_or_default();
+                notify_desktop(&name, "question (guess)", Some(q));
+            }
+        }
+    }
+
+    /// Feed one line of the agent's stdout (Claude `stream-json`) to its
+    /// adapter. No-op for sessions without an adapter.
+    pub fn ingest_stream_line(&self, session: &SessionId, line: String) {
+        let Some(state) = self.by_session(session) else {
+            return;
+        };
+        let ingested = state
+            .adapter
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .ingest(AdapterInput::StreamLine(line));
+        if ingested.events.is_empty() && ingested.state.is_none() && ingested.warnings.is_empty() {
+            return;
+        }
+        let _ = self.apply_ingested(session, ingested);
     }
 
     /// Label (or clear) a session's degraded state; broadcast when changed.

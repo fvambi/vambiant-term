@@ -18,6 +18,7 @@
 mod agents;
 mod codex;
 mod holder;
+mod observe;
 mod registry;
 mod rpc;
 mod session;

@@ -87,3 +87,18 @@ pub fn text(snap: &CellSnapshot, last_lines: Option<usize>) -> String {
     let keep = last_lines.unwrap_or(rows.len()).min(rows.len());
     rows[rows.len() - keep..].join("\n")
 }
+
+/// The last row that holds any text, with its prompt mark.
+pub fn last_used_row(snap: &CellSnapshot) -> Option<(usize, vt_core::cell::PromptMark)> {
+    let cols = usize::from(snap.size.cols).max(1);
+    let used = snap
+        .cells
+        .chunks(cols)
+        .rposition(|r| r.iter().any(|c| !c.ch.is_whitespace()))?;
+    Some((
+        used,
+        snap.rows
+            .get(used)
+            .map_or_else(Default::default, |m| m.prompt),
+    ))
+}

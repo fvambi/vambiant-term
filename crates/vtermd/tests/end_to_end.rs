@@ -901,3 +901,161 @@ fn reminders_edit_then_allow_and_degraded_labels() {
         .unwrap();
     }
 }
+
+fn event_kinds(c: &mut Client, key: &str) -> Vec<String> {
+    let events = c
+        .call(
+            "agent.events",
+            Some(serde_json::json!({ "id": key, "after": 0 })),
+        )
+        .unwrap();
+    events
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| {
+            e.get(1)
+                .and_then(|v| v.get("type"))
+                .and_then(|t| t.as_str())
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+fn wait_state(c: &mut Client, key: &str, want: vt_proto::agent::AgentState, within: Duration) {
+    let start = Instant::now();
+    while session_state(c, key) != want {
+        assert!(
+            start.elapsed() < within,
+            "{key} never reached {want:?} (now {:?})",
+            session_state(c, key)
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn generic_sessions_guess_questions_and_say_so() {
+    let daemon = Daemon::start("generic");
+    let mut c = daemon.client();
+    let req = NewSession {
+        name: Some("plain".into()),
+        argv: vec![
+            "/bin/sh".into(),
+            "-c".into(),
+            "echo working; sleep 1; printf 'Apply changes? (y/N) '; read x; echo \"got $x\"; sleep 30".into(),
+        ],
+        cwd: Some(std::env::temp_dir()),
+        env: vec![],
+        size: Some((80, 24)),
+        agent: None,
+    };
+    let info: SessionInfo = serde_json::from_value(
+        c.call(method::SESSION_NEW, serde_json::to_value(req).ok())
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        info.degraded
+            .as_deref()
+            .is_some_and(|d| d.contains("heuristic")),
+        "generic sessions are labelled: {info:?}"
+    );
+    assert!(!info.capabilities.permission_control);
+    wait_state(
+        &mut c,
+        "plain",
+        vt_proto::agent::AgentState::AwaitingInput,
+        Duration::from_secs(10),
+    );
+    let events = c
+        .call(
+            "agent.events",
+            Some(serde_json::json!({ "id": "plain", "after": 0 })),
+        )
+        .unwrap()
+        .to_string();
+    assert!(events.contains("looks like a question"), "{events}");
+    assert!(events.contains("Apply changes? (y/N)"), "{events}");
+    let b64 = base64::engine::general_purpose::STANDARD.encode(b"y\n");
+    c.call(
+        method::SESSION_INPUT,
+        Some(serde_json::json!({ "id": "plain", "bytes": b64 })),
+    )
+    .unwrap();
+    wait_for_text(&mut c, &info.id.0, "got y");
+    wait_state(
+        &mut c,
+        "plain",
+        vt_proto::agent::AgentState::Idle,
+        Duration::from_secs(10),
+    );
+    c.call(
+        method::SESSION_KILL,
+        Some(serde_json::json!({ "id": "plain", "signal": 9 })),
+    )
+    .unwrap();
+}
+
+#[test]
+fn claude_stream_json_on_stdout_is_ingested() {
+    let daemon = Daemon::start("stream");
+    let mut c = daemon.client();
+    let script = r#"
+        echo '{"type":"system","subtype":"init","cwd":"/w","session_id":"s-stream","model":"claude-test","permissionMode":"dontAsk"}'
+        echo '{"type":"assistant","session_id":"s-stream","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Write","input":{"file_path":"/w/x"}}]}}'
+        echo '{"type":"user","session_id":"s-stream","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}'
+        echo '{"type":"result","subtype":"success","session_id":"s-stream","total_cost_usd":0.03,"usage":{"input_tokens":42,"output_tokens":9,"cache_read_input_tokens":100,"cache_creation_input_tokens":5}}'
+        sleep 30
+    "#;
+    let req = NewSession {
+        name: Some("streamer".into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        cwd: Some(std::env::temp_dir()),
+        env: vec![],
+        size: Some((200, 24)),
+        agent: Some(vt_proto::agent::AgentKind::Claude),
+    };
+    c.call(method::SESSION_NEW, serde_json::to_value(req).ok())
+        .unwrap();
+    // The script prints immediately; give the session thread time to see it.
+    let start = Instant::now();
+    let wanted = [
+        "session_started",
+        "tool_call_start",
+        "tool_call_end",
+        "usage",
+    ];
+    loop {
+        let kinds = event_kinds(&mut c, "streamer");
+        if wanted.iter().all(|k| kinds.contains(&(*k).to_string())) {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "events so far: {kinds:?}"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        session_state(&mut c, "streamer"),
+        vt_proto::agent::AgentState::Idle
+    );
+    let got: SessionInfo = serde_json::from_value(
+        c.call(
+            method::SESSION_GET,
+            Some(serde_json::json!({ "id": "streamer" })),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        got.degraded.is_none(),
+        "stream lines count as hearing from the agent: {got:?}"
+    );
+    c.call(
+        method::SESSION_KILL,
+        Some(serde_json::json!({ "id": "streamer", "signal": 9 })),
+    )
+    .unwrap();
+}

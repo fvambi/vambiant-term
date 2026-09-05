@@ -1,0 +1,12 @@
+{
+  "name": "generic",
+  "note": "Prompt shapes. numbered-menu and press-enter are verified against the claude 2.1.261 and codex-cli 0.153.2 TUIs (2026-09-05); the others are common CLI conventions, not verified against a specific agent. Matched against the last few non-empty screen lines once output has been quiet.",
+  "patterns": [
+    { "name": "yes-no-paren", "kind": "question", "regex": "(?i)\\((y/n|y/N|Y/n|yes/no|Y/N)\\)\\s*:?\\s*$" },
+    { "name": "yes-no-bracket", "kind": "question", "regex": "(?i)\\[(y/n|y/N|Y/n|yes/no|Y/N)\\]\\s*:?\\s*$" },
+    { "name": "numbered-menu", "kind": "menu", "regex": "^\\s*[›❯>]\\s*1\\.\\s" },
+    { "name": "press-enter", "kind": "confirm", "regex": "(?i)press (enter|return|any key)" },
+    { "name": "do-you-want", "kind": "question", "regex": "(?i)^\\s*(do you want|would you like|should i|shall i|allow|approve|apply|continue|proceed)\\b.*\\?\\s*$" },
+    { "name": "shell-prompt", "kind": "shell", "regex": "^.{0,60}[$%#❯>]\\s*$" }
+  ]
+}

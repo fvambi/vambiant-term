@@ -64,7 +64,7 @@ impl AgentAdapter for ClaudeAdapter {
             },
             AdapterInput::StreamLine(line) => {
                 match serde_json::from_str::<serde_json::Value>(&line) {
-                    Ok(v) => crate::hooks::ingest(&v, self.counter),
+                    Ok(v) => crate::claude::ingest_stream(&v, self.counter),
                     Err(e) => Ingested {
                         warnings: vec![crate::hooks::Warning(format!(
                             "unparseable stream line: {e}"

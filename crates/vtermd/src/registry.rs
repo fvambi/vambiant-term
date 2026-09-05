@@ -17,6 +17,10 @@ use crate::session::{self, SessionCmd};
 
 /// RFC 3339 UTC timestamp without a dependency: seconds since the epoch is
 /// enough precision for session records.
+/// Every generic-adapter session carries this label (docs/03 §6).
+pub const GENERIC_LABEL: &str =
+    "generic adapter: state is a heuristic guess from terminal output; approvals cannot be routed";
+
 pub fn now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -183,6 +187,11 @@ impl Registry {
         }
     }
 
+    /// Directory of user prompt packs for the generic adapter.
+    pub fn packs_dir(&self) -> PathBuf {
+        self.state_dir.join("packs")
+    }
+
     /// Wire the IPC server so session threads can publish.
     pub fn set_server(&self, server: Arc<Server>) {
         let _ = self.server.set(server);
@@ -236,12 +245,12 @@ impl Registry {
             agent: kind,
             state: AgentState::Starting,
             capabilities,
+            degraded: (kind == AgentKind::Generic).then(|| GENERIC_LABEL.to_string()),
             cwd: cwd.clone(),
             pid: None,
             size: Some((cols, rows)),
             orphaned: false,
             readopted: false,
-            degraded: None,
             created_at: now(),
         };
         // Persist before spawning: the child's first hook may arrive before
@@ -330,6 +339,9 @@ impl Registry {
                     let mut info = rec.info.clone();
                     info.readopted = true;
                     info.orphaned = false;
+                    if info.agent == AgentKind::Generic {
+                        info.degraded = Some(GENERIC_LABEL.to_string());
+                    }
                     if let (Some(token), Some(agents)) = (rec.agent_token.clone(), self.agents()) {
                         agents.register(id.clone(), info.agent, token);
                         if info.agent == AgentKind::Codex {
