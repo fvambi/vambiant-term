@@ -11,9 +11,6 @@ ignore = []
 
 [licenses]
 version = 2
-# Our own crates are `publish = false`; the project licence is an open M0 item
-# (see Cargo.toml). Third-party licences are still fully enforced.
-private = { ignore = true }
 # alacritty_terminal is Apache-2.0 *only*; cbindgen/uniffi are MPL-2.0 but are
 # build tools, not linked dependencies. Anything not listed fails the build and
 # must be added here with a note in docs/10-research-notes.md.

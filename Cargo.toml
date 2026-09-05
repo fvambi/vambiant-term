@@ -3,10 +3,9 @@
 # Layout follows docs/02-architecture.md §3. Nothing under crates/ may depend on
 # app/ (the Swift shell); the Rust side must stay headless-testable in full.
 #
-# Licence policy: the project licence is declared ONCE here (`license`) and in
-# the top-level LICENSE file. Source files carry no per-file licence headers —
-# headers drift, get copy-pasted wrongly and add nothing SPDX metadata does not.
-# TODO(florian): choose the licence — no document in docs/ decides it (M0 open item).
+# Licence policy: MIT, declared ONCE here (`license`) and in the top-level
+# LICENSE file. Source files carry no per-file licence headers — headers drift,
+# get copy-pasted wrongly and add nothing SPDX metadata does not.
 
 [workspace]
 resolver = "3"
@@ -17,6 +16,7 @@ version = "0.0.0"
 edition = "2024"
 rust-version = "1.98.1"
 publish = false
+license = "MIT"
 repository = "https://github.com/fvambi/vambiant-term"
 
 [workspace.dependencies]
