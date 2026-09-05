@@ -58,7 +58,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 - [x] `AgentAdapter` trait and the normalised `AgentEvent` model. *(`vt-proto::agent`, `vt-agent::adapter`; unknown events/fields degrade to `Unknown` + warning, contract-tested)*
 - [~] Claude adapter: session-scoped `--settings` file, HTTP hook handlers, status line receiver, `--include-hook-events` ingestion, `claude agents --json` cooperation. *(settings file + http hooks + status line relay + inbox done 2026-09-05; stream ingestion and `claude agents --json` cooperation pending)*
 - [~] The deferred-decision protocol (§4.6 of `03`) with watchdogs on every deferred request. *(hold-then-answer built and tested end to end; the watchdog reminder loop is not yet wired into the daemon)*
-- [ ] Codex adapter: `app-server` JSON-RPC client (`thread/*`, `turn/*`), hooks, `codex exec --json`.
+- [~] Codex adapter: `app-server` JSON-RPC client (`thread/*`, `turn/*`), hooks, `codex exec --json`. *(app-server observer with approvals in the inbox done and verified live 2026-09-05; hooks deliberately unused (trust cannot be granted programmatically, see `10` §7); `codex exec --json` ingestion pending)*
 - [ ] Generic adapter: heuristics with per-agent regex packs as data files.
 - [~] Approval queue; `vterm inbox list|allow|deny|edit`. *(list/allow/deny done; `edit` pending)*
 - [~] Notification Center integration with actionable notifications. *(plain notifications via `osascript` from the daemon; actionable ones need the app bundle, M4)*
@@ -66,7 +66,9 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 **Exit:** three agents running across two repos; every blocked one appears in `vterm inbox` within 500 ms; answering from the CLI unblocks the agent.
 
-> **M3 status 2026-09-05:** verified against the real `claude` 2.1.261 binary under `vtermd`: `vterm new --agent claude -- claude -p --permission-mode default --permission-prompts none …` → the `Write` permission request was held by the daemon's hook receiver, listed by `vterm inbox`, and `vterm inbox allow` unblocked the agent (file written, `done`, session ended) with the full sequence in `vterm events`. Latency to the inbox was well under 500 ms (the 7 s in the log is the model's own thinking time before the tool call). Still to do in M3: Codex adapter over app-server, generic adapter heuristics, watchdog reminders, `inbox edit`, stream-json ingestion, `claude agents --json` cooperation, degraded-mode labels in the CLI.
+> **M3 status 2026-09-05:** verified against the real `claude` 2.1.261 binary under `vtermd`: `vterm new --agent claude -- claude -p --permission-mode default --permission-prompts none …` → the `Write` permission request was held by the daemon's hook receiver, listed by `vterm inbox`, and `vterm inbox allow` unblocked the agent (file written, `done`, session ended) with the full sequence in `vterm events`. Latency to the inbox was well under 500 ms (the 7 s in the log is the model's own thinking time before the tool call). Still to do in M3: generic adapter heuristics, watchdog reminders, `inbox edit`, stream-json ingestion, `claude agents --json` cooperation, degraded-mode labels in the CLI.
+>
+> **Codex, 2026-09-05:** `vterm new --agent codex -- codex --sandbox workspace-write -c sandbox_workspace_write.exclude_slash_tmp=true …` against the real `codex-cli 0.153.2`: the daemon's per-session app-server observer resumed the TUI's thread, the sandbox-blocked `touch` appeared in `vterm inbox` with the exact command and cwd while the TUI showed its own prompt, `vterm inbox allow` answered it over JSON-RPC, the TUI continued ("blocked initially, then succeeded on the single retry with escalated permissions"), and the app-server was terminated with the session. Mechanism details in `10` §7.
 
 ## M4 — The GUI terminal (5–6 weeks)
 
