@@ -14,11 +14,11 @@ use std::rc::Rc;
 
 use libghostty_vt::key::{self, Action, Encoder, Key, Mods, OptionAsAlt};
 use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
-use libghostty_vt::screen::CellWide;
+use libghostty_vt::screen::{CellWide, RowSemanticPrompt};
 use libghostty_vt::style::{StyleColor, Underline};
 use libghostty_vt::terminal::{ClipboardLocation, Options, SizeReportSize, Terminal};
 
-use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize};
+use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize, PromptMark, RowMeta};
 use crate::core::TerminalCore;
 use crate::damage::{DamageSet, LineDamage};
 use crate::error::CoreError;
@@ -191,6 +191,7 @@ impl TerminalCore for GhosttyCore {
         let cols = usize::from(self.size.cols);
         let rows = usize::from(self.size.rows);
         let mut cells = vec![Cell::default(); cols * rows];
+        let mut metas = vec![RowMeta::default(); rows];
         let mut cursor = Cursor {
             col: 0,
             row: 0,
@@ -207,6 +208,17 @@ impl TerminalCore for GhosttyCore {
                 while let Some(row) = it.next() {
                     if r >= rows {
                         break;
+                    }
+                    if let Ok(raw) = row.raw_row() {
+                        metas[r] = RowMeta {
+                            prompt: match raw.semantic_prompt() {
+                                Ok(RowSemanticPrompt::Prompt) => PromptMark::Prompt,
+                                Ok(RowSemanticPrompt::Continuation) => PromptMark::Continuation,
+                                _ => PromptMark::None,
+                            },
+                            wrapped: raw.is_wrapped().unwrap_or(false),
+                            wrap_continuation: raw.is_wrap_continuation().unwrap_or(false),
+                        };
                     }
                     if let Ok(mut cit) = self.cells_it.update(row) {
                         let mut c = 0usize;
@@ -226,6 +238,7 @@ impl TerminalCore for GhosttyCore {
             size: self.size,
             cursor,
             cells,
+            rows: metas,
         }
     }
 
@@ -574,6 +587,18 @@ mod tests {
         core.resize(GridSize { cols: 80, rows: 24 }).unwrap();
         core.advance(b"\x1b[18t");
         assert_eq!(core.take_responses(), b"\x1b[8;24;80t".to_vec());
+    }
+
+    #[test]
+    fn row_meta_prompt_marks_and_wrap() {
+        let mut core = GhosttyCore::new(GridSize { cols: 8, rows: 4 }).unwrap();
+        core.advance(b"\x1b]133;A\x07$ \x1b]133;B\x07ls\r\n\x1b]133;C\x07abcdefghijkl\r\n");
+        let snap = core.snapshot();
+        assert_eq!(snap.rows.len(), 4);
+        assert_eq!(snap.rows[0].prompt, PromptMark::Prompt);
+        assert_eq!(snap.rows[1].prompt, PromptMark::None);
+        assert!(snap.rows[1].wrapped, "row 1 soft-wraps: {:?}", snap.rows);
+        assert!(snap.rows[2].wrap_continuation);
     }
 
     #[test]

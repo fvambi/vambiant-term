@@ -23,6 +23,29 @@ pub struct Cursor {
     pub visible: bool,
 }
 
+/// Shell-integration mark on a row (OSC 133 / OSC 633), as the backend tracks it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PromptMark {
+    /// No prompt cells on this row.
+    #[default]
+    None,
+    /// A primary prompt line (`OSC 133;A` … `B`).
+    Prompt,
+    /// A prompt continuation line.
+    Continuation,
+}
+
+/// Per-row facts that are not per-cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RowMeta {
+    /// Shell-integration mark.
+    pub prompt: PromptMark,
+    /// The row soft-wraps into the next one (logical line continues).
+    pub wrapped: bool,
+    /// The row is the continuation of a soft-wrapped logical line.
+    pub wrap_continuation: bool,
+}
+
 /// A full-grid snapshot handed to a newly attached viewer.
 ///
 /// Row-major; `cells.len() == cols * rows`. The wire/FFI representation is
@@ -35,6 +58,8 @@ pub struct CellSnapshot {
     pub cursor: Cursor,
     /// Cell contents, row-major.
     pub cells: Vec<Cell>,
+    /// One entry per visible row.
+    pub rows: Vec<RowMeta>,
 }
 
 /// One grid cell. Wide characters occupy a leading cell plus a spacer.
