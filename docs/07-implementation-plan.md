@@ -14,13 +14,13 @@ Two tracks run in parallel from day one because they touch nothing else and are 
 
 Nothing is built on assumptions. Before writing product code, verify the three surfaces that this entire design rests on and that are documented as unstable.
 
-- [ ] Scaffold the workspace: `Cargo.toml`, crate skeletons, `mise.toml`, CI, `cargo deny`, `rust-toolchain.toml` pinned ≥ 1.98.1.
-- [ ] Verify `alacritty_terminal` 0.26.x against a real PTY: spawn, parse, damage, resize, reflow. Confirm the `Term::damage()` / `TermDamage` API shapes (flagged unverified in research).
-- [ ] **Spike `libghostty-vt` 0.2.1 in parallel** and benchmark both on the same input corpus. ADR-0001 is decided in favour of `alacritty_terminal` on maturity grounds but is explicitly revisitable — this is the moment to revisit it, not later.
-- [ ] Install Claude Code hooks against the real binary. Confirm every event name in `03-agent-integration.md` §4.2 actually fires, capture real payloads to fixtures, and confirm the `http` handler type works with a loopback receiver.
-- [ ] Install a status line command and capture real stdin JSON to a fixture.
-- [ ] Install Codex hooks and connect to `codex app-server` over a Unix socket. Capture real JSON-RPC traffic.
-- [ ] Record every finding in `10-research-notes.md` with an "as verified on <date>, version <x>" line.
+- [x] Scaffold the workspace: `Cargo.toml`, crate skeletons, `mise.toml`, CI, `cargo deny`, `rust-toolchain.toml` pinned ≥ 1.98.1. *(done 2026-09-04; licence still undecided)*
+- [x] Verify `alacritty_terminal` 0.26.x against a real PTY: spawn, parse, damage, resize, reflow. Confirm the `Term::damage()` / `TermDamage` API shapes (flagged unverified in research). *(done; `docs/10` §1)*
+- [x] **Spike `libghostty-vt` 0.2.1 in parallel** and benchmark both on the same input corpus. ADR-0001 is decided in favour of `alacritty_terminal` on maturity grounds but is explicitly revisitable — this is the moment to revisit it, not later. *(done; benchmark and a proposed ADR-0001 amendment await a decision)*
+- [x] Install Claude Code hooks against the real binary. Confirm every event name in `03-agent-integration.md` §4.2 actually fires, capture real payloads to fixtures, and confirm the `http` handler type works with a loopback receiver. *(26/33 events captured; 7 not reached — `docs/10` §6)*
+- [x] Install a status line command and capture real stdin JSON to a fixture.
+- [x] Install Codex hooks and connect to `codex app-server` over a Unix socket. Capture real JSON-RPC traffic. *(6 hook events captured; `PermissionRequest`/compaction/subagent/`Interrupt` not reached)*
+- [x] Record every finding in `10-research-notes.md` with an "as verified on <date>, version <x>" line.
 
 **Exit:** fixtures on disk for both agents' real event streams; a written go/no-go on the terminal core; no undocumented assumption remaining in the design.
 

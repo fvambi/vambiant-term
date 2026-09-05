@@ -21,7 +21,10 @@ fn new_term(cols: u16, rows: u16) -> Terminal<'static, 'static> {
     Terminal::new(Options {
         cols,
         rows,
-        max_scrollback: 10_000,
+        // libghostty's max_scrollback is a byte budget, alacritty's
+        // scrolling_history a line count. 16 MiB ≈ 10k lines × 200 cols of cell
+        // storage, so both benchmarks retain a comparable amount of history.
+        max_scrollback: 16 * 1024 * 1024,
     })
     .expect("ghostty terminal")
 }

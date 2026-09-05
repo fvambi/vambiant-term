@@ -21,6 +21,21 @@
 
 **`libghostty-vt` 0.2.1** (2026-07-18, MIT/Apache-2.0) is the genuine alternative and must be spiked in M0. Safe Rust API over Ghostty's terminal core, optional `kitty` graphics feature. The upstream C header self-describes: *"This is an incomplete, work-in-progress API… Breaking changes are expected."* `ghostling` is the reference consumer (a minimal terminal in one C file). Strategic note: because libghostty is a C library, **Swift could call it directly with zero FFI tooling** — if the Rust requirement ever softens, that collapses the whole FFI problem.
 
+**M0 benchmark, as measured on 2026-09-05** (Apple Silicon, macOS 26.5.1, both engines built `ReleaseFast`/`--release`, hyperfine 1.20.0, 2 warm-ups, 10 runs, strictly serial, pre-generated 32 MiB inputs from `gen-corpus`, 200×50 grid, ~10k lines of scrollback on both sides; raw `results.json` under `target-bench/`, harness in `spikes/term-core-spike`, runner `scripts/bench/run.sh --with-ghostty`). Each run parses the whole file and walks the visible grid once:
+
+| corpus (32 MiB each) | `alacritty_terminal` 0.26.0 median (min–max) | `libghostty-vt` 0.2.1 median (min–max) | ghostty faster by |
+|---|---|---|---|
+| `ascii-lines.vt` | 441 ms (318–563) | 92 ms (78–105) | 4.8× |
+| `japanese-lines.vt` (wide chars) | 339 ms (293–394) | 98 ms (87–120) | 3.5× |
+| `sgr-heavy.vt` (CSI/SGR per word) | 255 ms (216–291) | 216 ms (193–237) | 1.2× |
+| `cursor-motion.vt` (TUI-style CUP/EL) | 1036 ms (932–1064) | 179 ms (150–219) | 5.8× |
+| `long-lines.vt` (4 KiB lines, wrap) | 291 ms (263–324) | 52 ms (46–62) | 5.6× |
+| `scrolling-region.vt` (DECSTBM) | 375 ms (337–454) | 72 ms (54–85) | 5.2× |
+
+Caveats that matter: (a) this is parser + grid throughput only — no PTY read, no damage publishing, no rendering — i.e. the vtebench-style number the docs/08 §7 note already calls insufficient; (b) alacritty's runs are noisier (σ up to 68 ms) — the ordering is unambiguous, the exact ratios are not; (c) 🔴 **the visible-grid checksums agree on only one of six corpora (`cursor-motion`)** — the other five differ, so the two engines do not produce identical final grids on plain line-wrapping/scrolling input. Until a headless snapshot comparison explains that (harness artefact such as pending-wrap/last-row handling vs. a real emulation difference), parity is **unverified** and M1's snapshot fixtures must be written against whichever engine is chosen; (d) the first Debug build of libghostty (the sys crate maps cargo's `DEBUG=true` to a Zig Debug build) was **>100× slower** — anyone reproducing this must force `LIBGHOSTTY_VT_SYS_OPTIMIZE=ReleaseFast`, which `scripts/bench/build-ghostty.sh` does.
+
+**Go/no-go recommendation (M0, for Florian to decide — ADR-0001 amendment proposed, not applied):** the benchmark says otherwise. `alacritty_terminal` is 3.5–5.8× slower than Ghostty's own core on five of six workloads, which makes the docs/08 budget of "within 2× of Ghostty on `cat`" a stretch before rendering is even counted. Recommendation: **switch the primary `TerminalCore` backend to `libghostty-vt`, conditional on two gates at the start of M1** — (1) explain the grid-checksum divergence with a headless snapshot diff on small inputs, (2) make the build hermetic (vendor Ghostty at the pinned commit via `GHOSTTY_SOURCE_DIR`/submodule, zig 0.15.2 from mise, keep the SDK shim until Ghostty moves to zig ≥ 0.16). Keep `alacritty_terminal` compiling behind the trait through M1 as the fallback; drop it at M1 exit if both gates hold. Costs accepted knowingly: pre-1.0 C API ("breaking changes are expected"), `!Send`/`!Sync` handles (one terminal per reader thread, which docs/02 §4 already prescribes), a git-fetching build script that `cargo deny`'s source policy cannot see, and a second toolchain. Gains beyond speed: kitty graphics for free (A1.9), and the Swift-can-call-C strategic option in ADR-0001's note.
+
 **Conformance testing**: `esctest2` (Thomas Dickey, Python, `--expected-terminal=xterm`; cannot test colour-setting sequences because per-cell colour readback isn't feasible), `vttest` (interactive/visual). Ghostty's own compliance priority: standards → xterm → other terminals. Even Ghostty has open vttest-failure discussions — 100% is not a bar anyone clears.
 
 ## 2. Rust toolchain (Sept 2026)
@@ -218,17 +233,25 @@ Settings precedence: subagent > skill > local > project > plugin > managed > use
 
 ---
 
-## Open items for M0
+## Open items for M0 — status as of 2026-09-05
 
-1. `Term::damage()` / `TermDamage` API shapes in `alacritty_terminal` 0.26.
-2. `libghostty-vt` 0.2.1 benchmark vs `alacritty_terminal` on the same corpus; kitty-graphics coverage.
-3. Every Claude Code hook event name and payload, captured to fixtures against the installed binary.
-4. Claude Code status line stdin JSON, captured to a fixture.
-5. Codex `app-server` JSON-RPC traffic, captured to a fixture; confirm the Unix socket transport.
-6. Codex rollout storage path (first-party confirmation).
-7. FIM token support for Qwen3.5-Base / Qwen3-Coder-Next — test, don't assume.
-8. Local TTFT on this Mac for the candidate models, warm and cold.
-9. Haiku 4.5 successor / retirement date.
-10. Whether wgpu handles `drawableSize` changes on an externally-owned layer — **moot if ADR-0003 holds and we use Metal directly**.
-11. Warp's actual agent-notification mechanism, if it ever becomes documented.
-12. Live gitleaks TOML: re-verify the GitHub PAT prefix list.
+1. ✅ `Term::damage()` / `TermDamage` shapes in `alacritty_terminal` 0.26 — verified from source and a live PTY (§1).
+2. ✅ `libghostty-vt` 0.2.1 benchmarked vs `alacritty_terminal` on the same corpus (§1 table); ⚠️ kitty-graphics coverage not exercised; 🔴 grid-parity checksums differ on 5/6 corpora — gate for M1.
+3. ✅ Claude Code hook events captured to `tests/fixtures/claude/` — 26 of 33 with real payloads; ⚠️ `PermissionDenied`, `TeammateIdle`, `PreCompact`, `PostCompact`, `PostModelSwitch`, `Elicitation`, `ElicitationResult` not reached (§6).
+4. ✅ Claude Code status line stdin JSON captured (12 samples + 4 `subagentStatusLine`); 🔴 several documented keys absent in practice (§6).
+5. ✅ Codex `app-server` traffic captured over a Unix socket; transport is WebSocket-over-Unix, not JSONL (§7).
+6. ✅ Codex rollout storage confirmed first-party via `thread/start.path` and `migrate-rollouts`; storage is now paginated + SQLite-indexed (§7).
+7. ⚠️ FIM token support for Qwen3.5-Base / Qwen3-Coder-Next — untested; no local model runtime is installed on this Mac (M-AI item; `vterm ai doctor` must print the install command rather than assume one).
+8. ⚠️ Local TTFT on this Mac — untested for the same reason.
+9. ⚠️ Haiku 4.5 successor / retirement date — not re-checked in M0.
+10. ⚠️ wgpu `drawableSize` — moot while ADR-0003 holds.
+11. ⚠️ Warp's mechanism — still undocumented.
+12. ⚠️ gitleaks PAT prefix list — not re-verified in M0 (M-SEC).
+
+New items raised by M0:
+
+13. 🔴 Project licence is undecided — no document in `docs/` names one; `Cargo.toml` and `deny.toml` carry a TODO and `cargo deny` ignores our own unpublished crates until it is chosen.
+14. 🔴 zig 0.15.2 cannot link against the macOS 26.5 CLT SDK (`arm64-macos` dropped from `libSystem.tbd`); the `xcrun` shim in `scripts/bench/xcrun-shim` is a workaround, not a fix.
+15. ⚠️ Codex `PermissionRequest`, compaction, subagent and `Interrupt` hook payloads, and whether an `http` handler exists (docs list only `command`/`mcp_tool`).
+16. ⚠️ Claude Code MCP elicitation hooks (harness bug in M0).
+17. ⚠️ Full Xcode is not installed; needed from M4 (Metal, signing), not before.

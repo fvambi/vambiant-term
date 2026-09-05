@@ -13,4 +13,8 @@ cd "$(dirname "$0")/../.."
 sdk=${GHOSTTY_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}
 [[ -d $sdk ]] || { echo "build-ghostty: SDK not found: $sdk (set GHOSTTY_SDK)" >&2; exit 1; }
 export GHOSTTY_SDK="$sdk"
+# The sys crate maps cargo's DEBUG=true (any profile with debug info, including
+# our release profile's `debug = 1`) to a Zig *Debug* build, which is ~100×
+# slower and would make the benchmark a lie. Force ReleaseFast.
+export LIBGHOSTTY_VT_SYS_OPTIMIZE=${LIBGHOSTTY_VT_SYS_OPTIMIZE:-ReleaseFast}
 PATH="$PWD/scripts/bench/xcrun-shim:$PATH" cargo build --release -p term-core-spike --features ghostty --bin ghostty-spike "$@"

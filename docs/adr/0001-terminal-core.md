@@ -21,3 +21,16 @@ We need a VT state machine: parser, grid, scrollback, modes, damage. Writing one
 
 ## Strategic note
 libghostty is a **C** library, so Swift could call it directly with zero FFI tooling. If the Rust preference ever softens, that collapses ADR-0002 entirely. Worth remembering.
+
+## M0 amendment — proposed 2026-09-05, awaiting decision
+
+**Status of this section: Proposed.** The decision above stands until Florian accepts or rejects this.
+
+M0 benchmarked both cores on the same 32 MiB corpora (`docs/10` §1): `libghostty-vt` 0.2.1 is 3.5–5.8× faster than `alacritty_terminal` 0.26.0 on five of six workloads and 1.2× on SGR-heavy input. The verified API shapes of both are recorded in `docs/10` §1.
+
+Proposed change: make `libghostty-vt` the primary backend behind `TerminalCore`, keep `alacritty_terminal` as the compiled fallback through M1, and drop it at M1 exit if two gates hold:
+
+1. **Grid parity** — the visible-grid checksums differed on five of six corpora in M0; a headless snapshot diff must explain that before any fixture is written against either engine.
+2. **Hermetic build** — the sys crate git-clones Ghostty and runs `zig build` (zig 0.15.2 exactly; on this Mac only with the SDK shim in `scripts/bench/build-ghostty.sh`). Vendor the pinned Ghostty source and drive the build from mise so CI never fetches.
+
+Consequences if accepted: `!Send`/`!Sync` terminal handles (one per reader thread — already the docs/02 §4 design), a second toolchain (zig) in `mise.toml`, a pre-1.0 C API with expected breaking changes, and kitty graphics available without a Rust decoder. The strategic note above (Swift calling libghostty directly) becomes a live option rather than a hypothetical.
