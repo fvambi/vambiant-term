@@ -1,4 +1,8 @@
-//! Session records as seen by every client.
+//! Session records and the daemon's session RPC vocabulary.
+//!
+//! Method names are constants so every client and the daemon agree; the
+//! parameter and result types live next to them. Unknown fields on the wire
+//! are ignored (`serde` default), never fatal.
 
 use std::path::PathBuf;
 
@@ -7,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent::{AgentKind, AgentState};
 
 /// Stable daemon-side session id.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(pub String);
 
 /// How much the adapter can actually see and do. Shown in the UI verbatim;
@@ -43,7 +47,123 @@ pub struct SessionInfo {
     pub capabilities: Capabilities,
     /// Working directory.
     pub cwd: PathBuf,
+    /// Child pid, when the daemon owns a live PTY.
+    #[serde(default)]
+    pub pid: Option<u32>,
+    /// Grid size.
+    #[serde(default)]
+    pub size: Option<(u16, u16)>,
     /// `true` when the daemon could not re-adopt the PTY after a restart.
     /// Never dropped silently (ADR-0004).
     pub orphaned: bool,
+    /// Creation time, RFC 3339.
+    #[serde(default)]
+    pub created_at: String,
+}
+
+/// RPC method names (`vtermd` ← clients).
+pub mod method {
+    /// `-> { version, pid, socket }`.
+    pub const DAEMON_STATUS: &str = "daemon.status";
+    /// `-> [SessionInfo]`.
+    pub const SESSION_LIST: &str = "session.list";
+    /// [`super::NewSession`] `-> SessionInfo`.
+    pub const SESSION_NEW: &str = "session.new";
+    /// `{ id } -> SessionInfo`.
+    pub const SESSION_GET: &str = "session.get";
+    /// `{ id, name } -> SessionInfo`.
+    pub const SESSION_RENAME: &str = "session.rename";
+    /// `{ id, signal? } -> {}` — SIGHUP by default, then reap.
+    pub const SESSION_KILL: &str = "session.kill";
+    /// `{ id, cols, rows } -> {}`.
+    pub const SESSION_RESIZE: &str = "session.resize";
+    /// `{ id, bytes: base64 } -> {}` — raw bytes to the PTY.
+    pub const SESSION_INPUT: &str = "session.input";
+    /// `{ id, key: KeyEvent } -> {}` — a key event encoded by the core.
+    pub const SESSION_KEY: &str = "session.key";
+    /// `{ id } -> Snapshot` and subscribes this connection to
+    /// [`notification::SESSION_OUTPUT`] for the session.
+    pub const SESSION_ATTACH: &str = "session.attach";
+    /// `{ id } -> {}`.
+    pub const SESSION_DETACH: &str = "session.detach";
+    /// `{ id, lines? } -> { text }` — last `lines` of the visible grid as text.
+    pub const SESSION_LOGS: &str = "session.logs";
+}
+
+/// Notification names (`vtermd` → attached clients).
+pub mod notification {
+    /// [`super::OutputDelta`]: damage-batched cells for an attached session.
+    pub const SESSION_OUTPUT: &str = "session.output";
+    /// `{ id, state }` — lifecycle change.
+    pub const SESSION_STATE: &str = "session.state";
+    /// `{ id, event: TermEvent }` — bell, title, cwd, clipboard.
+    pub const SESSION_EVENT: &str = "session.event";
+    /// `{ id, exit_code? , signal? }` — child exited.
+    pub const SESSION_EXITED: &str = "session.exited";
+    /// `SessionInfo` — a session was created, renamed or removed.
+    pub const SESSION_CHANGED: &str = "session.changed";
+}
+
+/// Parameters of [`method::SESSION_NEW`].
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct NewSession {
+    /// Display name; generated when empty.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Program and arguments; empty = login shell.
+    #[serde(default)]
+    pub argv: Vec<String>,
+    /// Working directory.
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    /// Extra environment.
+    #[serde(default)]
+    pub env: Vec<(String, String)>,
+    /// Initial grid size; default 80×24.
+    #[serde(default)]
+    pub size: Option<(u16, u16)>,
+    /// Which adapter to provision; `None` = plain shell (generic observation).
+    #[serde(default)]
+    pub agent: Option<AgentKind>,
+}
+
+/// One cell on the wire. Kept flat and small: it is sent per damaged cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WireCell {
+    /// Character (base code point).
+    pub c: char,
+    /// Foreground: `[kind, a, b, c]` — kind 0 default, 1 indexed (a), 2 rgb.
+    pub fg: [u8; 4],
+    /// Background, same encoding.
+    pub bg: [u8; 4],
+    /// Attribute bits as in `vt_core::cell::Attrs`.
+    pub attrs: u16,
+}
+
+/// One damaged row.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WireRow {
+    /// Row index.
+    pub row: u16,
+    /// Full row contents.
+    pub cells: Vec<WireCell>,
+}
+
+/// Full snapshot (attach) or delta (output notification).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputDelta {
+    /// Session.
+    pub id: SessionId,
+    /// Grid size at the time of the delta.
+    pub cols: u16,
+    /// Rows.
+    pub rows: u16,
+    /// `true` when `lines` holds every row (attach, resize, full damage).
+    pub full: bool,
+    /// Changed rows.
+    pub lines: Vec<WireRow>,
+    /// Cursor row, column, visibility.
+    pub cursor: (u16, u16, bool),
+    /// Monotonic sequence number per session; gaps mean a missed delta.
+    pub seq: u64,
 }
