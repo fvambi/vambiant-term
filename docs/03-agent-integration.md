@@ -89,7 +89,7 @@ enum AgentState { Starting, Idle, Thinking, ToolRunning, AwaitingInput, Stopped,
 
 On `provision()`, for a session, we write a **session-scoped settings file** and pass it with `--settings`, rather than mutating the user's `~/.claude/settings.json`. Hooks merge across levels rather than replacing, so the user's own hooks keep running — we add, we never take over.
 
-Hook handlers use the **`http` handler type**, POSTing to `http://127.0.0.1:<port>/hook/<session-token>`. That avoids spawning a process per event and gives us the response channel synchronously. `allowedHttpHookUrls` must include our loopback URL — we write it into the session settings file we own.
+Hook handlers use the **`http` handler type**, POSTing to `http://127.0.0.1:<port>/hook/<session-token>`. That avoids spawning a process per event and gives us the response channel synchronously. `allowedHttpHookUrls` must include our loopback URL — we write it into the session settings file we own. (Verified 2026-09-04: with the key absent the HTTP hook still runs; with a non-matching list it is skipped with `HTTP hook blocked: … does not match any pattern in allowedHttpHookUrls`. An HTTP hook that times out **fails open** — the call proceeds — so the receiver answers inline, always.)
 
 ### 4.2 Events we subscribe to
 
@@ -111,13 +111,13 @@ Hook handlers use the **`http` handler type**, POSTing to `http://127.0.0.1:<por
 | `PreModelSwitch` / `PostModelSwitch` | Cost attribution changes |
 | `Elicitation` / `ElicitationResult` | MCP elicitation flows into the same inbox |
 
-Every event carries `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `effort`, `hook_event_name`, plus `agent_id`/`agent_type` inside subagents.
+Every event carries `session_id`, `transcript_path`, `cwd`, `hook_event_name`. **As verified on 2026-09-04 (v2.1.260):** `prompt_id` and `permission_mode` are present on tool/turn events but absent on `SessionStart`; **`effort` never appears** (it arrives as the `CLAUDE_EFFORT` env var instead); `PermissionRequest` adds `permission_suggestions`. Parse every field beyond the first four as optional. Of the events above, `PermissionDenied`, `TeammateIdle`, `PreCompact`/`PostCompact`, `PostModelSwitch` and `Elicitation`/`ElicitationResult` were not reached in M0 — see `10-research-notes.md` §6.
 
 ### 4.3 Answering
 
 - `PreToolUse` → `hookSpecificOutput.permissionDecision` ∈ `allow` | `deny` | `ask` | `defer`, plus `permissionDecisionReason` and optionally `updatedInput` (this is what makes **edit-then-allow** real in the inbox).
 - `PermissionRequest` → `hookSpecificOutput.decision.behavior` ∈ `allow` | `deny`, with `updatedInput` inside the `decision` object.
-- Top-level `continue: false` + `stopReason` is our emergency stop.
+- Top-level `continue: false` + `stopReason` stops the session **after** the current action — verified on 2026-09-04 that a `PreToolUse` hook returning it did not prevent the tool from running. The emergency stop for a pending call is `deny`; `continue:false` is the "and then halt" switch.
 - Exit code 2 blocks — and blocks **even if** the JSON said `allow`. Our handler must be careful never to exit 2 accidentally.
 - Strings (`additionalContext`, `systemMessage`, stdout) are capped at **10,000 chars**; overflow spills to a file. Keep responses small.
 
@@ -147,7 +147,7 @@ Protocol:
 
 1. `PermissionRequest` arrives at our HTTP handler.
 2. Policy engine evaluates. If a rule decides it, answer inline in milliseconds.
-3. Otherwise: enqueue an `ApprovalRequest`, notify, and return `defer` (`PreToolUse`) — Claude Code then routes to its normal prompt flow, which the SDK host or `--permission-prompt-tool` answers.
+3. Otherwise: enqueue an `ApprovalRequest`, notify, and return `defer` (`PreToolUse`) — Claude Code then routes to its normal prompt flow, which the SDK host or `--permission-prompt-tool` answers. Verified 2026-09-04: in a bare `-p` session `defer` ends the turn with the call unexecuted and nothing in `permission_denials`; with `--permission-prompts none` the `PermissionRequest` hook fires and then auto-denies, with `host` and no SDK host it does not fire at all. Bare-CLI sessions therefore use `none` and answer from the hook; `defer`/`null` is an SDK-hosted path only.
 4. For sessions we spawn through the **Agent SDK** rather than the bare CLI, `canUseTool` receives a `requestId`; returning `null` lets us answer the `control_response` out-of-band from the inbox process. That is the clean path and the reason a future `vtermd` may host SDK sessions directly.
 5. ⚠️ Returning `null` in any case where we do *not* subsequently answer hangs the tool call forever. Every deferred request gets a watchdog and a visible "still waiting" state.
 
@@ -180,7 +180,7 @@ Codex has a *better* embedding story than Claude Code and we should use it.
 
 ### 5.1 `codex app-server` — the primary integration
 
-JSON-RPC 2.0 over stdio, WebSocket, or Unix socket (`codex app-server --listen ws://127.0.0.1:<port>`). It exists explicitly for "a deep integration inside your own product" and handles auth, history, approvals and streamed events.
+JSON-RPC 2.0 over stdio, WebSocket, or Unix socket (`codex app-server --listen ws://127.0.0.1:<port>`). It exists explicitly for "a deep integration inside your own product" and handles auth, history, approvals and streamed events. Verified 2026-09-04: the Unix-socket transport is **WebSocket framing over the socket** (HTTP Upgrade handshake), not newline-delimited JSON; `initialize` → `initialized` is mandatory per connection; approvals arrive as the server request `item/commandExecution/requestApproval` answered with `{"result":{"decision":"accept"|"decline"}}`. Raw traffic in `tests/fixtures/codex/app-server/`.
 
 Methods we use: `thread/start`, `thread/resume`, `thread/fork`, `thread/list`, `thread/archive`; `turn/start`, `turn/steer`, `turn/interrupt`; `model/list`; `config/read`, `config/value/write`.
 
@@ -190,7 +190,7 @@ Methods we use: `thread/start`, `thread/resume`, `thread/fork`, `thread/list`, `
 
 Codex now has a hook system that closely mirrors Claude Code's: `hooks.json` or inline `[hooks]` in `config.toml`, gated by `[features] hooks`.
 
-Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`, `Interrupt`.
+Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`, `Interrupt`. Verified 2026-09-04 (0.153.2): the first four plus `PostToolUse`, `Stop` and `SessionEnd` captured; payloads carry `model` and `turn_id` and no `prompt_id`; every hook needs persisted trust (`[hooks.state]`) and project hooks need project trust; handler types are `command` and `mcp_tool` only — no `http`.
 
 The schemas are convergent enough (`hookSpecificOutput`, `permissionDecision`, exit-2 blocking, same stdin field names) that **one hook-handling abstraction serves both vendors**. Codex's set is a strict subset: no `terminalSequence`, no `MessageDisplay`, no `PostToolBatch`. Timeouts: 600 s default, but `SessionEnd` and `Interrupt` get 1 s (max 3 s).
 
@@ -204,7 +204,7 @@ Useful flags: `-o/--output-last-message`, `--output-schema`, `--ephemeral` (skip
 
 TOML. Precedence, highest first: CLI flags/`--config` → project `.codex/config.toml` → profile `~/.codex/<profile>.config.toml` → user `~/.codex/config.toml` → system `/etc/codex/config.toml`. `CODEX_HOME` relocates the tree.
 
-Keys that matter to us: `sandbox_mode`, `approval_policy` (`untrusted` | `on-request` | `never` | a granular table), `[sandbox_workspace_write] writable_roots / network_access`, `mcp_servers`, `notify`.
+Keys that matter to us: `sandbox_mode`, `approval_policy` (`on-request` | `never` — **`untrusted` is rejected by 0.153.2** with "no longer supported", verified 2026-09-04), `[sandbox_workspace_write] writable_roots / network_access`, `mcp_servers`, `notify`, and `[hooks.state."<key>"] trusted_hash / enabled` (hook trust, which can live in our profile) plus `[projects."<path>"] trust_level` (project trust; writing it ourselves avoids Codex mutating the user's `config.toml`).
 
 We write a **profile** rather than touching the user's main config, and select it with `--profile`.
 
