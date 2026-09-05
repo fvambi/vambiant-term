@@ -130,7 +130,6 @@ impl KeyCode {
     #[must_use]
     pub fn from_code(code: u16) -> Self {
         match code {
-            0 => Self::Unidentified,
             1 => Self::Backquote,
             2 => Self::Backslash,
             3 => Self::BracketLeft,
@@ -238,5 +237,96 @@ impl KeyEvent {
             utf8: utf8.map(str::to_owned),
             unshifted: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod from_code_tests {
+    use super::KeyCode;
+
+    #[test]
+    fn every_key_round_trips_through_its_numeric_code() {
+        let all = [
+            KeyCode::Backquote,
+            KeyCode::Backslash,
+            KeyCode::BracketLeft,
+            KeyCode::BracketRight,
+            KeyCode::Comma,
+            KeyCode::Digit0,
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+            KeyCode::Digit5,
+            KeyCode::Digit6,
+            KeyCode::Digit7,
+            KeyCode::Digit8,
+            KeyCode::Digit9,
+            KeyCode::Equal,
+            KeyCode::A,
+            KeyCode::B,
+            KeyCode::C,
+            KeyCode::D,
+            KeyCode::E,
+            KeyCode::F,
+            KeyCode::G,
+            KeyCode::H,
+            KeyCode::I,
+            KeyCode::J,
+            KeyCode::K,
+            KeyCode::L,
+            KeyCode::M,
+            KeyCode::N,
+            KeyCode::O,
+            KeyCode::P,
+            KeyCode::Q,
+            KeyCode::R,
+            KeyCode::S,
+            KeyCode::T,
+            KeyCode::U,
+            KeyCode::V,
+            KeyCode::W,
+            KeyCode::X,
+            KeyCode::Y,
+            KeyCode::Z,
+            KeyCode::Minus,
+            KeyCode::Period,
+            KeyCode::Quote,
+            KeyCode::Semicolon,
+            KeyCode::Slash,
+            KeyCode::Backspace,
+            KeyCode::Enter,
+            KeyCode::Space,
+            KeyCode::Tab,
+            KeyCode::Delete,
+            KeyCode::End,
+            KeyCode::Home,
+            KeyCode::Insert,
+            KeyCode::PageDown,
+            KeyCode::PageUp,
+            KeyCode::ArrowDown,
+            KeyCode::ArrowLeft,
+            KeyCode::ArrowRight,
+            KeyCode::ArrowUp,
+            KeyCode::NumpadEnter,
+            KeyCode::Escape,
+            KeyCode::F1,
+            KeyCode::F2,
+            KeyCode::F3,
+            KeyCode::F4,
+            KeyCode::F5,
+            KeyCode::F6,
+            KeyCode::F7,
+            KeyCode::F8,
+            KeyCode::F9,
+            KeyCode::F10,
+            KeyCode::F11,
+            KeyCode::F12,
+        ];
+        for k in all {
+            assert_eq!(KeyCode::from_code(k as u16), k, "{k:?}");
+        }
+        assert_eq!(KeyCode::from_code(0), KeyCode::Unidentified);
+        assert_eq!(KeyCode::from_code(u16::MAX), KeyCode::Unidentified);
     }
 }

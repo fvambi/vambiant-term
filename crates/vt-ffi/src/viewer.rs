@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
 use base64::Engine as _;
-use vt_core::key::{KeyAction, KeyCode, KeyEvent, KeyMods};
+use vt_core::key::{KeyAction, KeyCode, KeyEvent as CoreKeyEvent, KeyMods};
 use vt_ipc::Client;
 use vt_proto::session::{OutputDelta, WireCell, method, notification};
 
@@ -24,7 +24,7 @@ use vt_proto::session::{OutputDelta, WireCell, method, notification};
 /// 2 = rgb (`a`,`b`,`c`); `attrs` are `vt_core::cell::Attrs` bits.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VtCell {
+pub struct Cell {
     /// Base code point.
     pub ch: u32,
     /// Foreground.
@@ -37,7 +37,7 @@ pub struct VtCell {
     pub reserved: u16,
 }
 
-impl VtCell {
+impl Cell {
     const BLANK: Self = Self {
         ch: ' ' as u32,
         fg: [0; 4],
@@ -61,9 +61,9 @@ impl VtCell {
 /// `vt_viewer_release`. `cells` is row-major, `cols * rows` long.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct VtGridView {
+pub struct GridView {
     /// Cells.
-    pub cells: *const VtCell,
+    pub cells: *const Cell,
     /// Columns.
     pub cols: u16,
     /// Rows.
@@ -86,7 +86,7 @@ pub struct VtGridView {
 /// `utf8` holds the produced text (up to 8 bytes, `utf8_len` used).
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct VtKeyEvent {
+pub struct KeyEvent {
     /// Press / release / repeat.
     pub action: u8,
     /// Physical key code.
@@ -102,10 +102,10 @@ pub struct VtKeyEvent {
 }
 
 /// Callback type for dirty notifications; runs on the viewer's own thread.
-pub type VtDirtyCallback = Option<unsafe extern "C" fn(ctx: *mut c_void)>;
+pub type DirtyCallback = Option<unsafe extern "C" fn(ctx: *mut c_void)>;
 
 struct Grid {
-    cells: Vec<VtCell>,
+    cells: Vec<Cell>,
     cols: u16,
     rows: u16,
     cursor: (u16, u16, bool),
@@ -117,7 +117,7 @@ impl Grid {
         if d.full || d.cols != self.cols || d.rows != self.rows {
             self.cols = d.cols;
             self.rows = d.rows;
-            self.cells = vec![VtCell::BLANK; usize::from(d.cols) * usize::from(d.rows)];
+            self.cells = vec![Cell::BLANK; usize::from(d.cols) * usize::from(d.rows)];
         }
         let cols = usize::from(self.cols);
         for line in &d.lines {
@@ -127,7 +127,7 @@ impl Grid {
             }
             let row = &mut self.cells[r * cols..(r + 1) * cols];
             for (i, cell) in row.iter_mut().enumerate() {
-                *cell = line.cells.get(i).map_or(VtCell::BLANK, VtCell::from_wire);
+                *cell = line.cells.get(i).map_or(Cell::BLANK, Cell::from_wire);
             }
         }
         self.cursor = d.cursor;
@@ -136,7 +136,7 @@ impl Grid {
 }
 
 /// An attached viewer. Opaque to C.
-pub struct VtViewer {
+pub struct Viewer {
     session: String,
     grid: Arc<Mutex<Grid>>,
     held: Option<MutexGuard<'static, Grid>>,
@@ -147,7 +147,7 @@ pub struct VtViewer {
 
 // SAFETY: the guard is only ever created and dropped by the thread that
 // calls acquire/release, and the Arc keeps the mutex alive for it.
-unsafe impl Send for VtViewer {}
+unsafe impl Send for Viewer {}
 
 struct DirtyCtx(*mut c_void);
 // SAFETY: the context pointer is handed to the shell's callback unchanged;
@@ -170,9 +170,9 @@ fn cstr<'a>(p: *const c_char) -> Option<&'a str> {
 pub extern "C" fn vt_viewer_attach(
     socket: *const c_char,
     session: *const c_char,
-    on_dirty: VtDirtyCallback,
+    on_dirty: DirtyCallback,
     ctx: *mut c_void,
-) -> *mut VtViewer {
+) -> *mut Viewer {
     let (Some(socket), Some(session)) = (cstr(socket), cstr(session)) else {
         set_error("socket and session are required".into());
         return std::ptr::null_mut();
@@ -189,21 +189,22 @@ pub extern "C" fn vt_viewer_attach(
 fn attach(
     socket: &str,
     session: &str,
-    on_dirty: VtDirtyCallback,
+    on_dirty: DirtyCallback,
     ctx: DirtyCtx,
-) -> Result<VtViewer, String> {
+) -> Result<Viewer, String> {
     let path = PathBuf::from(socket);
     let mut stream =
         Client::connect(&path).map_err(|e| format!("cannot connect to vtermd at {socket}: {e}"))?;
     let input =
         Client::connect(&path).map_err(|e| format!("cannot connect to vtermd at {socket}: {e}"))?;
-    let first: OutputDelta = stream
+    let first = stream
         .call(
             method::SESSION_ATTACH,
             Some(serde_json::json!({ "id": session })),
         )
-        .and_then(|v| serde_json::from_value(v).map_err(vt_ipc::IpcError::from))
         .map_err(|e| format!("cannot attach to session {session}: {e}"))?;
+    let first: OutputDelta = serde_json::from_value(first)
+        .map_err(|e| format!("session {session} sent an unreadable snapshot: {e}"))?;
     let id = first.id.0.clone();
     let mut grid = Grid {
         cells: Vec::new(),
@@ -267,7 +268,7 @@ fn attach(
             }
         })
         .map_err(|e| e.to_string())?;
-    Ok(VtViewer {
+    Ok(Viewer {
         session: id,
         grid,
         held: None,
@@ -297,14 +298,14 @@ pub extern "C" fn vt_viewer_last_error() -> *const c_char {
 /// # Safety
 /// `v` must be a live viewer and not already acquired.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vt_viewer_acquire(v: *mut VtViewer) -> VtGridView {
+pub unsafe extern "C" fn vt_viewer_acquire(v: *mut Viewer) -> GridView {
     // SAFETY: caller guarantees a live viewer.
     let v = unsafe { &mut *v };
     let guard = v.grid.lock().unwrap_or_else(PoisonError::into_inner);
     // SAFETY: the guard borrows `v.grid`, an Arc the viewer keeps alive until
     // `vt_viewer_free`, which refuses while a guard is held.
     let guard: MutexGuard<'static, Grid> = unsafe { std::mem::transmute(guard) };
-    let view = VtGridView {
+    let view = GridView {
         cells: guard.cells.as_ptr(),
         cols: guard.cols,
         rows: guard.rows,
@@ -323,7 +324,7 @@ pub unsafe extern "C" fn vt_viewer_acquire(v: *mut VtViewer) -> VtGridView {
 /// # Safety
 /// `v` must be a live viewer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vt_viewer_release(v: *mut VtViewer) {
+pub unsafe extern "C" fn vt_viewer_release(v: *mut Viewer) {
     // SAFETY: caller guarantees a live viewer.
     let v = unsafe { &mut *v };
     v.held = None;
@@ -334,25 +335,23 @@ pub unsafe extern "C" fn vt_viewer_release(v: *mut VtViewer) {
 /// # Safety
 /// `v` must be a live viewer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vt_viewer_seq(v: *const VtViewer) -> u64 {
+pub unsafe extern "C" fn vt_viewer_seq(v: *const Viewer) -> u64 {
     // SAFETY: caller guarantees a live viewer.
     let v = unsafe { &*v };
     v.grid.lock().unwrap_or_else(PoisonError::into_inner).seq
 }
 
-fn with_input<T>(v: &VtViewer, f: impl FnOnce(&mut Client) -> Result<T, vt_ipc::IpcError>) -> bool {
+fn with_input<T>(v: &Viewer, f: impl FnOnce(&mut Client) -> Result<T, vt_ipc::IpcError>) -> bool {
     let mut guard = v.input.lock().unwrap_or_else(PoisonError::into_inner);
     let Some(client) = guard.as_mut() else {
         return false;
     };
-    match f(client) {
-        Ok(_) => true,
-        Err(_) => {
-            *guard = None;
-            v.disconnected.store(true, Ordering::Relaxed);
-            false
-        }
+    if f(client).is_ok() {
+        return true;
     }
+    *guard = None;
+    v.disconnected.store(true, Ordering::Relaxed);
+    false
 }
 
 /// Send a key event; the daemon encodes it with the session's current
@@ -361,7 +360,7 @@ fn with_input<T>(v: &VtViewer, f: impl FnOnce(&mut Client) -> Result<T, vt_ipc::
 /// # Safety
 /// `v` must be a live viewer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vt_viewer_send_key(v: *const VtViewer, key: VtKeyEvent) -> bool {
+pub unsafe extern "C" fn vt_viewer_send_key(v: *const Viewer, key: KeyEvent) -> bool {
     // SAFETY: caller guarantees a live viewer.
     let v = unsafe { &*v };
     let len = usize::from(key.utf8_len).min(key.utf8.len());
@@ -369,7 +368,7 @@ pub unsafe extern "C" fn vt_viewer_send_key(v: *const VtViewer, key: VtKeyEvent)
         .ok()
         .filter(|s| !s.is_empty())
         .map(str::to_owned);
-    let event = KeyEvent {
+    let event = CoreKeyEvent {
         action: match key.action {
             1 => KeyAction::Release,
             2 => KeyAction::Repeat,
@@ -390,7 +389,7 @@ pub unsafe extern "C" fn vt_viewer_send_key(v: *const VtViewer, key: VtKeyEvent)
 /// `v` must be a live viewer; `bytes` must point to `len` readable bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn vt_viewer_send_bytes(
-    v: *const VtViewer,
+    v: *const Viewer,
     bytes: *const u8,
     len: usize,
 ) -> bool {
@@ -406,7 +405,7 @@ pub unsafe extern "C" fn vt_viewer_send_bytes(
 /// # Safety
 /// `v` must be a live viewer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vt_viewer_resize(v: *const VtViewer, cols: u16, rows: u16) -> bool {
+pub unsafe extern "C" fn vt_viewer_resize(v: *const Viewer, cols: u16, rows: u16) -> bool {
     // SAFETY: caller guarantees a live viewer.
     let v = unsafe { &*v };
     if cols == 0 || rows == 0 {
@@ -422,7 +421,7 @@ pub unsafe extern "C" fn vt_viewer_resize(v: *const VtViewer, cols: u16, rows: u
 /// # Safety
 /// `v` must come from [`vt_viewer_attach`] and not be used afterwards.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vt_viewer_free(v: *mut VtViewer) -> bool {
+pub unsafe extern "C" fn vt_viewer_free(v: *mut Viewer) -> bool {
     if v.is_null() {
         return true;
     }
@@ -482,7 +481,7 @@ mod tests {
         assert_eq!(g.cells.len(), 6);
         assert_eq!(g.cells[0].ch, u32::from('a'));
         assert_eq!(g.cells[0].fg, [1, 3, 0, 0]);
-        assert_eq!(g.cells[2], VtCell::BLANK, "short rows are padded");
+        assert_eq!(g.cells[2], Cell::BLANK, "short rows are padded");
         g.apply(&OutputDelta {
             id: SessionId("s".into()),
             cols: 3,

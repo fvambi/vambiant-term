@@ -1,6 +1,6 @@
 # ADR-0002 — Swift shell over a Rust core, two-tier FFI
 
-**Status:** Accepted · 2026-09-04
+**Status:** Accepted · 2026-09-04 · Amended 2026-09-05
 
 ## Context
 A Warp-class UI (sidebar, approval inbox, diff blocks, palette) needs a real UI toolkit. The core must be headless-testable Rust. Something has to bridge them at 120 Hz.
@@ -27,3 +27,13 @@ SwiftUI/AppKit shell over a Rust staticlib. **Two FFI tiers:**
 - `AppKitWindowHandle` is `!Send`/`!Sync`: PTY and parser on their own threads, double-buffered damage region, only a dirty signal marshalled to main.
 - `cbindgen` output is checked in and **diffed in CI** — an ABI drift is a memory-safety bug, not a compile error.
 - `swift-bridge` is 0.1.x with intermittent maintenance (15-month release gap, ~92 open issues). Acceptable for the cold path only; the C ABI cannot rot.
+
+## Amendment 2026-09-05 — the cold path is a JSON passthrough for now
+
+**What changed.** M4 ships the cold tier as one C function, `vt_daemon_call(socket, method, params_json) → json`, not as a `swift-bridge` surface. Swift sends the same JSON-RPC the `vterm` CLI sends and decodes the reply with `Codable`. `swift-bridge` is not in the tree.
+
+**Why.** By M4 every cold-path operation (session lifecycle, inbox, events, config) already exists as a `vtermd` JSON-RPC method with a Rust-side contract test, because the CLI needed it in M2/M3. A second typed surface would duplicate that contract in generated code from a 0.1.x crate with intermittent maintenance, for no latency benefit — the cold path is not latency-sensitive by definition. The passthrough has no build-time code generation, adds nothing to the ABI header beyond three functions, and cannot rot.
+
+**What stays.** The hot path is unchanged: `vt_viewer_attach` runs a reader thread that applies daemon output deltas into a `#[repr(C)]` cell array; Swift reads it by pointer between `vt_viewer_acquire` and `vt_viewer_release` and sends keys as a flat `VtKeyEvent`. The dirty callback fires on the viewer's thread and the shell marshals it to main.
+
+**When to revisit.** If a cold-path call needs streaming or cancellation from Swift (provider calls in M-AI are the likely first case), decide then between `swift-bridge` async and a second notification-carrying connection through the same passthrough. Record it here.

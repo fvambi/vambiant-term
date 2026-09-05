@@ -30,6 +30,7 @@ path = "src/bin/hold.rs"
 
 [dev-dependencies]
 vt-ipc.workspace = true
+vt-ffi.workspace = true
 
 [lints]
 workspace = true

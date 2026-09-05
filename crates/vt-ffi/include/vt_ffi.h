@@ -13,17 +13,224 @@
  * ABI version. Bumped on every incompatible change to any exported type
  * or function; Swift asserts equality at startup.
  */
-#define VtVT_FFI_ABI_VERSION 1
+#define VtABI_VERSION 1
+
+/**
+ * An attached viewer. Opaque to C.
+ */
+typedef struct VtViewer VtViewer;
+
+/**
+ * One cell as the renderer sees it. `ch` is a Unicode scalar; `fg`/`bg`
+ * are `[kind, a, b, c]` with kind 0 = default, 1 = indexed (`a`),
+ * 2 = rgb (`a`,`b`,`c`); `attrs` are `vt_core::cell::Attrs` bits.
+ */
+typedef struct VtCell {
+  /**
+   * Base code point.
+   */
+  uint32_t ch;
+  /**
+   * Foreground.
+   */
+  uint8_t fg[4];
+  /**
+   * Background.
+   */
+  uint8_t bg[4];
+  /**
+   * Attribute bits.
+   */
+  uint16_t attrs;
+  /**
+   * Reserved; zero.
+   */
+  uint16_t reserved;
+} VtCell;
+
+/**
+ * A read-only view of the grid, valid between `vt_viewer_acquire` and
+ * `vt_viewer_release`. `cells` is row-major, `cols * rows` long.
+ */
+typedef struct VtGridView {
+  /**
+   * Cells.
+   */
+  const struct VtCell *cells;
+  /**
+   * Columns.
+   */
+  uint16_t cols;
+  /**
+   * Rows.
+   */
+  uint16_t rows;
+  /**
+   * Cursor row.
+   */
+  uint16_t cursor_row;
+  /**
+   * Cursor column.
+   */
+  uint16_t cursor_col;
+  /**
+   * Cursor visible.
+   */
+  bool cursor_visible;
+  /**
+   * Sequence number of the last applied delta; unchanged means nothing
+   * new to draw.
+   */
+  uint64_t seq;
+  /**
+   * The daemon connection is gone; the grid is the last known state.
+   */
+  bool disconnected;
+} VtGridView;
+
+/**
+ * Callback type for dirty notifications; runs on the viewer's own thread.
+ */
+typedef void (*VtDirtyCallback)(void *ctx);
+
+/**
+ * A key event as the renderer reports it. `key` is a `KeyCode` numeric
+ * value, `mods` are `KeyMods` bits, `action` 0 press / 1 release / 2 repeat.
+ * `utf8` holds the produced text (up to 8 bytes, `utf8_len` used).
+ */
+typedef struct VtKeyEvent {
+  /**
+   * Press / release / repeat.
+   */
+  uint8_t action;
+  /**
+   * Physical key code.
+   */
+  uint16_t key;
+  /**
+   * Modifier bits.
+   */
+  uint16_t mods;
+  /**
+   * Produced text.
+   */
+  uint8_t utf8[8];
+  /**
+   * Bytes used in `utf8`.
+   */
+  uint8_t utf8_len;
+  /**
+   * Unshifted character, or 0.
+   */
+  uint32_t unshifted;
+} VtKeyEvent;
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
 /**
- * Returns [`VT_FFI_ABI_VERSION`] so the Swift side can refuse a mismatched
+ * Call `method` on the daemon at `socket` with `params_json` (may be
+ * null). Returns a JSON document `{"result": …}` or `{"error": {…}}`,
+ * never null. Blocking; not for the render thread. Free with
+ * [`vt_string_free`].
+ */
+char *vt_daemon_call(const char *socket, const char *method, const char *params_json);
+
+/**
+ * The default daemon socket for this user (`VAMBIANT_TERM_RUNTIME` aware).
+ * Free with [`vt_string_free`].
+ */
+char *vt_default_socket(void);
+
+/**
+ * Returns [`ABI_VERSION`] so the Swift side can refuse a mismatched
  * static library before touching any other symbol.
  */
 uint32_t vt_ffi_abi_version(void);
+
+/**
+ * Free a string returned by this library.
+ *
+ * # Safety
+ * `s` must come from this library and not be freed twice.
+ */
+void vt_string_free(char *s);
+
+/**
+ * Lock the grid for reading and describe it. Must be paired with
+ * [`vt_viewer_release`]; the reader thread waits in between.
+ *
+ * # Safety
+ * `v` must be a live viewer and not already acquired.
+ */
+struct VtGridView vt_viewer_acquire(struct VtViewer *v);
+
+/**
+ * Attach to `session` (id or unique name) on the daemon at `socket`.
+ * Returns null when the daemon is unreachable or the session unknown; the
+ * reason is available from [`vt_viewer_last_error`]. `on_dirty(ctx)` fires
+ * after every applied delta and on disconnect, on the viewer's thread.
+ */
+struct VtViewer *vt_viewer_attach(const char *socket,
+                                  const char *session,
+                                  VtDirtyCallback on_dirty,
+                                  void *ctx);
+
+/**
+ * Detach and free. Returns `false` (and does nothing) while the grid is
+ * still acquired.
+ *
+ * # Safety
+ * `v` must come from [`vt_viewer_attach`] and not be used afterwards.
+ */
+bool vt_viewer_free(struct VtViewer *v);
+
+/**
+ * The last attach error on this thread; valid until the next call.
+ */
+const char *vt_viewer_last_error(void);
+
+/**
+ * Unlock after [`vt_viewer_acquire`]; the view's pointer is invalid after this.
+ *
+ * # Safety
+ * `v` must be a live viewer.
+ */
+void vt_viewer_release(struct VtViewer *v);
+
+/**
+ * Resize the session's grid. Returns `false` when the daemon is gone.
+ *
+ * # Safety
+ * `v` must be a live viewer.
+ */
+bool vt_viewer_resize(const struct VtViewer *v, uint16_t cols, uint16_t rows);
+
+/**
+ * Send raw bytes (paste, IME commit). Returns `false` when the daemon is gone.
+ *
+ * # Safety
+ * `v` must be a live viewer; `bytes` must point to `len` readable bytes.
+ */
+bool vt_viewer_send_bytes(const struct VtViewer *v, const uint8_t *bytes, size_t len);
+
+/**
+ * Send a key event; the daemon encodes it with the session's current
+ * keyboard modes. Returns `false` when the daemon is gone.
+ *
+ * # Safety
+ * `v` must be a live viewer.
+ */
+bool vt_viewer_send_key(const struct VtViewer *v, struct VtKeyEvent key);
+
+/**
+ * Current sequence number without locking (cheap poll for "anything new?").
+ *
+ * # Safety
+ * `v` must be a live viewer.
+ */
+uint64_t vt_viewer_seq(const struct VtViewer *v);
 
 #ifdef __cplusplus
 }  // extern "C"

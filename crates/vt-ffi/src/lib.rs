@@ -19,26 +19,26 @@ pub use viewer::*;
 
 /// ABI version. Bumped on every incompatible change to any exported type
 /// or function; Swift asserts equality at startup.
-pub const VT_FFI_ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 1;
 
-/// Returns [`VT_FFI_ABI_VERSION`] so the Swift side can refuse a mismatched
+/// Returns [`ABI_VERSION`] so the Swift side can refuse a mismatched
 /// static library before touching any other symbol.
 #[unsafe(no_mangle)]
 pub extern "C" fn vt_ffi_abi_version() -> u32 {
-    VT_FFI_ABI_VERSION
+    ABI_VERSION
 }
 
 /// Grid size as it crosses the boundary. Mirrors `vt_core::cell::GridSize`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VtGridSize {
+pub struct GridSize {
     /// Columns.
     pub cols: u16,
     /// Rows.
     pub rows: u16,
 }
 
-impl From<vt_core::cell::GridSize> for VtGridSize {
+impl From<vt_core::cell::GridSize> for GridSize {
     fn from(s: vt_core::cell::GridSize) -> Self {
         Self {
             cols: s.cols,

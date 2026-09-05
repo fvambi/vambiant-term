@@ -923,6 +923,7 @@ dependencies = [
  "serde_json",
  "vt-agent",
  "vt-core",
+ "vt-ffi",
  "vt-ipc",
  "vt-proto",
  "vt-pty",

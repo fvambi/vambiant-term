@@ -101,6 +101,8 @@ Two tiers, deliberately (ADR-0002):
 
 **Cold path — `swift-bridge` 0.1.59.** Config, session lifecycle, provider calls, async operations. It has real bidirectional async (with the caveat that an async Swift fn returning `Result` needs typed `throws(E)`). It is a 0.1.x crate with intermittent maintenance — acceptable for the cold path, unacceptable for 120 Hz damage streaming.
 
+> **As built (M4, 2026-09-05):** the cold path is `vt_daemon_call` — one JSON-RPC call per invocation, same wire contract as the `vterm` CLI. `swift-bridge` is deferred; see the ADR-0002 amendment. The hot path is `vt_viewer_*` in `crates/vt-ffi/src/viewer.rs`: an in-process viewer with two daemon connections (stream and input, the same split `vterm attach` uses) and a `#[repr(C)]` cell grid.
+
 Explicitly rejected: **UniFFI** (serializes across the boundary, MPL-2.0, known Swift 6 async/`Sendable` gaps) and **cxx** (Rust→C++→Swift is two bridges and inherits every Swift C++ interop limitation).
 
 New in Swift 6.3: the `@c` attribute exposes Swift functions as clean C symbols, which removes the `@_cdecl` hackery in the Swift→Rust callback direction. Use it.
@@ -166,7 +168,7 @@ Per-repo: `.vambiant-term/policy.toml` (committable, narrows but never widens th
 | Tool | Version | Notes |
 |---|---|---|
 | Rust | ≥ **1.98.1** stable, edition 2024 | 1.98.1 fixed a vtable miscompilation; do not pin below it |
-| Swift | ≥ **6.3** | `@c` attribute; full Xcode required for Metal + signing |
+| Swift | ≥ **6.3** | `@c` attribute. Builds under the Command Line Tools alone: Metal shaders are compiled at runtime (`makeLibrary(source:)`) because the CLT ship no `metal` compiler; signing is ad hoc until M9 |
 | macOS SDK | 26.x | |
 | mise | manages rust/node/swift-tool versions — `mise.toml` is the source of truth | |
 | cbindgen | 0.29.x | generates `vt_ffi.h` in a build step, checked in and diffed in CI |
