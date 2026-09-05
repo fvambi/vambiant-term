@@ -310,7 +310,8 @@ pub fn ingest(message: &Value, counter: u64) -> Ingested {
         | "turn/plan/updated"
         | "thread/goal/cleared"
         | "thread/goal/updated"
-        | "thread/name/updated" => {}
+        | "thread/name/updated"
+        | "deprecationNotice" => {}
         other => {
             out.warnings.push(Warning(format!(
                 "unknown app-server message `{other}`; passing through as Unknown"
