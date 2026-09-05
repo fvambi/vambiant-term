@@ -185,6 +185,22 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("pty") => spike_pty(),
+        Some("dump") => {
+            let path = args.get(2).expect("dump <file> [cols] [rows]");
+            let cols = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(80);
+            let rows = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(24);
+            let data = fs::read(path).expect("read file");
+            let mut term = new_term(cols, rows);
+            term.vt_write(&data);
+            let (_, _, text, _) = snapshot(&term);
+            print!("{text}");
+            println!(
+                "#cursor {},{} history={}",
+                term.cursor_y().unwrap_or(0),
+                term.cursor_x().unwrap_or(0),
+                term.scrollback_rows().unwrap_or(0)
+            );
+        }
         Some("bench") => {
             let path = args.get(2).expect("bench <file> [cols] [rows]");
             let cols = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(200);

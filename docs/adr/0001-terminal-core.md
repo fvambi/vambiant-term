@@ -30,7 +30,7 @@ M0 benchmarked both cores on the same 32 MiB corpora (`docs/10` §1): `libghostt
 
 Proposed change: make `libghostty-vt` the primary backend behind `TerminalCore`, keep `alacritty_terminal` as the compiled fallback through M1, and drop it at M1 exit if two gates hold:
 
-1. **Grid parity** — the visible-grid checksums differed on five of six corpora in M0; a headless snapshot diff must explain that before any fixture is written against either engine.
+1. **Grid parity** — ✅ met 2026-09-05: with CRLF input all six corpora are byte-identical; the only divergence is that alacritty_terminal keeps the pending-wrap state across a linefeed while libghostty-vt clears it (xterm behaviour). Fixture `tests/fixtures/vt/pending-wrap-lf/`.
 2. **Hermetic build** — the sys crate git-clones Ghostty and runs `zig build` (zig 0.15.2 exactly; on this Mac only with the SDK shim in `scripts/bench/build-ghostty.sh`). Vendor the pinned Ghostty source and drive the build from mise so CI never fetches.
 
 Consequences if accepted: `!Send`/`!Sync` terminal handles (one per reader thread — already the docs/02 §4 design), a second toolchain (zig) in `mise.toml`, a pre-1.0 C API with expected breaking changes, and kitty graphics available without a Rust decoder. The strategic note above (Swift calling libghostty directly) becomes a live option rather than a hypothetical.

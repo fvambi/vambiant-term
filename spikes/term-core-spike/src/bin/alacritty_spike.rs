@@ -235,6 +235,23 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("pty") => spike_pty(),
+        Some("dump") => {
+            let path = args.get(2).expect("dump <file> [cols] [rows]");
+            let cols = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(80);
+            let rows = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(24);
+            let data = fs::read(path).expect("read file");
+            let mut term = Term::new(config(), &TermSize::new(cols, rows), Recorder::default());
+            let mut processor: Processor<StdSyncHandler> = Processor::new();
+            processor.advance(&mut term, &data);
+            let c = term.grid().cursor.point;
+            print!("{}", dump_grid(&term));
+            println!(
+                "#cursor {},{} history={}",
+                c.line.0,
+                c.column.0,
+                term.grid().history_size()
+            );
+        }
         Some("bench") => {
             let path = args.get(2).expect("bench <file> [cols] [rows]");
             let cols = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(200);
