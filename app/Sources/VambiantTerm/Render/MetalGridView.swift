@@ -28,7 +28,7 @@ final class MetalGridView: NSView {
     private static let maxInFlight = 2
     private var pending = false
     private var lastSeq: UInt64 = .max
-    private var keymap = Keymap()
+    var keymap = Keymap()
     private let banner = NSTextField(labelWithString: "")
     private(set) var cols: UInt16 = 0
     private(set) var rows: UInt16 = 0
@@ -37,7 +37,16 @@ final class MetalGridView: NSView {
     /// renders one frame, reads its texture back and writes it out.
     private let screenshotEnabled = ProcessInfo.processInfo.environment["VAMBIANT_TERM_SCREENSHOT"] != nil
     private var screenshotPath: String?
-    let padding = CGSize(width: 8, height: 6)
+    var padding = CGSize(width: 8, height: 6) {
+        didSet {
+            if padding != oldValue {
+                updateBacking()
+            }
+        }
+    }
+
+    private var blinkTimer: Timer?
+    private var cursorOn = true
 
     var viewer: SessionViewer? {
         didSet {
@@ -148,6 +157,7 @@ final class MetalGridView: NSView {
 
     override func becomeFirstResponder() -> Bool {
         focused = true
+        restartBlink()
         lastSeq = .max
         markDirty()
         return true
@@ -155,9 +165,41 @@ final class MetalGridView: NSView {
 
     override func resignFirstResponder() -> Bool {
         focused = false
+        blinkTimer?.invalidate()
+        blinkTimer = nil
+        cursorOn = true
         lastSeq = .max
         markDirty()
         return true
+    }
+
+    /// `[cursor] blink` / `blink_interval_ms`.
+    var blink: (enabled: Bool, intervalMs: Int) = (true, 600) {
+        didSet { restartBlink() }
+    }
+
+    /// The cursor shows solid right after activity, then blinks.
+    private func restartBlink() {
+        blinkTimer?.invalidate()
+        blinkTimer = nil
+        cursorOn = true
+        guard focused, blink.enabled, blink.intervalMs >= 100 else { return }
+        let interval = Double(blink.intervalMs) / 1000
+        blinkTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.cursorOn.toggle()
+                self.lastSeq = .max
+                self.markDirty()
+            }
+        }
+    }
+
+    /// Fonts, theme, cursor or padding changed under us.
+    func configChanged() {
+        lastSeq = .max
+        updateBacking()
+        markDirty()
     }
 
     // MARK: Drawing
@@ -216,9 +258,9 @@ final class MetalGridView: NSView {
         let origin = CGPoint(x: padding.width * scale, y: padding.height * scale)
         var summary: FrameSummary?
         let built: Bool = viewer.withGrid { view in
-            var ok = renderer.build(view, origin: origin, focused: focused)
+            var ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn)
             if !ok {
-                ok = renderer.build(view, origin: origin, focused: focused)
+                ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn)
             }
             if onPresented != nil {
                 summary = FrameSummary(seq: view.seq, text: view.text())
@@ -265,6 +307,9 @@ final class MetalGridView: NSView {
     // MARK: Input
 
     override func keyDown(with event: NSEvent) {
+        if blinkTimer != nil {
+            restartBlink()
+        }
         switch keymap.resolve(Keymap.chord(from: event)) {
         case .prefixArmed:
             return
@@ -287,7 +332,7 @@ final class MetalGridView: NSView {
         // Keep ⌘-chords out of the menu bar when the keymap binds them;
         // unbound ones (⌘Q, ⌘V…) fall through to the menu as usual.
         let chord = Keymap.chord(from: event)
-        guard chord.command, Keymap.macos[chord] != nil else { return false }
+        guard keymap.isCommandBinding(chord) else { return false }
         keyDown(with: event)
         return true
     }

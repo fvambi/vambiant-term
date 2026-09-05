@@ -27,6 +27,13 @@ struct RGBA: Equatable, Sendable {
         self.init(r: Float(r8) / 255, g: Float(g8) / 255, b: Float(b8) / 255)
     }
 
+    /// `#RRGGBB`, case-insensitive; nil when malformed.
+    init?(hexString: String) {
+        let digits = hexString.hasPrefix("#") ? String(hexString.dropFirst()) : hexString
+        guard digits.count == 6, let n = UInt32(digits, radix: 16) else { return nil }
+        self.init(hex: n)
+    }
+
     var simd: SIMD4<Float> {
         SIMD4(r, g, b, a)
     }
@@ -80,6 +87,24 @@ struct Theme: Sendable {
             p.append(RGBA(r8: v, g8: v, b8: v))
         }
         palette = p
+    }
+
+    /// From a `themes/*.toml` file as the daemon serves it. Nil when a
+    /// colour does not parse — the daemon warns about those separately.
+    init?(file: ThemeFile) {
+        let all = [file.background, file.foreground, file.cursor, file.selection] + file.normal.ordered + file.bright.ordered
+        let parsed = all.compactMap(RGBA.init(hexString:))
+        guard parsed.count == all.count else { return nil }
+        self.init(
+            name: file.name,
+            background: parsed[0],
+            foreground: parsed[1],
+            cursor: parsed[2],
+            selection: parsed[3],
+            ansi: parsed[4...].map { c in
+                UInt32(c.r * 255 + 0.5) << 16 | UInt32(c.g * 255 + 0.5) << 8 | UInt32(c.b * 255 + 0.5)
+            }
+        )
     }
 
     /// Resolves a wire colour; `isForeground` picks the default.

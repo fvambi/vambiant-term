@@ -50,8 +50,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         nil
     }
 
+    /// `[mux] detach_on_close`; false kills the sessions with the window.
+    var detachOnClose = true
+
     private func makePane() -> PaneController {
         let pane = PaneController(daemon: daemon, renderer: renderer)
+        (NSApp.delegate as? AppDelegate)?.configure(pane.view)
         pane.view.onAction = { [weak self, weak pane] action in
             guard let self, let pane else { return }
             perform(action, on: pane)
@@ -88,6 +92,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             pane.interrupt()
         case .sendPrefix:
             pane.viewer?.send(bytes: [0x02])
+        case .openSettings:
+            (NSApp.delegate as? AppDelegate)?.showSettings(nil)
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
             NSSound.beep()
@@ -102,7 +108,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         for pane in container.panes {
-            pane.detach()
+            if detachOnClose {
+                pane.detach()
+            } else {
+                pane.kill()
+            }
         }
         (NSApp.delegate as? AppDelegate)?.forget(self)
     }

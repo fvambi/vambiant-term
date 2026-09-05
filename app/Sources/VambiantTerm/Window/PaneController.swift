@@ -71,6 +71,14 @@ final class PaneController {
         viewer = nil
     }
 
+    /// `[mux] detach_on_close = false`: the session goes with the window.
+    func kill() {
+        let id = session?.id
+        detach()
+        guard let id else { return }
+        try? daemon.invoke("session.kill", params: ["id": id])
+    }
+
     var title: String {
         if let session {
             return session.name

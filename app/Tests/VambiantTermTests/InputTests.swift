@@ -50,20 +50,20 @@ struct KeymapTests {
 
     @Test func prefixArmsThenConsumesOneKey() {
         var km = Keymap()
-        #expect(km.resolve(Keymap.prefix) == .prefixArmed)
+        #expect(km.resolve(km.prefix) == .prefixArmed)
         #expect(km.resolve(KeyChord("%", shift: true)) == .action(.splitRight))
         #expect(km.resolve(KeyChord("%", shift: true)) == .passthrough, "prefix is single-shot")
     }
 
     @Test func doublePrefixSendsALiteralPrefix() {
         var km = Keymap()
-        _ = km.resolve(Keymap.prefix)
-        #expect(km.resolve(Keymap.prefix) == .action(.sendPrefix))
+        _ = km.resolve(km.prefix)
+        #expect(km.resolve(km.prefix) == .action(.sendPrefix))
     }
 
     @Test func unknownPrefixedKeyPassesThrough() {
         var km = Keymap()
-        _ = km.resolve(Keymap.prefix)
+        _ = km.resolve(km.prefix)
         #expect(km.resolve(KeyChord("q")) == .passthrough)
     }
 

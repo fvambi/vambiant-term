@@ -34,12 +34,19 @@ struct Uniforms {
     var viewport: SIMD2<Float>
 }
 
+enum CursorStyle: String, Sendable {
+    case block, bar, underline
+}
+
 @MainActor
 final class GridRenderer {
     let device: MTLDevice
     let queue: MTLCommandQueue
-    let fonts: FontSet
+    private(set) var fonts: FontSet
     var theme: Theme
+    var cursorStyle: CursorStyle = .block
+    /// `[font] bold_is_bright`: bold text in the 0–7 palette uses 8–15.
+    var boldIsBright = false
     private(set) var scale: CGFloat
     private(set) var atlas: GlyphAtlas
     private let bgPipeline: MTLRenderPipelineState
@@ -92,6 +99,12 @@ final class GridRenderer {
         atlas = try GlyphAtlas(device: device, fonts: fonts, scale: scale)
     }
 
+    /// `[font]` changed: new metrics, new atlas.
+    func setFonts(_ newFonts: FontSet) throws {
+        fonts = newFonts
+        atlas = try GlyphAtlas(device: device, fonts: newFonts, scale: scale)
+    }
+
     /// Backing scale changed: glyphs must be re-rasterised.
     func setScale(_ newScale: CGFloat) throws {
         guard newScale != scale else { return }
@@ -106,7 +119,7 @@ final class GridRenderer {
     /// Builds the instance lists for `view` with the cell grid starting at
     /// `origin` (device pixels). Returns false if the atlas was cleared
     /// mid-build and the caller should run it again.
-    func build(_ view: VtGridView, origin: CGPoint, focused: Bool) -> Bool {
+    func build(_ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true) -> Bool {
         let generation = atlas.generation
         bg.removeAll(keepingCapacity: true)
         glyphs.removeAll(keepingCapacity: true)
@@ -132,7 +145,11 @@ final class GridRenderer {
                     continue
                 }
                 let wide = attrs & Attrs.wide != 0
-                var fg = theme.resolve((cell.fg.0, cell.fg.1, cell.fg.2, cell.fg.3), isForeground: true)
+                var fgWire = (cell.fg.0, cell.fg.1, cell.fg.2, cell.fg.3)
+                if boldIsBright, attrs & Attrs.bold != 0, fgWire.0 == 1, fgWire.1 < 8 {
+                    fgWire.1 += 8
+                }
+                var fg = theme.resolve(fgWire, isForeground: true)
                 var bgc = theme.resolve((cell.bg.0, cell.bg.1, cell.bg.2, cell.bg.3), isForeground: false)
                 if attrs & Attrs.inverse != 0 {
                     swap(&fg, &bgc)
@@ -141,7 +158,8 @@ final class GridRenderer {
                     fg = fg.scaled(0.6)
                 }
                 let isCursor = view.cursor_visible && Int(view.cursor_row) == r && Int(view.cursor_col) == c
-                if isCursor, focused {
+                let solidCursor = isCursor && focused && cursorOn && cursorStyle == .block
+                if solidCursor {
                     bgc = theme.cursor
                     fg = theme.background
                 }
@@ -150,6 +168,8 @@ final class GridRenderer {
                 bg.append(CellInstance(origin: originPx, size: size, uv: .zero, fg: fg.simd, bg: bgc.simd, flags: 0))
                 if isCursor, !focused {
                     appendHollowCursor(at: originPx, size: size)
+                } else if isCursor, cursorOn, cursorStyle != .block {
+                    appendThinCursor(at: originPx, size: size)
                 }
                 if attrs & Attrs.hidden != 0 {
                     continue
@@ -180,6 +200,16 @@ final class GridRenderer {
         for (o, s) in edges {
             bg.append(CellInstance(origin: o, size: s, uv: .zero, fg: cc, bg: cc, flags: 0))
         }
+    }
+
+    /// Bar or underline cursor: a thin rect in the cursor colour.
+    private func appendThinCursor(at origin: SIMD2<Float>, size: SIMD2<Float>) {
+        let t = Float(max(1, (2 * scale).rounded()))
+        let cc = theme.cursor.simd
+        let rect: (SIMD2<Float>, SIMD2<Float>) = cursorStyle == .bar
+            ? (origin, SIMD2(t, size.y))
+            : (origin + SIMD2(0, size.y - t), SIMD2(size.x, t))
+        bg.append(CellInstance(origin: rect.0, size: rect.1, uv: .zero, fg: cc, bg: cc, flags: 0))
     }
 
     private struct Decoration {

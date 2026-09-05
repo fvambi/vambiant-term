@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var renderer: GridRenderer!
     private var windows: [TerminalWindowController] = []
     private var probe: LatencyProbe?
+    private(set) var configModel: ConfigModel!
+    private var settings: SettingsWindowController?
+    private var events: EventStream?
+    private var shellConfig: ShellConfig?
+    private(set) var keymap = Keymap()
+    private var appearanceObservation: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let abi = vt_ffi_abi_version()
@@ -45,9 +51,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             fatal("\(error)")
         }
+        configModel = ConfigModel(daemon: daemon)
+        configModel.onChange = { [weak self] snapshot in self?.apply(snapshot) }
+        configModel.reload()
+        do {
+            events = try EventStream(socket: socket) { [weak self] method, _ in
+                if method == "config.changed" {
+                    self?.configModel.reload()
+                }
+            }
+        } catch {
+            NSLog("event stream unavailable: \(error); config changes made outside the app will not be picked up")
+        }
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.configModel.reload() }
+            }
+        }
         installMenu()
         newWindow(tabbedWith: nil)
         NSApp.activate(ignoringOtherApps: true)
+        if let shot = ProcessInfo.processInfo.environment["VAMBIANT_TERM_SCREENSHOT_SETTINGS"] {
+            showSettings(nil)
+            Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
+                MainActor.assumeIsolated {
+                    self.settings?.capture(to: shot)
+                    exit(0)
+                }
+            }
+        }
         if let n = ProcessInfo.processInfo.environment["VAMBIANT_TERM_LATENCY_PROBE"].flatMap(Int.init),
            let pane = windows.first?.container.focused {
             probe = LatencyProbe(pane: pane, keystrokes: n)
@@ -88,6 +120,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.removeAll { $0 === controller }
     }
 
+    @objc func showSettings(_ sender: Any?) {
+        if settings == nil {
+            settings = SettingsWindowController(model: configModel)
+        }
+        settings?.showWindow(nil)
+        settings?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Every pane view gets the current keymap, padding and cursor settings.
+    func configure(_ view: MetalGridView) {
+        view.keymap = keymap
+        if let c = shellConfig {
+            view.padding = CGSize(width: c.window.padding.x, height: c.window.padding.y)
+            view.blink = (c.cursor.blink, c.cursor.blinkIntervalMs)
+        }
+    }
+
+    private var allViews: [MetalGridView] {
+        windows.flatMap { $0.container.panes.map(\.view) }
+    }
+
+    /// Applies what the shell honours (docs/09 `applied: now`): fonts,
+    /// theme (following the system appearance), padding, cursor, keymap,
+    /// close policy. Anything else is the daemon's.
+    private func apply(_ snapshot: ConfigSnapshot) {
+        keymap = Keymap(resolved: snapshot.keymap, actions: snapshot.actions)
+        guard let c = try? snapshot.config.decode(ShellConfig.self) else {
+            NSLog("config: cannot decode the shell's keys; keeping the previous values")
+            return
+        }
+        let fontChanged = shellConfig?.font != c.font
+        shellConfig = c
+        if fontChanged {
+            let families = [c.font.family] + c.font.fallback
+            do {
+                try renderer.setFonts(FontSet(families: families, size: c.font.size, lineHeight: c.font.lineHeight))
+            } catch {
+                NSLog("config: font change failed: \(error)")
+            }
+        }
+        renderer.boldIsBright = c.font.boldIsBright
+        renderer.cursorStyle = CursorStyle(rawValue: c.cursor.style) ?? .block
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let wanted = c.theme.followSystem && !dark ? c.theme.light : c.theme.name
+        if let file = snapshot.themes[wanted], let theme = Theme(file: file) {
+            renderer.theme = theme
+        } else {
+            NSLog("config: theme %@ is unavailable; keeping %@", wanted, renderer.theme.name)
+        }
+        for w in windows {
+            w.detachOnClose = c.mux.detachOnClose
+            w.window?.backgroundColor = NSColor(
+                red: CGFloat(renderer.theme.background.r), green: CGFloat(renderer.theme.background.g),
+                blue: CGFloat(renderer.theme.background.b), alpha: 1
+            )
+        }
+        for view in allViews {
+            configure(view)
+            view.configChanged()
+        }
+    }
+
     @objc func newWindowAction(_ sender: Any?) {
         newWindow(tabbedWith: nil)
     }
@@ -105,6 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Vambiant Term", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
