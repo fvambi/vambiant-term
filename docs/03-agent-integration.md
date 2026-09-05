@@ -151,6 +151,8 @@ Protocol:
 4. For sessions we spawn through the **Agent SDK** rather than the bare CLI, `canUseTool` receives a `requestId`; returning `null` lets us answer the `control_response` out-of-band from the inbox process. That is the clean path and the reason a future `vtermd` may host SDK sessions directly.
 5. ⚠️ Returning `null` in any case where we do *not* subsequently answer hangs the tool call forever. Every deferred request gets a watchdog and a visible "still waiting" state.
 
+**As built in M3 (2026-09-05, bare CLI path):** the daemon's `http` hook receiver holds the `PermissionRequest` connection for up to 90 s (well under the 600 s hook timeout) while the inbox waits for a human; an inbox decision is returned as the vendor-shaped `allow`/`deny` JSON, so the agent never shows its own prompt. If nobody answers in time the receiver returns `{}`, the agent's own prompt appears in its terminal, and the inbox item stays with `prompt_shown = true`; answering it then injects `y`/`n` into the session's PTY — a labelled, second-best path. For headless runs (`claude -p --permission-prompts none`) the hook is the *only* approval surface, which is exactly what makes `vterm new --agent claude -- claude -p …` supervisable.
+
 Note the documented gotcha: `canUseTool` fires **only** when the flow falls through to a prompt — never for calls auto-approved by `allowedTools`, allow rules, or the permission mode. To see every tool call, use `PreToolUse`. We do both.
 
 ### 4.7 Headless and background sessions

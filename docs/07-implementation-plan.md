@@ -55,13 +55,13 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 ## M3 — Agent adapters + the inbox (4–5 weeks)
 
-- [ ] `AgentAdapter` trait and the normalised `AgentEvent` model.
-- [ ] Claude adapter: session-scoped `--settings` file, HTTP hook handlers, status line receiver, `--include-hook-events` ingestion, `claude agents --json` cooperation.
-- [ ] The deferred-decision protocol (§4.6 of `03`) with watchdogs on every deferred request.
+- [x] `AgentAdapter` trait and the normalised `AgentEvent` model. *(`vt-proto::agent`, `vt-agent::adapter`; unknown events/fields degrade to `Unknown` + warning, contract-tested)*
+- [~] Claude adapter: session-scoped `--settings` file, HTTP hook handlers, status line receiver, `--include-hook-events` ingestion, `claude agents --json` cooperation. *(settings file + http hooks + status line relay + inbox done 2026-09-05; stream ingestion and `claude agents --json` cooperation pending)*
+- [~] The deferred-decision protocol (§4.6 of `03`) with watchdogs on every deferred request. *(hold-then-answer built and tested end to end; the watchdog reminder loop is not yet wired into the daemon)*
 - [ ] Codex adapter: `app-server` JSON-RPC client (`thread/*`, `turn/*`), hooks, `codex exec --json`.
 - [ ] Generic adapter: heuristics with per-agent regex packs as data files.
-- [ ] Approval queue; `vterm inbox list|allow|deny|edit`.
-- [ ] Notification Center integration with actionable notifications.
+- [~] Approval queue; `vterm inbox list|allow|deny|edit`. *(list/allow/deny done; `edit` pending)*
+- [~] Notification Center integration with actionable notifications. *(plain notifications via `osascript` from the daemon; actionable ones need the app bundle, M4)*
 - [ ] Degraded-mode detection and honest labelling.
 
 **Exit:** three agents running across two repos; every blocked one appears in `vterm inbox` within 500 ms; answering from the CLI unblocks the agent.
