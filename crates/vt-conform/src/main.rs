@@ -81,13 +81,13 @@ fn main() {
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             match reader.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
+                Ok(n) if n > 0 => {
                     if tx.send(buf[..n].to_vec()).is_err() {
                         break;
                     }
                 }
-                Err(_) => break,
+                // EOF or EIO once esctest exits and the slave closes.
+                _ => break,
             }
         }
     });
