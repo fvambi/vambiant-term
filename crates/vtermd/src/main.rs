@@ -16,6 +16,7 @@
 #![allow(unsafe_code)] // reaping detached holders with waitpid; nothing else.
 
 mod agents;
+mod codex;
 mod holder;
 mod registry;
 mod rpc;

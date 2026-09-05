@@ -146,7 +146,40 @@ impl Registry {
                 agents.register(id.clone(), kind, token.clone());
                 Ok((spec, Some(token), vt_agent::claude::CAPABILITIES))
             }
-            AgentKind::Codex | AgentKind::Generic => Ok((spec, None, Capabilities::default())),
+            AgentKind::Codex => {
+                let agents = self.agents().ok_or("agent layer not ready")?;
+                let cwd = req
+                    .cwd
+                    .clone()
+                    .or_else(|| std::env::current_dir().ok())
+                    .unwrap_or_else(|| "/".into());
+                let socket = crate::codex::start_app_server(&self.runtime_dir, &id.0, &cwd)?;
+                if spec.argv.is_empty() {
+                    spec.argv.push("codex".into());
+                }
+                // `codex [args]` → `codex --remote unix://<sock> [args]`; any
+                // other program gets the socket in the environment only.
+                let is_codex = spec.argv[0].rsplit('/').next() == Some("codex");
+                if is_codex {
+                    let program = spec.argv.remove(0);
+                    let mut argv = vec![
+                        program,
+                        "--remote".into(),
+                        format!("unix://{}", socket.display()),
+                    ];
+                    argv.extend(spec.argv);
+                    spec.argv = argv;
+                }
+                spec.env.push((
+                    "VAMBIANT_TERM_CODEX_SOCKET".into(),
+                    socket.display().to_string(),
+                ));
+                let token = crate::agents::Agents::new_token();
+                agents.register(id.clone(), kind, token.clone());
+                crate::codex::observe(agents, id.clone(), socket);
+                Ok((spec, Some(token), vt_agent::codex::CAPABILITIES))
+            }
+            AgentKind::Generic => Ok((spec, None, Capabilities::default())),
         }
     }
 
@@ -298,6 +331,14 @@ impl Registry {
                     info.orphaned = false;
                     if let (Some(token), Some(agents)) = (rec.agent_token.clone(), self.agents()) {
                         agents.register(id.clone(), info.agent, token);
+                        if info.agent == AgentKind::Codex {
+                            info.capabilities = vt_agent::codex::CAPABILITIES;
+                            let socket = std::env::var_os("VTERMD_CODEX_SOCKET").map_or_else(
+                                || crate::codex::socket_for(&self.runtime_dir, &id.0),
+                                PathBuf::from,
+                            );
+                            crate::codex::observe(agents, id.clone(), socket);
+                        }
                         if info.agent == AgentKind::Claude {
                             info.capabilities = vt_agent::claude::CAPABILITIES;
                         }
@@ -390,6 +431,12 @@ impl Registry {
     pub fn remove(&self, id: &SessionId) {
         if let Some(agents) = self.agents() {
             agents.unregister(id);
+        }
+        let is_codex = self.find(&id.0).is_some_and(|h| {
+            h.info.lock().unwrap_or_else(PoisonError::into_inner).agent == AgentKind::Codex
+        });
+        if is_codex {
+            crate::codex::stop_app_server(&self.runtime_dir, &id.0);
         }
         self.sessions
             .lock()

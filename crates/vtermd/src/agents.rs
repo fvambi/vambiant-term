@@ -51,12 +51,21 @@ pub struct InboxItem {
     pub prompt_shown: bool,
 }
 
-struct PendingApproval {
+/// An approval waiting for a decision.
+pub struct PendingApproval {
     item: InboxItem,
     since: Instant,
     decision: Mutex<Option<Decision>>,
     decided: Condvar,
     hook_open: Mutex<bool>,
+    withdrawn: Mutex<bool>,
+}
+
+impl PendingApproval {
+    /// The approval id.
+    pub fn id(&self) -> ApprovalId {
+        self.item.id.clone()
+    }
 }
 
 /// Per-session agent state owned by the daemon.
@@ -96,7 +105,8 @@ impl Agents {
     ) -> Arc<AgentSession> {
         let adapter: Box<dyn AgentAdapter> = match kind {
             AgentKind::Claude => Box::new(ClaudeAdapter::default()),
-            AgentKind::Codex | AgentKind::Generic => Box::new(GenericAdapter),
+            AgentKind::Codex => Box::new(vt_agent::CodexAdapter::default()),
+            AgentKind::Generic => Box::new(GenericAdapter),
         };
         let state = Arc::new(AgentSession {
             adapter: Mutex::new(adapter),
@@ -119,6 +129,15 @@ impl Agents {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|_, p| p.item.session != *session);
+    }
+
+    fn by_session(&self, session: &SessionId) -> Option<Arc<AgentSession>> {
+        self.by_token
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .find(|(s, _)| s == session)
+            .map(|(_, st)| Arc::clone(st))
     }
 
     fn lookup(&self, token: &str) -> Option<(SessionId, Arc<AgentSession>)> {
@@ -217,6 +236,86 @@ impl Agents {
         Some(item)
     }
 
+    /// Apply everything an adapter produced for a session: warnings to the
+    /// log, withdrawn approvals out of the inbox, a reported state, then the
+    /// events. Returns the approval to hold, if one was raised.
+    pub fn apply_ingested(
+        &self,
+        session: &SessionId,
+        ingested: vt_agent::hooks::Ingested,
+    ) -> Option<Arc<PendingApproval>> {
+        let state = self.by_session(session)?;
+        for w in &ingested.warnings {
+            eprintln!("vtermd: session {}: {}", session.0, w.0);
+        }
+        for id in &ingested.withdrawn {
+            self.withdraw(id);
+        }
+        if let Some(sid) = ingested.agent_session_id {
+            *state
+                .vendor_session_id
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = Some(sid);
+        }
+        let held = self.apply_events(session, &state, ingested.events);
+        if let Some(reported) = ingested.state
+            && held.is_none()
+        {
+            self.set_state(session, reported);
+        }
+        held
+    }
+
+    /// Drop a pending approval the agent resolved on its own surface. Anyone
+    /// waiting on it wakes up with no decision.
+    pub fn withdraw(&self, id: &ApprovalId) {
+        let removed = self
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(id);
+        if let Some(p) = removed {
+            *p.withdrawn.lock().unwrap_or_else(PoisonError::into_inner) = true;
+            p.decided.notify_all();
+            self.record_event(
+                &p.item.session,
+                &AgentEvent::ApprovalResolved {
+                    id: id.clone(),
+                    decision: Decision::Deny {
+                        reason: "answered in the agent's own prompt".into(),
+                    },
+                    by: DecisionSource::Agent,
+                },
+            );
+            self.broadcast_inbox();
+        }
+    }
+
+    /// Block until the inbox decides (`Some`) or the item is withdrawn
+    /// (`None`). No timeout: the agent's own prompt is visible all along.
+    pub fn wait_decision(pending: &Arc<PendingApproval>) -> Option<Decision> {
+        let guard = pending
+            .decision
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let guard = pending
+            .decided
+            .wait_while(guard, |d| {
+                d.is_none()
+                    && !*pending
+                        .withdrawn
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+            })
+            .unwrap_or_else(PoisonError::into_inner);
+        guard.clone()
+    }
+
+    /// Record and broadcast an event on a session's behalf.
+    pub fn record(&self, session: &SessionId, event: &AgentEvent) {
+        self.record_event(session, event);
+    }
+
     fn set_state(&self, session: &SessionId, state: AgentState) {
         if let Some(h) = self.registry.find(&session.0) {
             let mut info = h.info.lock().unwrap_or_else(PoisonError::into_inner);
@@ -306,6 +405,7 @@ impl Agents {
                         decision: Mutex::new(None),
                         decided: Condvar::new(),
                         hook_open: Mutex::new(true),
+                        withdrawn: Mutex::new(false),
                     });
                     self.pending
                         .lock()
@@ -376,16 +476,7 @@ impl HttpHandler for Agents {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .ingest(input);
-        for w in &ingested.warnings {
-            eprintln!("vtermd: session {}: {}", session.0, w.0);
-        }
-        if let Some(sid) = ingested.agent_session_id.clone() {
-            *state
-                .vendor_session_id
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner) = Some(sid);
-        }
-        match self.apply_events(&session, &state, ingested.events) {
+        match self.apply_ingested(&session, ingested) {
             Some(pending) => HttpResponse::json(&self.hold(&pending)),
             None => HttpResponse::json(&answer::pass()),
         }
