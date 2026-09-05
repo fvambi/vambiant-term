@@ -1,5 +1,7 @@
 //! Server/client round trip over a real Unix socket.
 
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -59,7 +61,6 @@ fn call_error_and_notification() {
     assert_eq!(n.method, "session.changed");
 
     // Socket file and directory permissions.
-    use std::os::unix::fs::PermissionsExt;
     let dir_mode = std::fs::metadata(path.parent().unwrap())
         .unwrap()
         .permissions()
@@ -72,7 +73,6 @@ fn call_error_and_notification() {
 
 #[test]
 fn malformed_line_gets_a_parse_error_not_a_hangup() {
-    use std::io::{BufRead, BufReader, Write};
     let path = temp_socket("malformed");
     let _server = Server::start(&path, Arc::new(Echo)).expect("start");
     let mut raw = std::os::unix::net::UnixStream::connect(&path).unwrap();
