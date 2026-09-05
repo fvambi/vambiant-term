@@ -18,6 +18,7 @@ pub mod event;
 pub mod harness;
 pub mod key;
 
+pub use cell::CellSnapshot;
 pub use core::TerminalCore;
 pub use error::CoreError;
 pub use event::TermEvent;

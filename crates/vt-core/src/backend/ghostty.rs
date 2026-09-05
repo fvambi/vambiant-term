@@ -16,7 +16,7 @@ use libghostty_vt::key::{self, Action, Encoder, Key, Mods, OptionAsAlt};
 use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
 use libghostty_vt::screen::CellWide;
 use libghostty_vt::style::{StyleColor, Underline};
-use libghostty_vt::terminal::{ClipboardLocation, Options, Terminal};
+use libghostty_vt::terminal::{ClipboardLocation, Options, SizeReportSize, Terminal};
 
 use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize};
 use crate::core::TerminalCore;
@@ -38,6 +38,8 @@ pub struct GhosttyCore {
     events: Rc<RefCell<Vec<TermEvent>>>,
     encoder: Encoder<'static>,
     size: GridSize,
+    /// Shared with the XTWINOPS size reporter; updated on resize.
+    reported: Rc<RefCell<(GridSize, (u32, u32))>>,
     /// Set by resize; the next `take_damage` reports `Full` regardless of rows.
     force_full: bool,
 }
@@ -124,6 +126,20 @@ impl GhosttyCore {
             Ok(())
         })
         .map_err(backend("on_clipboard_write"))?;
+        // XTWINOPS size reports (CSI 14/16/18 t). Pixel metrics are nominal
+        // until the renderer sets real ones; programs mostly want cells.
+        let reported = Rc::new(RefCell::new((size, (8u32, 16u32))));
+        let rep = Rc::clone(&reported);
+        term.on_size(move |_t| {
+            let (g, (w, h)) = *rep.borrow();
+            Some(SizeReportSize {
+                rows: g.rows,
+                columns: g.cols,
+                cell_width: w,
+                cell_height: h,
+            })
+        })
+        .map_err(backend("on_size"))?;
         let render = RenderState::new().map_err(|e| CoreError::Backend {
             what: "RenderState::new",
             detail: e.to_string(),
@@ -149,8 +165,15 @@ impl GhosttyCore {
             events,
             encoder,
             size,
+            reported,
             force_full: true,
         })
+    }
+
+    /// Tell the terminal the renderer's real cell size in pixels, used for
+    /// XTWINOPS pixel reports and kitty graphics placement.
+    pub fn set_cell_pixel_size(&mut self, width: u32, height: u32) {
+        self.reported.borrow_mut().1 = (width, height);
     }
 
     /// Number of scrollback rows currently retained.
@@ -180,6 +203,7 @@ impl TerminalCore for GhosttyCore {
                 detail: e.to_string(),
             })?;
         self.size = size;
+        self.reported.borrow_mut().0 = size;
         self.force_full = true;
         Ok(())
     }
@@ -516,6 +540,24 @@ mod tests {
             ))
             .is_empty()
         );
+    }
+
+    #[test]
+    fn xtwinops_size_reports() {
+        let mut core = GhosttyCore::new(GridSize {
+            cols: 100,
+            rows: 30,
+        })
+        .unwrap();
+        core.set_cell_pixel_size(9, 18);
+        core.advance(b"\x1b[18t\x1b[14t\x1b[16t");
+        assert_eq!(
+            core.take_responses(),
+            b"\x1b[8;30;100t\x1b[4;540;900t\x1b[6;18;9t".to_vec()
+        );
+        core.resize(GridSize { cols: 80, rows: 24 }).unwrap();
+        core.advance(b"\x1b[18t");
+        assert_eq!(core.take_responses(), b"\x1b[8;24;80t".to_vec());
     }
 
     #[test]

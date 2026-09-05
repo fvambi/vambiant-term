@@ -1,0 +1,16 @@
+[package]
+name = "vt-conform"
+description = "Runs esctest2 against the headless terminal core over a real PTY (docs/08 §2)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vt-core.workspace = true
+vt-pty.workspace = true
+
+[lints]
+workspace = true

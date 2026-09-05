@@ -508,9 +508,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vt-conform"
+version = "0.0.0"
+dependencies = [
+ "vt-core",
+ "vt-pty",
+]
+
+[[package]]
 name = "vt-core"
 version = "0.0.0"
 dependencies = [
+ "libghostty-vt",
  "thiserror",
 ]
 

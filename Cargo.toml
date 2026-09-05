@@ -34,6 +34,7 @@ vt-store = { path = "crates/vt-store" }
 vt-worktree = { path = "crates/vt-worktree" }
 vt-config = { path = "crates/vt-config" }
 vt-ffi = { path = "crates/vt-ffi" }
+vt-conform = { path = "crates/vt-conform" }
 
 # External. Every entry here has a note in docs/10-research-notes.md.
 libc = "0.2"                         # vt-pty only: openpty/fork/exec/ioctl
