@@ -1,0 +1,6 @@
+#!/bin/sh
+# See ../build-ghostty.sh. Only the SDK-path query is intercepted.
+if [ "$1" = "--sdk" ] && [ "$3" = "--show-sdk-path" ]; then
+  echo "${GHOSTTY_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}"; exit 0
+fi
+exec /usr/bin/xcrun "$@"

@@ -13,3 +13,8 @@
 # Local scratch
 /.mise.local.toml
 /scratch/
+# Testing files
+/tests/fixtures/claude/
+/tests/fixtures/anthropic/
+/tests/fixtures/openai/
+/tests/fixtures/codex/

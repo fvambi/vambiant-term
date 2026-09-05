@@ -26,9 +26,7 @@ fi
 cargo build --release -p term-core-spike --bin alacritty-spike
 cmds=(-n alacritty "./target/release/alacritty-spike bench {file} 200 50")
 if [[ $with_ghostty -eq 1 ]]; then
-  # Pre-built by scripts/bench/build-ghostty.sh; see the note there.
-  export PKG_CONFIG_PATH="$PWD/target-bench/ghostty-install/share/pkgconfig:${PKG_CONFIG_PATH:-}"
-  cargo build --release -p term-core-spike --features ghostty --bin ghostty-spike
+  scripts/bench/build-ghostty.sh
   cmds+=(-n ghostty "./target/release/ghostty-spike bench {file} 200 50")
 fi
 

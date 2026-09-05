@@ -14,17 +14,15 @@ repository.workspace = true
 [features]
 default = []
 # libghostty-vt-sys clones Ghostty at a pinned commit and runs `zig build`
-# (needs zig 0.15.2 exactly and network access). On this machine zig 0.15.2
-# cannot link against the macOS 26.5 CLT SDK, so the build is done by hand
-# against the bundled 15.4 SDK and picked up via pkg-config — see
-# scripts/bench/build-ghostty.sh. The direct sys dependency exists only to
-# turn that feature on.
-ghostty = ["dep:libghostty-vt", "dep:libghostty-vt-sys"]
+# (needs zig 0.15.2 exactly and network access on first build). On this
+# machine zig 0.15.2 cannot link against the macOS 26.5 CLT SDK, so build
+# with scripts/bench/build-ghostty.sh, which shims `xcrun` to report the
+# bundled 15.4 SDK. See docs/10-research-notes.md §1.
+ghostty = ["dep:libghostty-vt"]
 
 [dependencies]
 alacritty_terminal = { version = "0.26.0", default-features = false }
 libghostty-vt = { version = "0.2.1", optional = true, default-features = false }
-libghostty-vt-sys = { version = "0.2.1", optional = true, default-features = false, features = ["pkg-config"] }
 
 [[bin]]
 name = "alacritty-spike"
