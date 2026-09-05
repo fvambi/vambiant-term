@@ -217,15 +217,18 @@ fn create_list_input_logs_kill() {
         );
         std::thread::sleep(Duration::from_millis(30));
     }
-    match c.call(
-        method::SESSION_LOGS,
-        Some(serde_json::json!({ "id": "e2e" })),
-    ) {
-        Err(vt_ipc::IpcError::Remote { code, .. }) => {
-            assert_eq!(code, vt_proto::jsonrpc::RpcError::NO_SUCH_SESSION);
-        }
-        other => panic!("expected no-such-session after exit, got {other:?}"),
-    }
+    // Ended sessions keep their final grid: logs still answer, marked not live.
+    let v = c
+        .call(
+            method::SESSION_LOGS,
+            Some(serde_json::json!({ "id": "e2e" })),
+        )
+        .unwrap();
+    assert_eq!(v["live"], false);
+    assert!(
+        v["text"].as_str().unwrap().contains("GOT:hello world"),
+        "{v}"
+    );
 }
 
 fn spawn_daemon(socket: &std::path::Path, state: &std::path::Path) -> Child {
