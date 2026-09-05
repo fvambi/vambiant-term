@@ -13,6 +13,14 @@ cd "$(dirname "$0")/../.."
 sdk=${GHOSTTY_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}
 [[ -d $sdk ]] || { echo "build-ghostty: SDK not found: $sdk (set GHOSTTY_SDK)" >&2; exit 1; }
 export GHOSTTY_SDK="$sdk"
+# Hermetic source: the pinned Ghostty commit is vendored as a submodule, so the
+# sys crate never clones at build time. `git submodule update --init` once.
+if [[ -f third_party/ghostty/build.zig ]]; then
+  export GHOSTTY_SOURCE_DIR="$PWD/third_party/ghostty"
+else
+  echo "build-ghostty: third_party/ghostty is empty; run: git submodule update --init third_party/ghostty" >&2
+  exit 1
+fi
 # The sys crate maps cargo's DEBUG=true (any profile with debug info, including
 # our release profile's `debug = 1`) to a Zig *Debug* build, which is ~100×
 # slower and would make the benchmark a lie. Force ReleaseFast.
