@@ -181,6 +181,45 @@ impl Handler for Rpc {
                 let snap = Registry::snapshot(&h).ok_or_else(gone)?;
                 Ok(serde_json::json!({ "text": wire::text(&snap, lines) }))
             }
+            "inbox.list" => {
+                let agents = self
+                    .registry
+                    .agents()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "agent layer not ready"))?;
+                serde_json::to_value(agents.inbox()).map_err(|e| internal(&e))
+            }
+            "inbox.decide" => {
+                let agents = self
+                    .registry
+                    .agents()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "agent layer not ready"))?;
+                let id: String = Self::param(req, "id")?;
+                let decision: vt_proto::approval::Decision = Self::param(req, "decision")?;
+                let by = vt_proto::approval::DecisionSource::Human;
+                match agents.decide(&vt_proto::approval::ApprovalId(id.clone()), decision, by) {
+                    Some(item) => serde_json::to_value(item).map_err(|e| internal(&e)),
+                    None => Err(RpcError::new(
+                        RpcError::INVALID_PARAMS,
+                        format!("no pending approval `{id}` (see `vterm inbox list`)"),
+                    )),
+                }
+            }
+            "agent.events" => {
+                let h = self.session(req)?;
+                let sid = h
+                    .info
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .id
+                    .clone();
+                let after: i64 = Self::param(req, "after").unwrap_or(0);
+                let limit: usize = Self::param(req, "limit").unwrap_or(200);
+                let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+                let events = store
+                    .events(&sid, after, limit)
+                    .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+                serde_json::to_value(events).map_err(|e| internal(&e))
+            }
             other => Err(RpcError::new(
                 RpcError::METHOD_NOT_FOUND,
                 format!("unknown method `{other}`"),

@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use clap::Parser;
 
-use cli::{Cli, Command, DaemonCmd};
+use cli::{Cli, Command, DaemonCmd, InboxCmd};
 
 fn socket(cli: &Cli) -> PathBuf {
     cli.socket
@@ -86,6 +86,7 @@ fn main() {
             cols,
             rows,
             json,
+            agent,
             argv,
         } => {
             let mut c = client(&cli);
@@ -95,7 +96,12 @@ fn main() {
                 cwd: cwd.clone().or_else(|| std::env::current_dir().ok()),
                 env: Vec::new(),
                 size: Some((*cols, *rows)),
-                agent: None,
+                agent: match agent.as_deref() {
+                    None => None,
+                    Some("claude") => Some(vt_proto::agent::AgentKind::Claude),
+                    Some("codex") => Some(vt_proto::agent::AgentKind::Codex),
+                    Some(other) => fail(format!("unknown agent `{other}` (claude, codex)")),
+                },
             };
             let v = c
                 .call(
@@ -148,6 +154,84 @@ fn main() {
                 println!("{v}");
             } else {
                 println!("{}", v.get("text").and_then(|t| t.as_str()).unwrap_or(""));
+            }
+        }
+        Command::Inbox { cmd } => inbox(&cli, cmd),
+        Command::Events {
+            session,
+            after,
+            json,
+        } => {
+            let mut c = client(&cli);
+            let v = c
+                .call(
+                    "agent.events",
+                    Some(serde_json::json!({ "id": session, "after": after, "limit": 500 })),
+                )
+                .unwrap_or_else(|e| fail(e));
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+                return;
+            }
+            for entry in v.as_array().cloned().unwrap_or_default() {
+                let seq = entry
+                    .get(0)
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                let ev = entry.get(1).cloned().unwrap_or(serde_json::Value::Null);
+                let kind = ev.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                let detail = ev
+                    .get("name")
+                    .or_else(|| ev.get("tool"))
+                    .or_else(|| ev.get("text"))
+                    .or_else(|| ev.get("body"))
+                    .or_else(|| ev.get("reason"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("");
+                println!(
+                    "{seq:>6} {kind:<18} {}",
+                    detail
+                        .chars()
+                        .take(100)
+                        .collect::<String>()
+                        .replace('\n', " ")
+                );
+            }
+        }
+        Command::Statusline {
+            receiver,
+            token,
+            subagent,
+        } => {
+            // Relay stdin JSON to the daemon and print a compact status line.
+            let mut input = String::new();
+            let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
+            let port: u16 = receiver
+                .rsplit(':')
+                .next()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(0);
+            let path = if *subagent {
+                format!("/status/{token}?subagent=1")
+            } else {
+                format!("/status/{token}")
+            };
+            let _ = vt_ipc::http::post_json(port, &path, input.as_bytes());
+            if !*subagent {
+                let v: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
+                let model = v
+                    .pointer("/model/display_name")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("");
+                let cost = v
+                    .pointer("/cost/total_cost_usd")
+                    .and_then(serde_json::Value::as_f64)
+                    .unwrap_or(0.0);
+                let ctx = v
+                    .pointer("/context_window/used_percentage")
+                    .and_then(serde_json::Value::as_f64)
+                    .unwrap_or(0.0);
+                println!("{model} · ctx {ctx:.0}% · ${cost:.3} est · vterm");
             }
         }
         Command::Send { session, text } => {
@@ -232,5 +316,93 @@ fn daemon(cli: &Cli, cmd: &DaemonCmd) {
             Ok(()) => println!("removed the vtermd LaunchAgent"),
             Err(e) => fail(e),
         },
+    }
+}
+
+fn inbox(cli: &Cli, cmd: &InboxCmd) {
+    let mut c = client(cli);
+    match cmd {
+        InboxCmd::List { json } => {
+            let v = c.call("inbox.list", None).unwrap_or_else(|e| fail(e));
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+                return;
+            }
+            let items = v.as_array().cloned().unwrap_or_default();
+            if items.is_empty() {
+                println!("inbox empty");
+            }
+            for it in items {
+                let id = it.get("id").and_then(|x| x.as_str()).unwrap_or("?");
+                let name = it
+                    .get("session_name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("?");
+                let tool = it
+                    .pointer("/request/tool")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("?");
+                let waiting = it
+                    .get("waiting_secs")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let shown = it
+                    .get("prompt_shown")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                let input = it
+                    .pointer("/request/input")
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_default();
+                println!(
+                    "{id}\n  session {name} · {tool} · waiting {waiting}s{}\n  {}",
+                    if shown {
+                        " · prompt shown in terminal"
+                    } else {
+                        ""
+                    },
+                    input.chars().take(160).collect::<String>()
+                );
+            }
+        }
+        InboxCmd::Allow { id } => {
+            decide_all(&mut c, id, &serde_json::json!({ "behavior": "allow" }));
+        }
+        InboxCmd::Deny { id, reason } => {
+            decide_all(
+                &mut c,
+                id,
+                &serde_json::json!({ "behavior": "deny", "reason": reason }),
+            );
+        }
+    }
+}
+
+fn decide_all(c: &mut vt_ipc::Client, id: &str, decision: &serde_json::Value) {
+    let ids: Vec<String> = if id == "all" {
+        let v = c.call("inbox.list", None).unwrap_or_else(|e| fail(e));
+        v.as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|it| it.get("id").and_then(|x| x.as_str()).map(str::to_owned))
+            .collect()
+    } else {
+        vec![id.to_owned()]
+    };
+    for id in ids {
+        match c.call(
+            "inbox.decide",
+            Some(serde_json::json!({ "id": id, "decision": decision })),
+        ) {
+            Ok(_) => println!(
+                "{id}: {}",
+                decision
+                    .get("behavior")
+                    .and_then(|b| b.as_str())
+                    .unwrap_or("?")
+            ),
+            Err(e) => eprintln!("vterm: {e}"),
+        }
     }
 }

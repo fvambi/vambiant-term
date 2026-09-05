@@ -9,6 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+vt-agent.workspace = true
 base64.workspace = true
 libc.workspace = true
 serde.workspace = true

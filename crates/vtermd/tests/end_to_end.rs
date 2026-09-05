@@ -425,3 +425,136 @@ fn unreachable_holder_means_orphaned_and_recorded_exit_means_stopped() {
     second.wait().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A fake Claude: a shell that POSTs a PermissionRequest to the daemon's hook
+/// receiver exactly like the `http` hook handler would, prints the reply, and
+/// then POSTs a Stop.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn claude_permission_request_flows_through_the_inbox() {
+    let daemon = Daemon::start("inbox");
+    let mut c = daemon.client();
+    let script = r#"
+        payload='{"hook_event_name":"SessionStart","session_id":"fake-1","cwd":"/tmp","source":"startup","transcript_path":"/tmp/t"}'
+        curl -s -X POST -H 'Content-Type: application/json' --data "$payload" "$VAMBIANT_TERM_HOOK_URL" >/dev/null
+        perm='{"hook_event_name":"PermissionRequest","session_id":"fake-1","cwd":"/tmp","tool_name":"Bash","tool_use_id":"toolu_9","tool_input":{"command":"rm -rf build"},"permission_mode":"default","prompt_id":"p1","transcript_path":"/tmp/t","permission_suggestions":[]}'
+        echo REQUESTING
+        reply=$(curl -s -X POST -H 'Content-Type: application/json' --data "$perm" "$VAMBIANT_TERM_HOOK_URL")
+        echo "REPLY:$reply"
+        stop='{"hook_event_name":"Stop","session_id":"fake-1","cwd":"/tmp","last_assistant_message":"all done","stop_hook_active":false,"transcript_path":"/tmp/t"}'
+        curl -s -X POST -H 'Content-Type: application/json' --data "$stop" "$VAMBIANT_TERM_HOOK_URL" >/dev/null
+        sleep 30
+    "#;
+    let req = NewSession {
+        name: Some("fake-claude".into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        cwd: Some(std::env::temp_dir()),
+        env: vec![],
+        size: Some((120, 20)),
+        agent: Some(vt_proto::agent::AgentKind::Claude),
+    };
+    let info: SessionInfo = serde_json::from_value(
+        c.call(method::SESSION_NEW, serde_json::to_value(req).ok())
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        info.capabilities.permission_control,
+        "claude sessions advertise control: {info:?}"
+    );
+    // Provisioning prepended --settings; the settings file exists.
+    let list: Vec<SessionInfo> =
+        serde_json::from_value(c.call(method::SESSION_LIST, None).unwrap()).unwrap();
+    assert_eq!(list[0].agent, vt_proto::agent::AgentKind::Claude);
+
+    wait_for_text(&mut c, &info.id.0, "REQUESTING");
+    // The request shows up in the inbox and the session is blocked.
+    let start = Instant::now();
+    let item = loop {
+        let v = c.call("inbox.list", None).unwrap();
+        if let Some(item) = v.as_array().and_then(|a| a.first()).cloned() {
+            break item;
+        }
+        assert!(start.elapsed() < Duration::from_secs(10), "no inbox item");
+        std::thread::sleep(Duration::from_millis(30));
+    };
+    assert_eq!(item["request"]["tool"], "Bash");
+    assert_eq!(item["session_name"], "fake-claude");
+    let got: SessionInfo = serde_json::from_value(
+        c.call(
+            method::SESSION_GET,
+            Some(serde_json::json!({ "id": "fake-claude" })),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(got.state, vt_proto::agent::AgentState::AwaitingInput);
+
+    // Deny from the inbox: the held hook returns the vendor-shaped deny.
+    let id = item["id"].as_str().unwrap().to_string();
+    c.call(
+        "inbox.decide",
+        Some(serde_json::json!({ "id": id, "decision": { "behavior": "deny", "reason": "not today" } })),
+    )
+    .unwrap();
+    let text = wait_for_text(&mut c, &info.id.0, "REPLY:");
+    assert!(
+        text.contains(r#""permissionDecision":"deny""#) || text.contains(r#""behavior":"deny""#),
+        "grid: {text}"
+    );
+    assert!(text.contains("not today"), "reason forwarded: {text}");
+    assert!(
+        c.call("inbox.list", None)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    // The event log has the whole story.
+    let events = c
+        .call(
+            "agent.events",
+            Some(serde_json::json!({ "id": "fake-claude", "after": 0 })),
+        )
+        .unwrap();
+    let kinds: Vec<String> = events
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| {
+            e.get(1)
+                .and_then(|v| v.get("type"))
+                .and_then(|t| t.as_str())
+                .map(str::to_owned)
+        })
+        .collect();
+    assert!(kinds.contains(&"session_started".to_string()), "{kinds:?}");
+    assert!(kinds.contains(&"approval_needed".to_string()), "{kinds:?}");
+    assert!(
+        kinds.contains(&"approval_resolved".to_string()),
+        "{kinds:?}"
+    );
+    let start = Instant::now();
+    loop {
+        let events = c
+            .call(
+                "agent.events",
+                Some(serde_json::json!({ "id": "fake-claude", "after": 0 })),
+            )
+            .unwrap();
+        if events.to_string().contains("all done") {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "Stop never logged"
+        );
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    c.call(
+        method::SESSION_KILL,
+        Some(serde_json::json!({ "id": "fake-claude", "signal": 9 })),
+    )
+    .unwrap();
+}

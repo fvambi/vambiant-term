@@ -112,6 +112,7 @@ mod tests {
                 pty_path: None,
                 exit_code: None,
                 hold_socket: None,
+                agent_token: None,
             })
             .unwrap();
         let e1 = AgentEvent::Notification {

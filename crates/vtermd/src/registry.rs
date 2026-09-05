@@ -57,18 +57,96 @@ pub struct Registry {
     store: Arc<Mutex<Store>>,
     server: OnceLock<Arc<Server>>,
     runtime_dir: PathBuf,
+    state_dir: PathBuf,
+    agents: OnceLock<Arc<crate::agents::Agents>>,
     counter: Mutex<u64>,
 }
 
 impl Registry {
     /// Empty registry over `store`; holder sockets live in `runtime_dir`.
-    pub fn new(store: Arc<Mutex<Store>>, runtime_dir: PathBuf) -> Self {
+    pub fn new(store: Arc<Mutex<Store>>, runtime_dir: PathBuf, state_dir: PathBuf) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
             store,
             server: OnceLock::new(),
             runtime_dir,
+            state_dir,
+            agents: OnceLock::new(),
             counter: Mutex::new(0),
+        }
+    }
+
+    /// Wire the agent layer (hook receiver, inbox).
+    pub fn set_agents(&self, agents: Arc<crate::agents::Agents>) {
+        let _ = self.agents.set(agents);
+    }
+
+    /// The agent layer, once wired.
+    pub fn agents(&self) -> Option<Arc<crate::agents::Agents>> {
+        self.agents.get().cloned()
+    }
+
+    /// Provision an agent session: settings file, extra args, env, token.
+    fn provision(
+        &self,
+        id: &SessionId,
+        kind: AgentKind,
+        req: &NewSession,
+    ) -> Result<(NewSession, Option<String>, Capabilities), String> {
+        let mut spec = req.clone();
+        match kind {
+            AgentKind::Claude => {
+                let agents = self.agents().ok_or("agent layer not ready")?;
+                let receiver = agents
+                    .receiver
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone();
+                if receiver.is_empty() {
+                    return Err(
+                        "hook receiver is not listening; cannot provision a Claude session".into(),
+                    );
+                }
+                let token = crate::agents::Agents::new_token();
+                let dir = self.state_dir.join("sessions").join(&id.0);
+                let vterm = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join("vterm")))
+                    .filter(|p| p.exists())
+                    .unwrap_or_else(|| PathBuf::from("vterm"));
+                let prov = vt_agent::claude::provision(&dir, &receiver, &token, &vterm)
+                    .map_err(|e| e.to_string())?;
+                if spec.argv.is_empty() {
+                    spec.argv.push("claude".into());
+                }
+                // `claude [args]` → `claude --settings <file> [args]`. Any other
+                // program (a wrapper script, a fake agent in tests) gets the
+                // path in the environment and must pass it on itself.
+                let is_claude = spec.argv[0].rsplit('/').next() == Some("claude");
+                if is_claude {
+                    let program = spec.argv.remove(0);
+                    let mut argv = vec![program];
+                    argv.extend(prov.extra_args.clone());
+                    argv.extend(spec.argv);
+                    spec.argv = argv;
+                }
+                spec.env.push((
+                    "VAMBIANT_TERM_CLAUDE_SETTINGS".into(),
+                    prov.settings_path.display().to_string(),
+                ));
+                spec.env.extend(prov.env);
+                spec.env.push((
+                    "VAMBIANT_TERM_HOOK_URL".into(),
+                    format!("{receiver}/hook/{token}"),
+                ));
+                spec.env.push((
+                    "VAMBIANT_TERM_STATUS_URL".into(),
+                    format!("{receiver}/status/{token}"),
+                ));
+                agents.register(id.clone(), kind, token.clone());
+                Ok((spec, Some(token), vt_agent::claude::CAPABILITIES))
+            }
+            AgentKind::Codex | AgentKind::Generic => Ok((spec, None, Capabilities::default())),
         }
     }
 
@@ -117,13 +195,14 @@ impl Registry {
             .clone()
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| "/".into());
-        let held = holder::spawn(&self.runtime_dir, &id.0, &name, req, (cols, rows), &cwd)?;
+        let kind = req.agent.unwrap_or(AgentKind::Generic);
+        let (spec, token, capabilities) = self.provision(&id, kind, req)?;
         let info = SessionInfo {
             id: id.clone(),
-            name,
-            agent: req.agent.unwrap_or(AgentKind::Generic),
+            name: name.clone(),
+            agent: kind,
             state: AgentState::Starting,
-            capabilities: Capabilities::default(),
+            capabilities,
             cwd: cwd.clone(),
             pid: None,
             size: Some((cols, rows)),
@@ -131,6 +210,26 @@ impl Registry {
             readopted: false,
             created_at: now(),
         };
+        // Persist before spawning: the child's first hook may arrive before
+        // the thread below runs, and agent_events has a foreign key on sessions.
+        let provisional = SessionRecord {
+            info: info.clone(),
+            argv: spec.argv.clone(),
+            env: spec.env.clone(),
+            pty_path: None,
+            exit_code: None,
+            hold_socket: None,
+            agent_token: token.clone(),
+        };
+        if let Err(e) = self
+            .store
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .upsert_session(&provisional)
+        {
+            eprintln!("vtermd: cannot persist session {}: {e}", id.0);
+        }
+        let held = holder::spawn(&self.runtime_dir, &id.0, &name, &spec, (cols, rows), &cwd)?;
         let hold_socket = held.socket.display().to_string();
         let shared = Arc::new(Mutex::new(info));
         let cmd = session::start(Arc::clone(self), Arc::clone(&shared), held)?;
@@ -147,11 +246,12 @@ impl Registry {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .clone(),
-            argv: req.argv.clone(),
-            env: req.env.clone(),
+            argv: spec.argv.clone(),
+            env: spec.env.clone(),
             pty_path: None,
             exit_code: None,
             hold_socket: Some(hold_socket),
+            agent_token: token,
         };
         if let Err(e) = self
             .store
@@ -196,6 +296,12 @@ impl Registry {
                     let mut info = rec.info.clone();
                     info.readopted = true;
                     info.orphaned = false;
+                    if let (Some(token), Some(agents)) = (rec.agent_token.clone(), self.agents()) {
+                        agents.register(id.clone(), info.agent, token);
+                        if info.agent == AgentKind::Claude {
+                            info.capabilities = vt_agent::claude::CAPABILITIES;
+                        }
+                    }
                     let shared = Arc::new(Mutex::new(info));
                     match session::start(Arc::clone(self), Arc::clone(&shared), held) {
                         Ok(cmd) => {
@@ -282,6 +388,9 @@ impl Registry {
 
     /// Remove a session that has ended.
     pub fn remove(&self, id: &SessionId) {
+        if let Some(agents) = self.agents() {
+            agents.unregister(id);
+        }
         self.sessions
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

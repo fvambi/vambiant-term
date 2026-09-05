@@ -84,6 +84,9 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX blocks_session ON blocks(session_id, seq);",
     // v2 — M2: the fd holder's control socket, for re-adoption after a restart.
     "ALTER TABLE sessions ADD COLUMN hold_socket TEXT;",
+    // v3 — M3: per-session hook/status token so re-adopted agent sessions
+    // keep receiving their hooks after a daemon restart.
+    "ALTER TABLE sessions ADD COLUMN agent_token TEXT;",
 ];
 
 /// Newest schema version this binary understands.
@@ -136,7 +139,7 @@ mod tests {
     fn migrates_fresh_and_is_idempotent() {
         let mut store = Store::open_in_memory().unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
-        assert_eq!(CURRENT_VERSION, 2);
+        assert_eq!(CURRENT_VERSION, 3);
         migrate(&mut store).unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
         let tables: Vec<String> = store
@@ -184,6 +187,7 @@ mod tests {
             .unwrap()
             .expect("row survives");
         assert_eq!(rec.hold_socket, None);
+        assert_eq!(rec.agent_token, None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

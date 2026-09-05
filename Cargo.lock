@@ -904,6 +904,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "vt-agent",
  "vt-core",
  "vt-ipc",
  "vt-proto",

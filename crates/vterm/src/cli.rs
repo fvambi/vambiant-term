@@ -48,9 +48,42 @@ pub enum Command {
         /// Machine-readable output.
         #[arg(long)]
         json: bool,
+        /// Provision an agent adapter (claude); the program defaults to the agent binary.
+        #[arg(long)]
+        agent: Option<String>,
         /// Program and arguments.
         #[arg(last = true)]
         argv: Vec<String>,
+    },
+    /// The approval inbox.
+    Inbox {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: InboxCmd,
+    },
+    /// Agent events of a session (from the daemon's own event log).
+    Events {
+        /// Session id or unique name.
+        session: String,
+        /// Only events after this sequence number.
+        #[arg(long, default_value_t = 0)]
+        after: i64,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Status-line relay for Claude Code (installed by the daemon; not for humans).
+    #[command(hide = true)]
+    Statusline {
+        /// Receiver base URL.
+        #[arg(long)]
+        receiver: String,
+        /// Session token.
+        #[arg(long)]
+        token: String,
+        /// Subagent feed.
+        #[arg(long)]
+        subagent: bool,
     },
     /// Attach to a session in this terminal (detach with Ctrl-\ then d).
     Attach {
@@ -113,4 +146,28 @@ pub enum DaemonCmd {
     },
     /// Remove the launchd LaunchAgent.
     Uninstall,
+}
+
+/// `vterm inbox …`.
+#[derive(Subcommand, Debug)]
+pub enum InboxCmd {
+    /// Pending approvals.
+    List {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Allow a pending approval.
+    Allow {
+        /// Approval id (or `all`).
+        id: String,
+    },
+    /// Deny a pending approval.
+    Deny {
+        /// Approval id (or `all`).
+        id: String,
+        /// Reason the agent sees.
+        #[arg(long, default_value = "denied from the Vambiant Term inbox")]
+        reason: String,
+    },
 }
