@@ -4,6 +4,7 @@ use crate::cell::{CellSnapshot, GridSize};
 use crate::damage::DamageSet;
 use crate::error::CoreError;
 use crate::event::TermEvent;
+use crate::key::KeyEvent;
 
 /// A VT state machine: bytes in, grid + damage out.
 ///
@@ -38,4 +39,10 @@ pub trait TerminalCore {
     /// Out-of-band events raised while parsing (bell, title, cwd, clipboard
     /// writes). Drained alongside [`TerminalCore::take_responses`].
     fn take_events(&mut self) -> Vec<TermEvent>;
+
+    /// Encode a key event into the bytes the running program expects, honouring
+    /// the terminal's current keyboard modes (application cursor keys,
+    /// `modifyOtherKeys`, kitty keyboard flags). Empty when the key produces
+    /// nothing (a lone modifier, a release the program did not ask for).
+    fn encode_key(&mut self, event: &KeyEvent) -> Vec<u8>;
 }

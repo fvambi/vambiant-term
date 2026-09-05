@@ -12,6 +12,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use libghostty_vt::key::{self, Action, Encoder, Key, Mods, OptionAsAlt};
 use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
 use libghostty_vt::screen::CellWide;
 use libghostty_vt::style::{StyleColor, Underline};
@@ -22,6 +23,7 @@ use crate::core::TerminalCore;
 use crate::damage::{DamageSet, LineDamage};
 use crate::error::CoreError;
 use crate::event::{ClipboardTarget, TermEvent, pwd_from_osc7};
+use crate::key::{KeyAction, KeyEvent, KeyMods};
 
 /// Scrollback budget in bytes (libghostty counts bytes, not lines).
 const DEFAULT_SCROLLBACK_BYTES: usize = 32 * 1024 * 1024;
@@ -34,6 +36,7 @@ pub struct GhosttyCore {
     cells_it: CellIterator<'static>,
     responses: Rc<RefCell<Vec<u8>>>,
     events: Rc<RefCell<Vec<TermEvent>>>,
+    encoder: Encoder<'static>,
     size: GridSize,
     /// Set by resize; the next `take_damage` reports `Full` regardless of rows.
     force_full: bool,
@@ -129,6 +132,10 @@ impl GhosttyCore {
             what: "RowIterator::new",
             detail: e.to_string(),
         })?;
+        let encoder = Encoder::new().map_err(|e| CoreError::Backend {
+            what: "key::Encoder::new",
+            detail: e.to_string(),
+        })?;
         let cells_it = CellIterator::new().map_err(|e| CoreError::Backend {
             what: "CellIterator::new",
             detail: e.to_string(),
@@ -140,6 +147,7 @@ impl GhosttyCore {
             cells_it,
             responses,
             events,
+            encoder,
             size,
             force_full: true,
         })
@@ -267,6 +275,55 @@ impl TerminalCore for GhosttyCore {
     fn take_events(&mut self) -> Vec<TermEvent> {
         std::mem::take(&mut *self.events.borrow_mut())
     }
+
+    fn encode_key(&mut self, event: &KeyEvent) -> Vec<u8> {
+        let mut out = Vec::new();
+        let Ok(mut ev) = key::Event::new() else {
+            return out;
+        };
+        ev.set_action(match event.action {
+            KeyAction::Press => Action::Press,
+            KeyAction::Release => Action::Release,
+            KeyAction::Repeat => Action::Repeat,
+        });
+        // KeyCode values are libghostty's Key discriminants by construction.
+        ev.set_key(Key::try_from(u32::from(event.key as u16)).unwrap_or(Key::Unidentified));
+        ev.set_mods(convert_mods(event.mods));
+        ev.set_utf8(event.utf8.as_deref());
+        if let Some(c) = event.unshifted {
+            ev.set_unshifted_codepoint(c);
+        }
+        // Modes (kitty flags, DECCKM, modifyOtherKeys) are read from the
+        // terminal on every call so pushes/pops made by the program are seen.
+        self.encoder
+            .set_options_from_terminal(&self.term)
+            .set_macos_option_as_alt(OptionAsAlt::False);
+        let _ = self.encoder.encode_to_vec(&ev, &mut out);
+        out
+    }
+}
+
+fn convert_mods(m: KeyMods) -> Mods {
+    let mut out = Mods::empty();
+    if m.0 & KeyMods::SHIFT != 0 {
+        out |= Mods::SHIFT;
+    }
+    if m.0 & KeyMods::CTRL != 0 {
+        out |= Mods::CTRL;
+    }
+    if m.0 & KeyMods::ALT != 0 {
+        out |= Mods::ALT;
+    }
+    if m.0 & KeyMods::SUPER != 0 {
+        out |= Mods::SUPER;
+    }
+    if m.0 & KeyMods::CAPS_LOCK != 0 {
+        out |= Mods::CAPS_LOCK;
+    }
+    if m.0 & KeyMods::NUM_LOCK != 0 {
+        out |= Mods::NUM_LOCK;
+    }
+    out
 }
 
 fn convert_cell(cell: &libghostty_vt::render::CellIteration<'_, '_>) -> Cell {
@@ -410,6 +467,55 @@ mod tests {
             ]
         );
         assert!(core.take_events().is_empty());
+    }
+
+    #[test]
+    fn key_encoding_follows_terminal_modes() {
+        use crate::key::{KeyCode, KeyEvent, KeyMods};
+        let mut core = GhosttyCore::new(GridSize { cols: 10, rows: 2 }).unwrap();
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::A, 0, Some("a"))),
+            b"a"
+        );
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::C, KeyMods::CTRL, Some("c"))),
+            b"\x03"
+        );
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::Escape, 0, None)),
+            b"\x1b"
+        );
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::ArrowUp, 0, None)),
+            b"\x1b[A"
+        );
+        // Application cursor keys (DECCKM) change the arrow encoding.
+        core.advance(b"\x1b[?1h");
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::ArrowUp, 0, None)),
+            b"\x1bOA"
+        );
+        // Kitty keyboard protocol: push "disambiguate escape codes".
+        core.advance(b"\x1b[>1u");
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::Escape, 0, None)),
+            b"\x1b[27u"
+        );
+        // Pop restores legacy encoding.
+        core.advance(b"\x1b[<u");
+        assert_eq!(
+            core.encode_key(&KeyEvent::press(KeyCode::Escape, 0, None)),
+            b"\x1b"
+        );
+        // A lone modifier produces nothing.
+        assert!(
+            core.encode_key(&KeyEvent::press(
+                KeyCode::Unidentified,
+                KeyMods::SHIFT,
+                None
+            ))
+            .is_empty()
+        );
     }
 
     #[test]

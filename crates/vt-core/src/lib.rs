@@ -16,7 +16,9 @@ pub mod damage;
 pub mod error;
 pub mod event;
 pub mod harness;
+pub mod key;
 
 pub use core::TerminalCore;
 pub use error::CoreError;
 pub use event::TermEvent;
+pub use key::{KeyAction, KeyCode, KeyEvent, KeyMods};

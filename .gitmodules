@@ -1,3 +1,6 @@
 [submodule "third_party/ghostty"]
 	path = third_party/ghostty
 	url = https://github.com/ghostty-org/ghostty.git
+[submodule "third_party/esctest2"]
+	path = third_party/esctest2
+	url = https://github.com/ThomasDickey/esctest2.git
