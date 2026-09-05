@@ -4,3 +4,4 @@
 [submodule "third_party/esctest2"]
 	path = third_party/esctest2
 	url = https://github.com/ThomasDickey/esctest2.git
+	ignore = untracked
