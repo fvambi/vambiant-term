@@ -13,7 +13,7 @@ use vt_proto::session::{NewSession, OutputDelta, SessionInfo, method, notificati
 struct Daemon {
     child: Child,
     socket: PathBuf,
-    _dir: PathBuf,
+    dir: PathBuf,
 }
 
 impl Daemon {
@@ -50,11 +50,7 @@ impl Daemon {
             );
             std::thread::sleep(Duration::from_millis(20));
         }
-        Self {
-            child,
-            socket,
-            _dir: dir,
-        }
+        Self { child, socket, dir }
     }
 
     fn client(&self) -> Client {
@@ -78,6 +74,12 @@ impl Drop for Daemon {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // Holders outlive the daemon by design; a failed test must not leave
+        // them (and their `sleep 30` children) behind.
+        let _ = Command::new("pkill")
+            .arg("-f")
+            .arg(self.dir.display().to_string())
+            .status();
     }
 }
 
