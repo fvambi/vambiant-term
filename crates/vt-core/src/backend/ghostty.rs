@@ -84,62 +84,7 @@ impl GhosttyCore {
             what: "on_pty_write",
             detail: e.to_string(),
         })?;
-        let events = Rc::new(RefCell::new(Vec::new()));
-        let backend = |what: &'static str| {
-            move |e: libghostty_vt::Error| CoreError::Backend {
-                what,
-                detail: e.to_string(),
-            }
-        };
-        let ev = Rc::clone(&events);
-        term.on_bell(move |_t| ev.borrow_mut().push(TermEvent::Bell))
-            .map_err(backend("on_bell"))?;
-        let ev = Rc::clone(&events);
-        term.on_title_changed(move |t| {
-            if let Ok(title) = t.title() {
-                ev.borrow_mut().push(TermEvent::Title(title.to_owned()));
-            }
-        })
-        .map_err(backend("on_title_changed"))?;
-        let ev = Rc::clone(&events);
-        term.on_pwd_changed(move |t| {
-            if let Ok(pwd) = t.pwd() {
-                ev.borrow_mut().push(TermEvent::Pwd(pwd_from_osc7(pwd)));
-            }
-        })
-        .map_err(backend("on_pwd_changed"))?;
-        let ev = Rc::clone(&events);
-        term.on_clipboard_write(move |_t, write| {
-            let target = match write.location() {
-                ClipboardLocation::Standard => ClipboardTarget::Clipboard,
-                _ => ClipboardTarget::Selection,
-            };
-            // OSC 52 payloads arrive already base64-decoded, one entry per
-            // mime type; text/plain is the only one a terminal clipboard takes.
-            let contents = write
-                .contents()
-                .find(|c| c.mime.starts_with("text/plain") || c.mime.is_empty())
-                .map(|c| c.data.as_bytes().to_vec())
-                .unwrap_or_default();
-            ev.borrow_mut()
-                .push(TermEvent::ClipboardWrite { target, contents });
-            Ok(())
-        })
-        .map_err(backend("on_clipboard_write"))?;
-        // XTWINOPS size reports (CSI 14/16/18 t). Pixel metrics are nominal
-        // until the renderer sets real ones; programs mostly want cells.
-        let reported = Rc::new(RefCell::new((size, (8u32, 16u32))));
-        let rep = Rc::clone(&reported);
-        term.on_size(move |_t| {
-            let (g, (w, h)) = *rep.borrow();
-            Some(SizeReportSize {
-                rows: g.rows,
-                columns: g.cols,
-                cell_width: w,
-                cell_height: h,
-            })
-        })
-        .map_err(backend("on_size"))?;
+        let (events, reported) = register_callbacks(&mut term, size)?;
         let render = RenderState::new().map_err(|e| CoreError::Backend {
             what: "RenderState::new",
             detail: e.to_string(),
@@ -348,6 +293,77 @@ fn convert_mods(m: KeyMods) -> Mods {
         out |= Mods::NUM_LOCK;
     }
     out
+}
+
+/// Wire libghostty's host callbacks to the event queue and size reporter.
+#[allow(clippy::type_complexity)]
+fn register_callbacks(
+    term: &mut Terminal<'static, 'static>,
+    size: GridSize,
+) -> Result<
+    (
+        Rc<RefCell<Vec<TermEvent>>>,
+        Rc<RefCell<(GridSize, (u32, u32))>>,
+    ),
+    CoreError,
+> {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let backend = |what: &'static str| {
+        move |e: libghostty_vt::Error| CoreError::Backend {
+            what,
+            detail: e.to_string(),
+        }
+    };
+    let ev = Rc::clone(&events);
+    term.on_bell(move |_t| ev.borrow_mut().push(TermEvent::Bell))
+        .map_err(backend("on_bell"))?;
+    let ev = Rc::clone(&events);
+    term.on_title_changed(move |t| {
+        if let Ok(title) = t.title() {
+            ev.borrow_mut().push(TermEvent::Title(title.to_owned()));
+        }
+    })
+    .map_err(backend("on_title_changed"))?;
+    let ev = Rc::clone(&events);
+    term.on_pwd_changed(move |t| {
+        if let Ok(pwd) = t.pwd() {
+            ev.borrow_mut().push(TermEvent::Pwd(pwd_from_osc7(pwd)));
+        }
+    })
+    .map_err(backend("on_pwd_changed"))?;
+    let ev = Rc::clone(&events);
+    term.on_clipboard_write(move |_t, write| {
+        let target = match write.location() {
+            ClipboardLocation::Standard => ClipboardTarget::Clipboard,
+            _ => ClipboardTarget::Selection,
+        };
+        // OSC 52 payloads arrive already base64-decoded, one entry per
+        // mime type; text/plain is the only one a terminal clipboard takes.
+        let contents = write
+            .contents()
+            .find(|c| c.mime.starts_with("text/plain") || c.mime.is_empty())
+            .map(|c| c.data.as_bytes().to_vec())
+            .unwrap_or_default();
+        ev.borrow_mut()
+            .push(TermEvent::ClipboardWrite { target, contents });
+        Ok(())
+    })
+    .map_err(backend("on_clipboard_write"))?;
+    // XTWINOPS size reports (CSI 14/16/18 t). Pixel metrics are nominal
+    // until the renderer sets real ones; programs mostly want cells.
+    let reported = Rc::new(RefCell::new((size, (8u32, 16u32))));
+    let rep = Rc::clone(&reported);
+    term.on_size(move |_t| {
+        let (g, (w, h)) = *rep.borrow();
+        Some(SizeReportSize {
+            rows: g.rows,
+            columns: g.cols,
+            cell_width: w,
+            cell_height: h,
+        })
+    })
+    .map_err(backend("on_size"))?;
+    Ok((events, reported))
 }
 
 fn convert_cell(cell: &libghostty_vt::render::CellIteration<'_, '_>) -> Cell {

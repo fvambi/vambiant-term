@@ -80,6 +80,14 @@ impl Pty {
         };
 
         let (program, args) = resolve_command(spec);
+        let program = resolve_in_path(&program).ok_or_else(|| PtyError::Spawn {
+            session: session.clone(),
+            stage: "resolve program",
+            source: io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{program}: not found in PATH"),
+            ),
+        })?;
         let c_program = CString::new(program.as_str()).map_err(|_| nul(&program))?;
         let mut c_args = Vec::with_capacity(args.len());
         for a in &args {
@@ -274,6 +282,25 @@ fn resolve_command(spec: &SpawnSpec) -> (String, Vec<String>) {
     )
 }
 
+/// `execve` does no PATH search, so do it here, before `fork`, where
+/// allocation is still allowed. Names containing `/` are used as given.
+fn resolve_in_path(program: &str) -> Option<String> {
+    if program.contains('/') {
+        return Some(program.to_owned());
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(program))
+        .find(|candidate| {
+            candidate.metadata().is_ok_and(|m| {
+                m.is_file() && std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0
+            })
+        })
+                .unwrap_or(false)
+        })
+        .map(|p| p.display().to_string())
+}
+
 fn build_env(spec: &SpawnSpec, nul: &dyn Fn(&str) -> PtyError) -> Result<Vec<CString>, PtyError> {
     let mut vars: Vec<(String, String)> = std::env::vars().collect();
     for (k, v) in &spec.env {
@@ -430,6 +457,24 @@ mod tests {
         assert_eq!(out, format!("yes {}", expected_dir.display()));
         // Read trait is used through `drain`; keep the import meaningful.
         let _ = <File as Read>::read;
+    }
+
+    #[test]
+    fn programs_are_found_on_path() {
+        let spec = SpawnSpec::program(
+            "test-path",
+            vec!["sh".into(), "-c".into(), "printf found".into()],
+        );
+        let mut pty = Pty::spawn(&spec, WinSize::cells(80, 24)).expect("spawn");
+        assert_eq!(String::from_utf8_lossy(&drain(&mut pty)), "found");
+        let missing = SpawnSpec::program("test-missing", vec!["vt-no-such-program-xyz".into()]);
+        match Pty::spawn(&missing, WinSize::cells(80, 24)) {
+            Err(PtyError::Spawn {
+                stage: "resolve program",
+                ..
+            }) => {}
+            other => panic!("expected resolve error, got {other:?}"),
+        }
     }
 
     #[test]

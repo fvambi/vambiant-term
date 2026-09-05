@@ -142,7 +142,12 @@ fn summarize(log: &str) -> String {
             known += 1;
         }
     }
-    let status = if failed.is_empty() { "PASS" } else { "FAIL" };
+    // Zero tests means the harness itself broke (esctest never ran); never green.
+    let status = if failed.is_empty() && passed > 0 {
+        "PASS"
+    } else {
+        "FAIL"
+    };
     let mut out = format!(
         "{status}: {passed} passed, {} failed, {known} known-bug-skipped",
         failed.len()
