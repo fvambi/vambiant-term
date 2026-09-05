@@ -7,5 +7,7 @@ if [[ ! -f app/Package.swift ]]; then
   echo "swift-lint: SKIPPED — app/Package.swift does not exist yet (lands in M4)"
   exit 0
 fi
-swiftlint lint --strict app
+# SwiftLint needs sourcekitdInProc; under the Command Line Tools it only
+# finds it when told where the toolchain is.
+TOOLCHAIN_DIR="$(xcode-select -p)" swiftlint lint --strict --quiet app
 swiftformat --lint app

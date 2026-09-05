@@ -18,3 +18,7 @@
 /tests/fixtures/anthropic/
 /tests/fixtures/openai/
 /tests/fixtures/codex/
+
+# Swift shell build products
+app/.build/
+app/build/

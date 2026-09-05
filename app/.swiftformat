@@ -1,0 +1,12 @@
+--swiftversion 6.0
+--indent 4
+--maxwidth 140
+--wraparguments before-first
+--wrapcollections before-first
+--stripunusedargs closure-only
+--self remove
+--semicolons never
+--commas always
+--trimwhitespace always
+--disable redundantReturn, wrapMultilineStatementBraces, andOperator, hoistPatternLet, preferForLoop, redundantSelf, blankLinesAtStartOfScope
+--exclude .build

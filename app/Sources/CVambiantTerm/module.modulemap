@@ -1,0 +1,4 @@
+module CVambiantTerm {
+    header "shim.h"
+    export *
+}

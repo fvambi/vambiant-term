@@ -129,6 +129,8 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 
 Conflict rule: when both profiles are active, `⌘K` is the assistant and the palette is `⌘⇧P`. Every binding is remappable; `vterm keys` prints the resolved map and flags conflicts.
 
+> **As built (M4, 2026-09-05):** the table above binds `⌘⇧D` to both "split down" and "detach session", and `⌘⇧↩` to both "zoom pane" and "next pending approval". The shell resolves them as split-down and zoom; detach and next-pending are reachable through the tmux prefix (`<prefix> d`, `<prefix> A`) until the table is corrected. `⌘W` closes the focused pane (detaching its session, never killing it), and `<prefix> x` does the same. Bindings whose feature is not built yet (`⌘⇧A`, `⌘K`, `⌘F`…) beep and log "not available yet: …" rather than falling through to the terminal.
+
 ## 8. Notifications
 
 Off by default except for `awaiting_input`, which is the entire point.

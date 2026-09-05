@@ -74,15 +74,34 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 ## M4 — The GUI terminal (5–6 weeks)
 
-- [ ] `vt-ffi` C ABI + `cbindgen`; header checked in and diffed in CI. `#[unsafe(no_mangle)]`, `extern "C-unwind"` where Swift can unwind through.
-- [ ] `swift-bridge` for the cold path.
-- [ ] SwiftPM app: window, tabs, splits, `MetalGridView` on a `CAMetalLayer`.
-- [ ] CoreText shaping, run segmentation by grapheme → style → font, glyph atlas, colour emoji.
-- [ ] `CADisplayLink` presentation, ProMotion-adaptive, idle when clean.
-- [ ] Attach to `vtermd`; measure the daemon hop against a direct-PTY baseline. **If it costs > 1 ms p99, execute the ADR-0004 fallback** (foreground pane's PTY in-process, background sessions in the daemon).
-- [ ] `Scripts/bundle.sh`: `.app` assembly, `Info.plist`, entitlements, codesign.
+- [x] `vt-ffi` C ABI + `cbindgen`; header checked in and diffed in CI. `#[unsafe(no_mangle)]`, `extern "C-unwind"` where Swift can unwind through. *(`vt_viewer_*` hot path, `vt_daemon_call` cold path; `crates/vtermd/tests/ffi_viewer.rs` drives it against the real daemon)*
+- [~] `swift-bridge` for the cold path. *(deferred — the cold path is a JSON-RPC passthrough over the contract the CLI already exercises; ADR-0002 amendment 2026-09-05)*
+- [x] SwiftPM app: window, tabs, splits, `MetalGridView` on a `CAMetalLayer`. *(native window tabbing, nested `NSSplitView` splits, geometric focus, zoom; both keymap profiles from `06` §7 with unimplemented actions named, not swallowed)*
+- [~] CoreText shaping, run segmentation by grapheme → style → font, glyph atlas, colour emoji. *(per-cell `CTLine` shaping with CoreText's own cascade for fallback, slot-grid atlas, colour emoji, bold/italic faces, underline/strike; cross-cell ligatures and combining marks are not shaped — the wire carries one scalar per cell)*
+- [x] `CADisplayLink` presentation, ProMotion-adaptive, idle when clean. *(renders on change; the link only coalesces bursts and pauses when clean — see the status note for why it does not also hold the panel at 120 Hz)*
+- [x] Attach to `vtermd`; measure the daemon hop against a direct-PTY baseline. **If it costs > 1 ms p99, execute the ADR-0004 fallback** (foreground pane's PTY in-process, background sessions in the daemon). *(measured, within budget — no fallback)*
+- [x] `Scripts/bundle.sh`: `.app` assembly, `Info.plist`, entitlements, codesign. *(ad-hoc signature until M9; no entitlements file yet because a terminal cannot be sandboxed and hardened-runtime flags come with the Developer ID)*
+- [ ] Configuration UI (added 2026-09-05 at the owner's request): a Preferences window that edits every `config.toml` and `keymap.toml` key from `09`, driven by the Rust config schema so it cannot drift from the file format.
 
 **Exit:** p99 keystroke→glyph < 8.3 ms measured with a typometer-class harness on this Mac; visually indistinguishable from Ghostty at rest.
+
+> **M4 status 2026-09-05 — exit criterion not met as written; measured, not estimated.** The shell runs under the Command Line Tools alone (`mise run app:build`, `app/Scripts/bundle.sh`), attaches to `vtermd`, and renders the login shell. Numbers from this Mac (M-series, built-in 120 Hz ProMotion panel, release builds, `VAMBIANT_TERM_LATENCY_PROBE=200`, 100×30 cells, Menlo 13):
+>
+> | Stage | p50 | p99 |
+> |---|---|---|
+> | key event in the view → grid dirty (daemon round trip incl. `login`/zsh echo) | 0.88 ms | 3.2 ms |
+> | dirty → frame committed (instance build + encode) | 0.46 ms | 1.3 ms |
+> | commit → GPU done | 0.78 ms | — |
+> | commit → frame presented (`CAMetalDrawable.presentedTime`) | **20.6 ms** | 26.2 ms |
+> | **key → presented, total** | **22.0 ms** | **30.9 ms** |
+>
+> Everything this codebase controls costs about 1.3 ms; the remaining 20 ms is the window server presenting a windowed `CAMetalLayer`. Presenting a frame every tick to hold the panel at 120 Hz made it worse (32 ms — frames queued), `presentsWithTransaction` was worse still (28 ms), and disabling display sync changed nothing, so the view renders on change only. The harness is in-process (`app/Sources/VambiantTerm/Latency/LatencyProbe.swift`) and stops at the compositor; a camera-based typometer would add up to one refresh on top. The 8.3 ms figure is therefore not reachable in windowed mode on macOS by this design, and it is left as the exit line so the gap stays visible: the next things to try are fullscreen direct-to-display and a comparison run of Ghostty through the same harness method.
+>
+> **Daemon hop (docs/08 §7, ADR-0004):** `cargo run --release -p vtermd --example daemon_hop -- <sock> 300` — direct PTY `cat` echo p50 25 µs / p99 77 µs; through `vtermd` (IPC in, output delta out) p50 424 µs / p99 873 µs; **added p99 0.80 ms, within the 1 ms budget.** No fallback.
+>
+> **Visual check:** `VAMBIANT_TERM_SCREENSHOT=<png>` writes the rendered drawable; bold, italic, underline, ANSI/256/RGB colours, backgrounds, CJK wide cells and colour emoji were verified from that capture. "Indistinguishable from Ghostty" was not compared side by side (Ghostty is not installed on this machine; only its source is vendored).
+>
+> Left open in M4: selection and copy (M5), bracketed paste through a `session.paste` method (M5), IME/dead-key composition via `NSTextInputClient`, cursor styles and blink from config, hollow-cursor focus behaviour across windows, and the configuration UI above.
 
 ## M5 — Blocks and the sidebar (3 weeks)
 

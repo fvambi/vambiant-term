@@ -56,6 +56,23 @@ run = [
 description = "cargo-deny: licences, advisories, bans, sources"
 run = "cargo deny check"
 
+[tasks."ffi:staticlib"]
+description = "Build target/release/libvambiant_term.a for the Swift shell (explicit staticlib: see scripts/ci/swift-build.sh)"
+run = "cargo rustc --release -p vt-ffi --lib --crate-type staticlib"
+
+[tasks."app:build"]
+description = "Build and test the SwiftPM shell against the Rust staticlib"
+run = "scripts/ci/swift-build.sh"
+
+[tasks."app:bundle"]
+description = "Assemble app/build/Vambiant Term.app (ad-hoc signed until M9)"
+run = "app/Scripts/bundle.sh release"
+
+[tasks."app:run"]
+description = "Build everything and launch the bundle"
+depends = ["app:bundle"]
+run = "open 'app/build/Vambiant Term.app'"
+
 [tasks."abi:check"]
 description = "Regenerate vt_ffi.h with cbindgen and fail on drift"
 run = "scripts/ci/abi-check.sh"

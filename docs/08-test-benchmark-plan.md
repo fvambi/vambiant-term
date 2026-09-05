@@ -78,6 +78,8 @@ Enforced, not aspirational. Recorded per commit; a regression beyond the thresho
 
 Benchmark methodology, adopted from Ghostty's own rules: **generate input files separately** so generation cost is not measured, reuse identical files across revisions, time with hyperfine rather than shell piping, warm up, take **medians**, and **never run benchmarks in parallel**.
 
+> **Measured 2026-09-05 (M4):** the in-process harness (`VAMBIANT_TERM_LATENCY_PROBE`) reports key event → frame presented; it is not a typometer and excludes scan-out. Result: 22.0 ms p50 / 30.9 ms p99, of which ~1.3 ms is this codebase and ~20 ms is windowed `CAMetalLayer` presentation. Daemon hop: +0.80 ms p99 (`daemon_hop` example). Figures and method in `07` M4.
+
 Note honestly: vtebench's own README says it "is not sufficient to get a general understanding of the performance of a terminal emulator. It lacks support for critical factors like frame rate or latency." Throughput is the easy number. Latency is the one that matters, and it needs its own harness.
 
 ## 8. Store and recovery
