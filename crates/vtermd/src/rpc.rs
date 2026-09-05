@@ -43,6 +43,25 @@ impl Rpc {
             })
     }
 
+    /// A persisted session by id or unique name (running or not).
+    fn stored_session(
+        &self,
+        store: &Store,
+        key: &str,
+    ) -> Option<vt_store::sessions::SessionRecord> {
+        let all = store.all_sessions().ok()?;
+        if let Some(r) = all.iter().find(|r| r.info.id.0 == key) {
+            return Some(r.clone());
+        }
+        let mut by_name = all.iter().filter(|r| r.info.name == key);
+        let first = by_name.next().cloned();
+        if by_name.next().is_some() {
+            None
+        } else {
+            first
+        }
+    }
+
     fn session(&self, req: &Request) -> Result<crate::registry::SessionHandle, RpcError> {
         let key: String = Self::param(req, "id")?;
         self.registry.find(&key).ok_or_else(|| {
@@ -176,10 +195,31 @@ impl Handler for Rpc {
                 Ok(serde_json::json!({}))
             }
             method::SESSION_LOGS => {
-                let h = self.session(req)?;
                 let lines: Option<usize> = Self::param(req, "lines").ok();
-                let snap = Registry::snapshot(&h).ok_or_else(gone)?;
-                Ok(serde_json::json!({ "text": wire::text(&snap, lines) }))
+                match self.session(req) {
+                    Ok(h) => {
+                        let snap = Registry::snapshot(&h).ok_or_else(gone)?;
+                        Ok(serde_json::json!({ "text": wire::text(&snap, lines), "live": true }))
+                    }
+                    Err(not_running) => {
+                        // Ended sessions keep their final grid in the store.
+                        let key: String = Self::param(req, "id")?;
+                        let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+                        let rec = self.stored_session(&store, &key).ok_or(not_running)?;
+                        let text = store
+                            .last_output(&rec.info.id)
+                            .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?
+                            .unwrap_or_default();
+                        let text = match lines {
+                            Some(n) => {
+                                let all: Vec<&str> = text.lines().collect();
+                                all[all.len().saturating_sub(n)..].join("\n")
+                            }
+                            None => text,
+                        };
+                        Ok(serde_json::json!({ "text": text, "live": false }))
+                    }
+                }
             }
             "inbox.list" => {
                 let agents = self
@@ -205,13 +245,22 @@ impl Handler for Rpc {
                 }
             }
             "agent.events" => {
-                let h = self.session(req)?;
-                let sid = h
-                    .info
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .id
-                    .clone();
+                let key: String = Self::param(req, "id")?;
+                let sid = match self.session(req) {
+                    Ok(h) => h
+                        .info
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .id
+                        .clone(),
+                    Err(not_running) => {
+                        let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+                        self.stored_session(&store, &key)
+                            .ok_or(not_running)?
+                            .info
+                            .id
+                    }
+                };
                 let after: i64 = Self::param(req, "after").unwrap_or(0);
                 let limit: usize = Self::param(req, "limit").unwrap_or(200);
                 let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);

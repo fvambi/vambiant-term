@@ -257,7 +257,8 @@ fn run(
                 i.pid = None;
             }
             if let Ok(store) = registry.store().lock() {
-                let _ = store.end_session(&id, final_code, &now());
+                let last = wire::text(&core.snapshot(), None);
+                let _ = store.end_session_with_output(&id, final_code, &now(), Some(&last));
             }
             if let Some(server) = registry.server() {
                 server.broadcast(

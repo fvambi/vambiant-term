@@ -87,6 +87,9 @@ const MIGRATIONS: &[&str] = &[
     // v3 — M3: per-session hook/status token so re-adopted agent sessions
     // keep receiving their hooks after a daemon restart.
     "ALTER TABLE sessions ADD COLUMN agent_token TEXT;",
+    // v4 — M3: the visible grid as text at exit, so `vterm logs` and the
+    // timeline still have something for ended sessions.
+    "ALTER TABLE sessions ADD COLUMN last_output TEXT;",
 ];
 
 /// Newest schema version this binary understands.
@@ -139,7 +142,7 @@ mod tests {
     fn migrates_fresh_and_is_idempotent() {
         let mut store = Store::open_in_memory().unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
-        assert_eq!(CURRENT_VERSION, 3);
+        assert_eq!(CURRENT_VERSION, 4);
         migrate(&mut store).unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
         let tables: Vec<String> = store
@@ -188,6 +191,12 @@ mod tests {
             .expect("row survives");
         assert_eq!(rec.hold_socket, None);
         assert_eq!(rec.agent_token, None);
+        assert_eq!(
+            store
+                .last_output(&vt_proto::session::SessionId("old".into()))
+                .unwrap(),
+            None
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

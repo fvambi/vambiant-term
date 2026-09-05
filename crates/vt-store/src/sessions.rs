@@ -94,13 +94,40 @@ impl Store {
         exit_code: Option<i32>,
         at: &str,
     ) -> Result<(), StoreError> {
+        self.end_session_with_output(id, exit_code, at, None)
+    }
+
+    /// Mark a session ended and keep its final visible grid as text.
+    pub fn end_session_with_output(
+        &self,
+        id: &SessionId,
+        exit_code: Option<i32>,
+        at: &str,
+        last_output: Option<&str>,
+    ) -> Result<(), StoreError> {
         self.conn
             .execute(
-                "UPDATE sessions SET state='stopped', ended_at=?2, exit_code=?3, pid=NULL WHERE id=?1",
-                params![id.0, at, exit_code],
+                "UPDATE sessions SET state='stopped', ended_at=?2, exit_code=?3, pid=NULL, last_output=COALESCE(?4, last_output) WHERE id=?1",
+                params![id.0, at, exit_code, last_output],
             )
             .map_err(|source| StoreError::Query { what: "end session", source })?;
         Ok(())
+    }
+
+    /// Final visible output of an ended session, if it was kept.
+    pub fn last_output(&self, id: &SessionId) -> Result<Option<String>, StoreError> {
+        self.conn
+            .query_row(
+                "SELECT last_output FROM sessions WHERE id=?1",
+                params![id.0],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map(Option::flatten)
+            .map_err(|source| StoreError::Query {
+                what: "last output",
+                source,
+            })
     }
 
     /// Mark a session orphaned (could not be re-adopted). Never deletes.
@@ -251,8 +278,20 @@ mod tests {
         assert_eq!(store.live_sessions().unwrap().len(), 2);
 
         store
-            .end_session(&SessionId("s1".into()), Some(0), "2026-09-05T11:00:00Z")
+            .end_session_with_output(
+                &SessionId("s1".into()),
+                Some(0),
+                "2026-09-05T11:00:00Z",
+                Some("bye"),
+            )
             .unwrap();
+        assert_eq!(
+            store
+                .last_output(&SessionId("s1".into()))
+                .unwrap()
+                .as_deref(),
+            Some("bye")
+        );
         let live = store.live_sessions().unwrap();
         assert_eq!(live.len(), 1);
         assert_eq!(live[0].info.id.0, "s2");
