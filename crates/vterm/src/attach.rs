@@ -7,6 +7,7 @@
 
 #![allow(unsafe_code)] // termios raw mode and TIOCGWINSZ; nothing else.
 
+use std::fmt::Write as _;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::mpsc;
@@ -89,8 +90,12 @@ fn sgr(cell: &WireCell) -> String {
     }
     for (color, base) in [(cell.fg, 38), (cell.bg, 48)] {
         match color[0] {
-            1 => s.push_str(&format!(";{base};5;{}", color[1])),
-            2 => s.push_str(&format!(";{base};2;{};{};{}", color[1], color[2], color[3])),
+            1 => {
+                let _ = write!(s, ";{base};5;{}", color[1]);
+            }
+            2 => {
+                let _ = write!(s, ";{base};2;{};{};{}", color[1], color[2], color[3]);
+            }
             _ => {}
         }
     }
@@ -102,7 +107,7 @@ fn paint(out: &mut impl Write, delta: &OutputDelta) -> std::io::Result<()> {
     let mut buf = String::new();
     buf.push_str("\x1b[?25l");
     for row in &delta.lines {
-        buf.push_str(&format!("\x1b[{};1H", row.row + 1));
+        let _ = write!(buf, "\x1b[{};1H", row.row + 1);
         let mut last = String::new();
         for cell in &row.cells {
             if cell.attrs & (1 << 8) != 0 {
@@ -118,7 +123,7 @@ fn paint(out: &mut impl Write, delta: &OutputDelta) -> std::io::Result<()> {
         buf.push_str("\x1b[0m\x1b[K");
     }
     let (r, c, visible) = delta.cursor;
-    buf.push_str(&format!("\x1b[{};{}H", r + 1, c + 1));
+    let _ = write!(buf, "\x1b[{};{}H", r + 1, c + 1);
     if visible {
         buf.push_str("\x1b[?25h");
     }

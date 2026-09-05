@@ -297,10 +297,10 @@ fn publish_event(
 
 fn persist(registry: &Registry, info: &Arc<Mutex<SessionInfo>>) {
     let i = info.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    if let Ok(store) = registry.store().lock() {
-        if let Ok(Some(mut rec)) = store.session(&i.id) {
-            rec.info = i;
-            let _ = store.upsert_session(&rec);
-        }
+    if let Ok(store) = registry.store().lock()
+        && let Ok(Some(mut rec)) = store.session(&i.id)
+    {
+        rec.info = i;
+        let _ = store.upsert_session(&rec);
     }
 }

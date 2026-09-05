@@ -4,11 +4,15 @@
 //! current terminal (Ghostty today) and forwards raw input, which is what
 //! makes M2 a daily driver before the GUI exists.
 
+#![allow(unsafe_code)] // launchd: getuid; attach: termios
+
 mod attach;
 mod cli;
+mod launchd;
 
 use std::path::PathBuf;
 
+use base64::Engine as _;
 use clap::Parser;
 
 use cli::{Cli, Command, DaemonCmd};
@@ -34,6 +38,7 @@ fn fail(e: impl std::fmt::Display) -> ! {
     std::process::exit(1)
 }
 
+#[allow(clippy::too_many_lines)] // one arm per subcommand
 fn main() {
     let cli = Cli::parse();
     match &cli.command {
@@ -142,7 +147,6 @@ fn main() {
         }
         Command::Send { session, text } => {
             let mut c = client(&cli);
-            use base64::Engine as _;
             let bytes = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
             c.call(
                 vt_proto::session::method::SESSION_INPUT,
@@ -189,20 +193,39 @@ fn daemon(cli: &Cli, cmd: &DaemonCmd) {
             }
         },
         DaemonCmd::Start => {
-            // Foreground start for now; the launchd plist lands with `vterm daemon install`.
-            let exe = std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|d| d.join("vtermd")));
-            let exe = exe
-                .filter(|p| p.exists())
-                .unwrap_or_else(|| PathBuf::from("vtermd"));
-            let mut cmd = std::process::Command::new(exe);
+            if launchd::plist_path().exists() {
+                match launchd::kickstart() {
+                    Ok(()) => println!("vtermd started through launchd ({})", launchd::LABEL),
+                    Err(e) => fail(e),
+                }
+                return;
+            }
+            let exe = launchd::vtermd_path(None);
+            let mut cmd = std::process::Command::new(&exe);
             cmd.arg("--socket").arg(socket(cli));
             cmd.stdin(std::process::Stdio::null());
             match cmd.spawn() {
-                Ok(child) => println!("vtermd started (pid {})", child.id()),
-                Err(e) => fail(format!("cannot start vtermd: {e}")),
+                Ok(child) => println!(
+                    "vtermd started (pid {}, not launchd-managed — run `vterm daemon install` for KeepAlive)",
+                    child.id()
+                ),
+                Err(e) => fail(format!("cannot start {}: {e}", exe.display())),
             }
         }
+        DaemonCmd::Stop => match launchd::stop() {
+            Ok(()) => println!("vtermd stopped; running sessions are now orphaned"),
+            Err(e) => fail(e),
+        },
+        DaemonCmd::Install { vtermd } => match launchd::install(vtermd.as_deref()) {
+            Ok(path) => println!(
+                "installed {}; vtermd will start now and on login",
+                path.display()
+            ),
+            Err(e) => fail(e),
+        },
+        DaemonCmd::Uninstall => match launchd::uninstall() {
+            Ok(()) => println!("removed the vtermd LaunchAgent"),
+            Err(e) => fail(e),
+        },
     }
 }

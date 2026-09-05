@@ -77,7 +77,7 @@ impl Handler for Rpc {
                     .unwrap_or_default();
                 let info = self
                     .registry
-                    .create(params)
+                    .create(&params)
                     .map_err(|e| RpcError::new(RpcError::INTERNAL, e))?;
                 if let Some(server) = self.registry.server() {
                     server.broadcast(

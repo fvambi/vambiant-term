@@ -78,6 +78,12 @@ pub fn text(snap: &CellSnapshot, last_lines: Option<usize>) -> String {
                 .to_owned()
         })
         .collect();
+    // Trailing blank rows are the unused part of the grid, not output.
+    let used = rows
+        .iter()
+        .rposition(|r| !r.is_empty())
+        .map_or(0, |i| i + 1);
+    let rows = &rows[..used];
     let keep = last_lines.unwrap_or(rows.len()).min(rows.len());
     rows[rows.len() - keep..].join("\n")
 }

@@ -93,6 +93,7 @@ fn wait_for_text(client: &mut Client, id: &str, needle: &str) -> String {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn create_list_input_logs_kill() {
     let daemon = Daemon::start("basic");
     let mut c = daemon.client();
@@ -212,7 +213,7 @@ fn create_list_input_logs_kill() {
         Some(serde_json::json!({ "id": "e2e" })),
     ) {
         Err(vt_ipc::IpcError::Remote { code, .. }) => {
-            assert_eq!(code, vt_proto::jsonrpc::RpcError::NO_SUCH_SESSION)
+            assert_eq!(code, vt_proto::jsonrpc::RpcError::NO_SUCH_SESSION);
         }
         other => panic!("expected no-such-session after exit, got {other:?}"),
     }

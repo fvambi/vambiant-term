@@ -94,7 +94,7 @@ impl Registry {
     }
 
     /// Spawn a new session and its thread.
-    pub fn create(self: &Arc<Self>, req: NewSession) -> Result<SessionInfo, String> {
+    pub fn create(self: &Arc<Self>, req: &NewSession) -> Result<SessionInfo, String> {
         let id = self.next_id();
         let (cols, rows) = req.size.unwrap_or((80, 24));
         let name = req
@@ -126,7 +126,7 @@ impl Registry {
             created_at: now(),
         };
         let shared = Arc::new(Mutex::new(info.clone()));
-        let cmd = session::spawn(Arc::clone(self), Arc::clone(&shared), &req)?;
+        let cmd = session::spawn(Arc::clone(self), Arc::clone(&shared), req)?;
         let handle = SessionHandle {
             info: Arc::clone(&shared),
             cmd,

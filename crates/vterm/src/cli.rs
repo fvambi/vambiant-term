@@ -101,6 +101,16 @@ pub enum DaemonCmd {
         #[arg(long)]
         json: bool,
     },
-    /// Start vtermd (foreground child of this shell until launchd install lands).
+    /// Start vtermd: through launchd when installed, else as a detached child.
     Start,
+    /// Stop a launchd-managed vtermd (sessions become orphaned; see ADR-0004).
+    Stop,
+    /// Install the launchd LaunchAgent (KeepAlive) for the current user.
+    Install {
+        /// Path to the vtermd binary (default: next to this executable).
+        #[arg(long)]
+        vtermd: Option<PathBuf>,
+    },
+    /// Remove the launchd LaunchAgent.
+    Uninstall,
 }
