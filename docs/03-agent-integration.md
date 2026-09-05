@@ -111,7 +111,7 @@ Hook handlers use the **`http` handler type**, POSTing to `http://127.0.0.1:<por
 | `PreModelSwitch` / `PostModelSwitch` | Cost attribution changes |
 | `Elicitation` / `ElicitationResult` | MCP elicitation flows into the same inbox |
 
-Every event carries `session_id`, `transcript_path`, `cwd`, `hook_event_name`. **As verified on 2026-09-04 (v2.1.260):** `prompt_id` and `permission_mode` are present on tool/turn events but absent on `SessionStart`; **`effort` never appears** (it arrives as the `CLAUDE_EFFORT` env var instead); `PermissionRequest` adds `permission_suggestions`. Parse every field beyond the first four as optional. Of the events above, `PermissionDenied`, `TeammateIdle`, `PreCompact`/`PostCompact`, `PostModelSwitch` and `Elicitation`/`ElicitationResult` were not reached in M0 — see `10-research-notes.md` §6.
+Every event carries `session_id`, `transcript_path`, `cwd`, `hook_event_name`. **As verified on 2026-09-04 (v2.1.260):** `prompt_id` and `permission_mode` are present on tool/turn events but absent on `SessionStart`; **`effort` never appears** (it arrives as the `CLAUDE_EFFORT` env var instead); `PermissionRequest` adds `permission_suggestions`. Parse every field beyond the first four as optional. Of the events above only `PermissionDenied` and `TeammateIdle` were not captured in M0; `PermissionDenied` is documented as firing **only in auto mode on classifier denials** (never on hook blocks, deny rules or manual denials), so it is a diagnostic for M8, not an inbox source — see `10-research-notes.md` §6.
 
 ### 4.3 Answering
 
@@ -180,7 +180,7 @@ Codex has a *better* embedding story than Claude Code and we should use it.
 
 ### 5.1 `codex app-server` — the primary integration
 
-JSON-RPC 2.0 over stdio, WebSocket, or Unix socket (`codex app-server --listen ws://127.0.0.1:<port>`). It exists explicitly for "a deep integration inside your own product" and handles auth, history, approvals and streamed events. Verified 2026-09-04: the Unix-socket transport is **WebSocket framing over the socket** (HTTP Upgrade handshake), not newline-delimited JSON; `initialize` → `initialized` is mandatory per connection; approvals arrive as the server request `item/commandExecution/requestApproval` answered with `{"result":{"decision":"accept"|"decline"}}`. Raw traffic in `tests/fixtures/codex/app-server/`.
+JSON-RPC 2.0 over stdio, WebSocket, or Unix socket (`codex app-server --listen ws://127.0.0.1:<port>`). It exists explicitly for "a deep integration inside your own product" and handles auth, history, approvals and streamed events. Verified 2026-09-04: the Unix-socket transport is **WebSocket framing over the socket** (HTTP Upgrade handshake), not newline-delimited JSON; `initialize` → `initialized` is mandatory per connection; approvals arrive as the server request `item/commandExecution/requestApproval` answered with `{"result":{"decision":"accept"|"decline"}}`; `turn/interrupt` needs `threadId` **and** `turnId`; a spawned subagent is a child thread whose `turn/*` notifications arrive on the same connection. Raw traffic in `tests/fixtures/codex/app-server/`.
 
 Methods we use: `thread/start`, `thread/resume`, `thread/fork`, `thread/list`, `thread/archive`; `turn/start`, `turn/steer`, `turn/interrupt`; `model/list`; `config/read`, `config/value/write`.
 
@@ -190,7 +190,7 @@ Methods we use: `thread/start`, `thread/resume`, `thread/fork`, `thread/list`, `
 
 Codex now has a hook system that closely mirrors Claude Code's: `hooks.json` or inline `[hooks]` in `config.toml`, gated by `[features] hooks`.
 
-Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`, `Interrupt`. Verified 2026-09-04 (0.153.2): the first four plus `PostToolUse`, `Stop` and `SessionEnd` captured; payloads carry `model` and `turn_id` and no `prompt_id`; every hook needs persisted trust (`[hooks.state]`) and project hooks need project trust; handler types are `command` and `mcp_tool` only — no `http`.
+Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`, `Interrupt`. Verified 2026-09-04/05 (0.153.2): all captured except `PermissionRequest`; payloads carry `model` and `turn_id` and no `prompt_id`; every hook needs persisted trust (`[hooks.state]`) and project hooks need project trust; handler types are `command` and `mcp_tool` only — no `http`.
 
 The schemas are convergent enough (`hookSpecificOutput`, `permissionDecision`, exit-2 blocking, same stdin field names) that **one hook-handling abstraction serves both vendors**. Codex's set is a strict subset: no `terminalSequence`, no `MessageDisplay`, no `PostToolBatch`. Timeouts: 600 s default, but `SessionEnd` and `Interrupt` get 1 s (max 3 s).
 
@@ -204,7 +204,7 @@ Useful flags: `-o/--output-last-message`, `--output-schema`, `--ephemeral` (skip
 
 TOML. Precedence, highest first: CLI flags/`--config` → project `.codex/config.toml` → profile `~/.codex/<profile>.config.toml` → user `~/.codex/config.toml` → system `/etc/codex/config.toml`. `CODEX_HOME` relocates the tree.
 
-Keys that matter to us: `sandbox_mode`, `approval_policy` (`on-request` | `never` — **`untrusted` is rejected by 0.153.2** with "no longer supported", verified 2026-09-04), `[sandbox_workspace_write] writable_roots / network_access`, `mcp_servers`, `notify`, and `[hooks.state."<key>"] trusted_hash / enabled` (hook trust, which can live in our profile) plus `[projects."<path>"] trust_level` (project trust; writing it ourselves avoids Codex mutating the user's `config.toml`).
+Keys that matter to us: `sandbox_mode`, `approval_policy` (`on-request` | `never` — **`untrusted` is rejected by 0.153.2** with "no longer supported", verified 2026-09-04), `[sandbox_workspace_write] writable_roots / network_access`, `mcp_servers`, `notify`, and `[projects."<path>"] trust_level` (project trust; writing it into our profile avoids Codex mutating the user's `config.toml`). Hook trust has **no config key**: it is granted only through the interactive `/hooks` browser, `--dangerously-bypass-hook-trust` (TUI and `exec` only, not `app-server`) or managed `requirements.toml` hooks — verified 2026-09-05, see `10-research-notes.md` §7. The Codex adapter therefore treats hooks as optional and drives everything through app-server.
 
 We write a **profile** rather than touching the user's main config, and select it with `--profile`.
 

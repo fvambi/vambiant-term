@@ -45,7 +45,7 @@ Plus:
 
 ## 5. Agent adapters
 
-- **Fixture replay**: real captured hook payloads and stream-json/JSONL lines from M0, replayed through each adapter, asserting the normalised `AgentEvent` output.
+- **Fixture replay**: real captured hook payloads and stream-json/JSONL lines from M0, replayed through each adapter, asserting the normalised `AgentEvent` output. The raw M0 captures under `tests/fixtures/{claude,codex}/` hold real session ids, paths and costs and are **git-ignored on purpose** (decision 2026-09-05); CI replays a sanitised copy under `tests/fixtures/sanitised/` produced by a scrubbing script that rewrites ids, home paths and cost figures and is itself tested against the raw set locally (M3).
 - **Contract tests**: assert that an unknown event name or an unknown field produces a logged warning and a degraded-but-correct event — never a panic, never a silent drop. This is the test that turns "the vendor changed the schema" from an outage into a warning.
 - **Fake agent**: a small binary that emits a scripted event sequence including pathological cases — a permission request that is never answered, a crash mid-tool-call, 500 events in 100 ms, an event with a 2 MB payload.
 - **Deferred-decision watchdog**: assert every deferred request either resolves or surfaces as "still waiting", and that returning `null`/`defer` without a follow-up answer is caught by the watchdog rather than hanging forever.
