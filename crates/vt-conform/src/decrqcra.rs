@@ -44,7 +44,6 @@ impl Scanner {
         let mut out = Vec::new();
         for &b in bytes {
             self.state = match (self.state, b) {
-                (State::Ground, 0x1b) => State::Esc,
                 (State::Esc, b'[') => {
                     self.params.clear();
                     State::Csi

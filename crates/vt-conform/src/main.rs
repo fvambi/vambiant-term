@@ -55,12 +55,12 @@ fn main() {
     );
     let logfile = std::env::temp_dir().join("vt-conform-esctest.log");
     let _ = std::fs::remove_file(&logfile);
-    let mut argv = vec!["python3".to_string(), script.display().to_string()];
-    argv.extend(esctest_args);
-    argv.push(format!("--logfile={}", logfile.display()));
+    let mut command = vec!["python3".to_string(), script.display().to_string()];
+    command.extend(esctest_args);
+    command.push(format!("--logfile={}", logfile.display()));
 
     let spec = vt_pty::SpawnSpec {
-        argv,
+        argv: command,
         cwd: script.parent().map(PathBuf::from),
         env: vec![("TERM".into(), "xterm-256color".into())],
         session: "vt-conform".into(),
