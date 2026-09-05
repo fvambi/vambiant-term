@@ -293,10 +293,9 @@ fn resolve_in_path(program: &str) -> Option<String> {
         .map(|dir| dir.join(program))
         .find(|candidate| {
             candidate.metadata().is_ok_and(|m| {
-                m.is_file() && std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0
+                m.is_file()
+                    && std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0
             })
-        })
-                .unwrap_or(false)
         })
         .map(|p| p.display().to_string())
 }
