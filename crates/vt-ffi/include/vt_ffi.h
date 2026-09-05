@@ -16,9 +16,19 @@
 #define VtABI_VERSION 1
 
 /**
+ * A subscription. Opaque to C.
+ */
+typedef struct VtEvents VtEvents;
+
+/**
  * An attached viewer. Opaque to C.
  */
 typedef struct VtViewer VtViewer;
+
+/**
+ * `(ctx, method, params_json)`; strings are valid for the call only.
+ */
+typedef void (*VtEventCallback)(void *ctx, const char *method, const char *params_json);
 
 /**
  * One cell as the renderer sees it. `ch` is a Unicode scalar; `fg`/`bg`
@@ -142,6 +152,22 @@ char *vt_daemon_call(const char *socket, const char *method, const char *params_
  * Free with [`vt_string_free`].
  */
 char *vt_default_socket(void);
+
+/**
+ * Stops delivering and frees. The thread ends at the next message.
+ *
+ * # Safety
+ * `e` must come from [`vt_events_subscribe`] and not be used afterwards.
+ */
+void vt_events_free(struct VtEvents *e);
+
+/**
+ * Subscribes to all daemon notifications at `socket`. `on_event` runs on
+ * the subscription's thread; a final call with method `"disconnected"`
+ * and empty params marks the end. Returns null on connection failure
+ * (reason in [`crate::vt_viewer_last_error`]).
+ */
+struct VtEvents *vt_events_subscribe(const char *socket, VtEventCallback on_event, void *ctx);
 
 /**
  * Returns [`ABI_VERSION`] so the Swift side can refuse a mismatched

@@ -29,6 +29,8 @@ pub enum Observer {
         last_output: Instant,
         flowing: bool,
     },
+    /// `[agents.generic] enabled = false`: watch nothing.
+    Off,
 }
 
 impl Observer {
@@ -40,10 +42,17 @@ impl Observer {
             // interactive TUIs never emit a line starting with `{"type":`.
             AgentKind::Claude | AgentKind::Codex => Self::Stream { carry: Vec::new() },
             AgentKind::Generic => {
-                let (packs, problems) = vt_agent::generic::load_packs(&registry.packs_dir());
+                let generic = registry.cfg().agents.generic;
+                if !generic.enabled {
+                    return Self::Off;
+                }
+                let (mut packs, problems) = vt_agent::generic::load_packs(&registry.packs_dir());
                 for p in problems {
                     eprintln!("vtermd: session {}: prompt pack skipped: {p}", id.0);
                 }
+                // `[agents.generic] packs` names the user packs that load; the
+                // built-in one always does.
+                packs.retain(|p| generic.packs.contains(&p.name));
                 Self::Heuristic {
                     detector: Detector::new(packs),
                     last_output: Instant::now(),
@@ -95,6 +104,7 @@ impl Observer {
                 }
                 *flowing = true;
             }
+            Self::Off => {}
         }
     }
 

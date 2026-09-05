@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use clap::Parser;
 
-use cli::{Cli, Command, DaemonCmd, InboxCmd};
+use cli::{Cli, Command, ConfigCmd, DaemonCmd, InboxCmd};
 
 fn socket(cli: &Cli) -> PathBuf {
     cli.socket
@@ -43,6 +43,8 @@ fn main() {
     let cli = Cli::parse();
     match &cli.command {
         Command::Daemon { cmd } => daemon(&cli, cmd),
+        Command::Config { cmd } => config(&cli, cmd),
+        Command::Keys { json } => keys(&cli, *json),
         Command::Ls { json } => {
             let mut c = client(&cli);
             let v = c
@@ -485,5 +487,130 @@ fn decide_all(c: &mut vt_ipc::Client, id: &str, decision: &serde_json::Value) {
             ),
             Err(e) => eprintln!("vterm: {e}"),
         }
+    }
+}
+
+fn config(cli: &Cli, cmd: &ConfigCmd) {
+    use vt_proto::session::method;
+    let mut c = client(cli);
+    match cmd {
+        ConfigCmd::Path => {
+            let v = c.call(method::CONFIG_GET, None).unwrap_or_else(|e| fail(e));
+            let paths = &v["paths"];
+            for (label, key) in [
+                ("config", "config"),
+                ("keymap", "keymap"),
+                ("themes", "themes"),
+            ] {
+                println!("{label:<7} {}", paths[key].as_str().unwrap_or("?"));
+            }
+            for (key, label) in [
+                ("config_error", "config.toml"),
+                ("keymap_error", "keymap.toml"),
+            ] {
+                if let Some(e) = v[key].as_object() {
+                    println!(
+                        "{label}: ERROR {}{}: {}",
+                        e["file"].as_str().unwrap_or(""),
+                        e["line"]
+                            .as_u64()
+                            .map_or(String::new(), |l| format!(":{l}")),
+                        e["message"].as_str().unwrap_or("")
+                    );
+                }
+            }
+            for w in v["config_warnings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .chain(v["theme_warnings"].as_array().into_iter().flatten())
+            {
+                println!("warning: {}", w.as_str().unwrap_or(""));
+            }
+        }
+        ConfigCmd::Show { json } => {
+            let v = c.call(method::CONFIG_GET, None).unwrap_or_else(|e| fail(e));
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            } else {
+                let config: vt_config::Config =
+                    serde_json::from_value(v["config"].clone()).unwrap_or_else(|e| fail(e));
+                print!("{}", toml::to_string(&config).unwrap_or_default());
+            }
+        }
+        ConfigCmd::Get { key } => {
+            let v = c.call(method::CONFIG_GET, None).unwrap_or_else(|e| fail(e));
+            let mut cur = &v["config"];
+            for part in key.split('.') {
+                cur = &cur[part];
+            }
+            if cur.is_null() {
+                fail(format!("no such key: {key}"));
+            }
+            println!("{cur}");
+        }
+        ConfigCmd::Set { key, value } => {
+            let value: serde_json::Value = serde_json::from_str(value)
+                .unwrap_or_else(|_| serde_json::Value::String(value.clone()));
+            let params = serde_json::json!({ "key": key, "value": value });
+            c.call(method::CONFIG_SET, Some(params))
+                .unwrap_or_else(|e| fail(e));
+            println!("{key} = {value}");
+        }
+        ConfigCmd::Bind {
+            chord,
+            action,
+            remove,
+        } => {
+            let params = if *remove {
+                serde_json::json!({ "chord": chord })
+            } else {
+                let Some(action) = action else {
+                    fail("an action is required unless --remove is given")
+                };
+                serde_json::json!({ "chord": chord, "action": action })
+            };
+            let v = c
+                .call(method::CONFIG_KEYMAP_SET, Some(params))
+                .unwrap_or_else(|e| fail(e));
+            print_keys(&v);
+        }
+    }
+}
+
+fn keys(cli: &Cli, json: bool) {
+    let mut c = client(cli);
+    let v = c
+        .call(vt_proto::session::method::CONFIG_GET, None)
+        .unwrap_or_else(|e| fail(e));
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&v["keymap"]).unwrap_or_default()
+        );
+    } else {
+        print_keys(&v["keymap"]);
+    }
+}
+
+fn print_keys(keymap: &serde_json::Value) {
+    println!(
+        "profile {}  prefix {}",
+        keymap["profile"].as_str().unwrap_or("?"),
+        keymap["prefix"].as_str().unwrap_or("?")
+    );
+    for b in keymap["bindings"].as_array().into_iter().flatten() {
+        println!(
+            "{:<22} {:<26} {}",
+            b["chord"].as_str().unwrap_or(""),
+            b["action"].as_str().unwrap_or(""),
+            b["source"].as_str().unwrap_or("")
+        );
+    }
+    for e in keymap["errors"].as_array().into_iter().flatten() {
+        println!("error: {}", e.as_str().unwrap_or(""));
+    }
+    for e in keymap["conflicts"].as_array().into_iter().flatten() {
+        println!("conflict: {}", e.as_str().unwrap_or(""));
     }
 }

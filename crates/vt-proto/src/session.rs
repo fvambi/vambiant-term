@@ -98,6 +98,16 @@ pub mod method {
     pub const SESSION_DETACH: &str = "session.detach";
     /// `{ id, lines? } -> { text }` — last `lines` of the visible grid as text.
     pub const SESSION_LOGS: &str = "session.logs";
+    /// → everything in `vt_config::Loaded` plus field metadata and actions.
+    pub const CONFIG_GET: &str = "config.get";
+    /// `{ key, value }` → the new `Config`; errors name file and key.
+    pub const CONFIG_SET: &str = "config.set";
+    /// `{ chord, action? }` (null action removes) → resolved keymap.
+    pub const CONFIG_KEYMAP_SET: &str = "config.keymap.set";
+    /// `{ theme }` → path written under `themes/`.
+    pub const CONFIG_THEME_SAVE: &str = "config.theme.save";
+    /// Re-read the files now → same shape as `config.get`.
+    pub const CONFIG_RELOAD: &str = "config.reload";
 }
 
 /// Notification names (`vtermd` → attached clients).
@@ -112,6 +122,9 @@ pub mod notification {
     pub const SESSION_EXITED: &str = "session.exited";
     /// `SessionInfo` — a session was created, renamed or removed.
     pub const SESSION_CHANGED: &str = "session.changed";
+    /// `{ config_error?, config_warnings, keymap_error?, theme_warnings }` —
+    /// a config file changed on disk and was re-read.
+    pub const CONFIG_CHANGED: &str = "config.changed";
 }
 
 /// Parameters of [`method::SESSION_NEW`].

@@ -123,6 +123,54 @@ pub enum Command {
         /// Text to send; escapes are not interpreted.
         text: String,
     },
+    /// Read or edit config.toml / keymap.toml through the daemon.
+    Config {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: ConfigCmd,
+    },
+    /// Print the resolved keymap and flag conflicts.
+    Keys {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+/// `vterm config …`.
+#[derive(Subcommand, Debug)]
+pub enum ConfigCmd {
+    /// Where the files are and whether they parse.
+    Path,
+    /// The effective configuration.
+    Show {
+        /// Machine-readable output (includes field metadata).
+        #[arg(long)]
+        json: bool,
+    },
+    /// One value, e.g. `font.size`.
+    Get {
+        /// Dotted key.
+        key: String,
+    },
+    /// Set one value; JSON values (numbers, true/false, `["lists"]`) are
+    /// parsed, anything else is a string. Comments in the file are kept.
+    Set {
+        /// Dotted key.
+        key: String,
+        /// New value.
+        value: String,
+    },
+    /// Bind a chord in keymap.toml (`--remove` to delete the override).
+    Bind {
+        /// Chord, e.g. `cmd+shift+a` or `prefix a`.
+        chord: String,
+        /// Action id (see `vterm keys`).
+        action: Option<String>,
+        /// Remove the override instead.
+        #[arg(long)]
+        remove: bool,
+    },
 }
 
 /// `vterm daemon …`.

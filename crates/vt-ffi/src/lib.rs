@@ -12,9 +12,11 @@
 #![allow(unsafe_code)]
 
 mod daemon;
+mod events;
 mod viewer;
 
 pub use daemon::*;
+pub use events::*;
 pub use viewer::*;
 
 /// ABI version. Bumped on every incompatible change to any exported type

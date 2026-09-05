@@ -19,6 +19,7 @@ vt-ipc.workspace = true
 vt-proto.workspace = true
 vt-pty.workspace = true
 vt-store.workspace = true
+vt-config.workspace = true
 
 [[bin]]
 name = "vtermd"

@@ -169,6 +169,7 @@ impl Agents {
                     .get(&id)
                     .map_or(0, |p| p.since.elapsed().as_secs());
                 notify_desktop(
+                    &self.registry,
                     &item.session_name,
                     &item.request.tool,
                     Some(&format!("still waiting after {waited} s")),
@@ -246,7 +247,7 @@ impl Agents {
                             .clone()
                     })
                     .unwrap_or_default();
-                notify_desktop(&name, "question (guess)", Some(q));
+                notify_desktop(&self.registry, &name, "question (guess)", Some(q));
             }
         }
     }
@@ -638,7 +639,7 @@ impl Agents {
                         .unwrap_or_else(PoisonError::into_inner)
                         .insert(req.id.clone(), Arc::clone(&pending));
                     self.set_state(session, AgentState::AwaitingInput);
-                    notify_desktop(&name, &req.tool, req.reason.as_deref());
+                    notify_desktop(&self.registry, &name, &req.tool, req.reason.as_deref());
                     hold = Some(pending);
                 }
                 _ => {}
@@ -711,7 +712,15 @@ impl HttpHandler for Agents {
 
 /// macOS Notification Center via `osascript` until the app (M4) does it
 /// natively. Best effort; failures are silent.
-fn notify_desktop(session: &str, tool: &str, reason: Option<&str>) {
+fn notify_desktop(
+    registry: &crate::registry::Registry,
+    session: &str,
+    tool: &str,
+    reason: Option<&str>,
+) {
+    if !registry.cfg().notifications.awaiting_input {
+        return;
+    }
     let body = reason.map_or_else(
         || format!("{tool} needs approval"),
         |r| format!("{tool}: {r}"),

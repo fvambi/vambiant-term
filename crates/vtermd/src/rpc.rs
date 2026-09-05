@@ -217,6 +217,62 @@ impl Handler for Rpc {
                     }
                 }
             }
+            method::CONFIG_GET => {
+                let config = self
+                    .registry
+                    .config()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "config not loaded"))?;
+                Ok(config.describe())
+            }
+            method::CONFIG_RELOAD => {
+                let config = self
+                    .registry
+                    .config()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "config not loaded"))?;
+                config.reload();
+                Ok(config.describe())
+            }
+            method::CONFIG_SET => {
+                let config = self
+                    .registry
+                    .config()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "config not loaded"))?;
+                let key: String = Self::param(req, "key")?;
+                let value: serde_json::Value = Self::param(req, "value")?;
+                let new = config
+                    .set(&key, &value)
+                    .map_err(|e| RpcError::new(RpcError::INVALID_PARAMS, e.to_string()))?;
+                serde_json::to_value(new).map_err(|e| internal(&e))
+            }
+            method::CONFIG_KEYMAP_SET => {
+                let config = self
+                    .registry
+                    .config()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "config not loaded"))?;
+                let chord: String = Self::param(req, "chord")?;
+                let action: Option<String> = req
+                    .params
+                    .as_ref()
+                    .and_then(|p| p.get("action"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
+                let resolved = config
+                    .set_binding(&chord, action.as_deref())
+                    .map_err(|e| RpcError::new(RpcError::INVALID_PARAMS, e.to_string()))?;
+                serde_json::to_value(resolved).map_err(|e| internal(&e))
+            }
+            method::CONFIG_THEME_SAVE => {
+                let config = self
+                    .registry
+                    .config()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "config not loaded"))?;
+                let theme: vt_config::theme::Theme = Self::param(req, "theme")?;
+                let problems = theme.warnings();
+                let path = config
+                    .save_theme(&theme)
+                    .map_err(|e| RpcError::new(RpcError::INVALID_PARAMS, e.to_string()))?;
+                Ok(serde_json::json!({ "path": path, "warnings": problems }))
+            }
             "inbox.list" => {
                 let agents = self
                     .registry

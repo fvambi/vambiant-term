@@ -17,6 +17,7 @@
 
 mod agents;
 mod codex;
+mod config;
 mod holder;
 mod observe;
 mod registry;
@@ -61,10 +62,7 @@ fn main() {
             std::process::exit(2);
         }
     };
-    match store.sweep(vt_store::retention::Retention::default(), &registry::now()) {
-        Ok(swept) => eprintln!("vtermd: retention sweep removed {swept:?}"),
-        Err(e) => eprintln!("vtermd: retention sweep failed: {e}"),
-    }
+    let config = load_config_and_sweep(&store);
 
     let store = Arc::new(Mutex::new(store));
     let registry = Arc::new(registry::Registry::new(
@@ -101,6 +99,8 @@ fn main() {
             "vtermd: hook receiver failed to start: {e}; agent sessions will run with limited observability"
         ),
     }
+    registry.set_config(Arc::clone(&config));
+    config.start_watch(Arc::clone(&registry));
     registry.set_agents(Arc::clone(&agents));
     agents.start_watchdog();
     // Re-adopt before accepting clients so the first `session.list` is true.
@@ -135,4 +135,36 @@ fn main() {
             }
         }
     }
+}
+
+/// Read the config files, report what is wrong with them, and run the
+/// retention sweep with the configured windows.
+fn load_config_and_sweep(store: &Store) -> Arc<config::ConfigState> {
+    let config = config::ConfigState::load_default();
+    {
+        let loaded = config.loaded();
+        if let Some(e) = &loaded.config_error {
+            eprintln!("vtermd: config: {e} — running on defaults until it is fixed");
+        }
+        for w in loaded.config_warnings.iter().chain(&loaded.theme_warnings) {
+            eprintln!("vtermd: config: {w}");
+        }
+        if let Some(e) = &loaded.keymap_error {
+            eprintln!("vtermd: config: {e}");
+        }
+    }
+    let cfg = config.config();
+    if cfg.storage.prune_on_start {
+        let retention = vt_store::retention::Retention {
+            events_days: cfg.storage.event_retention_days,
+            egress_days: cfg.privacy.egress_log_days,
+            sessions_days: cfg.storage.block_retention_days,
+        };
+        match store.sweep(retention, &registry::now()) {
+            Ok(swept) => eprintln!("vtermd: retention sweep removed {swept:?}"),
+            Err(e) => eprintln!("vtermd: retention sweep failed: {e}"),
+        }
+    }
+
+    config
 }

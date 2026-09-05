@@ -65,6 +65,7 @@ pub struct Registry {
     runtime_dir: PathBuf,
     state_dir: PathBuf,
     agents: OnceLock<Arc<crate::agents::Agents>>,
+    config: OnceLock<Arc<crate::config::ConfigState>>,
     counter: Mutex<u64>,
 }
 
@@ -78,6 +79,7 @@ impl Registry {
             runtime_dir,
             state_dir,
             agents: OnceLock::new(),
+            config: OnceLock::new(),
             counter: Mutex::new(0),
         }
     }
@@ -88,6 +90,23 @@ impl Registry {
     }
 
     /// The agent layer, once wired.
+    /// Wire the configuration once loaded.
+    pub fn set_config(&self, config: Arc<crate::config::ConfigState>) {
+        let _ = self.config.set(config);
+    }
+
+    /// The configuration, when wired.
+    pub fn config(&self) -> Option<Arc<crate::config::ConfigState>> {
+        self.config.get().cloned()
+    }
+
+    /// Current `config.toml` values, or the defaults before wiring.
+    pub fn cfg(&self) -> vt_config::Config {
+        self.config
+            .get()
+            .map_or_else(vt_config::Config::default, |c| c.config())
+    }
+
     pub fn agents(&self) -> Option<Arc<crate::agents::Agents>> {
         self.agents.get().cloned()
     }
@@ -122,17 +141,20 @@ impl Registry {
                     .unwrap_or_else(|| PathBuf::from("vterm"));
                 let prov = vt_agent::claude::provision(&dir, &receiver, &token, &vterm)
                     .map_err(|e| e.to_string())?;
+                let claude_cfg = self.cfg().agents.claude;
                 if spec.argv.is_empty() {
-                    spec.argv.push("claude".into());
+                    spec.argv.push(claude_cfg.binary.clone());
                 }
                 // `claude [args]` → `claude --settings <file> [args]`. Any other
                 // program (a wrapper script, a fake agent in tests) gets the
                 // path in the environment and must pass it on itself.
-                let is_claude = spec.argv[0].rsplit('/').next() == Some("claude");
+                let is_claude = spec.argv[0].rsplit('/').next() == Some("claude")
+                    || spec.argv[0] == claude_cfg.binary;
                 if is_claude {
                     let program = spec.argv.remove(0);
                     let mut argv = vec![program];
                     argv.extend(prov.extra_args.clone());
+                    argv.extend(claude_cfg.extra_args.clone());
                     argv.extend(spec.argv);
                     spec.argv = argv;
                 }
@@ -159,13 +181,20 @@ impl Registry {
                     .clone()
                     .or_else(|| std::env::current_dir().ok())
                     .unwrap_or_else(|| "/".into());
-                let socket = crate::codex::start_app_server(&self.runtime_dir, &id.0, &cwd)?;
+                let codex_cfg = self.cfg().agents.codex;
+                let socket = crate::codex::start_app_server(
+                    &self.runtime_dir,
+                    &id.0,
+                    &cwd,
+                    Path::new(&codex_cfg.binary),
+                )?;
                 if spec.argv.is_empty() {
-                    spec.argv.push("codex".into());
+                    spec.argv.push(codex_cfg.binary.clone());
                 }
                 // `codex [args]` → `codex --remote unix://<sock> [args]`; any
                 // other program gets the socket in the environment only.
-                let is_codex = spec.argv[0].rsplit('/').next() == Some("codex");
+                let is_codex = spec.argv[0].rsplit('/').next() == Some("codex")
+                    || spec.argv[0] == codex_cfg.binary;
                 if is_codex {
                     let program = spec.argv.remove(0);
                     let mut argv = vec![
@@ -173,6 +202,7 @@ impl Registry {
                         "--remote".into(),
                         format!("unix://{}", socket.display()),
                     ];
+                    argv.extend(codex_cfg.extra_args.clone());
                     argv.extend(spec.argv);
                     spec.argv = argv;
                 }
@@ -221,6 +251,16 @@ impl Registry {
 
     /// Spawn a new session (through an fd holder) and its thread.
     pub fn create(self: &Arc<Self>, req: &NewSession) -> Result<SessionInfo, String> {
+        // `[terminal] shell` replaces the login shell for plain sessions;
+        // agent sessions have their own program.
+        let mut req = req.clone();
+        if req.argv.is_empty() && req.agent.is_none() {
+            let shell = self.cfg().terminal.shell;
+            if !shell.trim().is_empty() {
+                req.argv = shell.split_whitespace().map(str::to_owned).collect();
+            }
+        }
+        let req = &req;
         let id = self.next_id();
         let (cols, rows) = req.size.unwrap_or((80, 24));
         let name = req

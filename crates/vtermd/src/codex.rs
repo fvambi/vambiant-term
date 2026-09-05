@@ -33,8 +33,9 @@ pub fn socket_for(runtime_dir: &Path, session_id: &str) -> PathBuf {
     runtime_dir.join(format!("codex-{session_id}.sock"))
 }
 
-fn codex_binary() -> PathBuf {
-    std::env::var_os("VTERMD_CODEX").map_or_else(|| PathBuf::from("codex"), PathBuf::from)
+/// `VTERMD_CODEX` (tests) wins over `[agents.codex] binary`.
+fn codex_binary(configured: &Path) -> PathBuf {
+    std::env::var_os("VTERMD_CODEX").map_or_else(|| configured.to_path_buf(), PathBuf::from)
 }
 
 /// Start the session's app-server, detached so it outlives this daemon like
@@ -44,13 +45,14 @@ pub fn start_app_server(
     runtime_dir: &Path,
     session_id: &str,
     cwd: &Path,
+    binary: &Path,
 ) -> Result<PathBuf, String> {
     if let Some(external) = std::env::var_os("VTERMD_CODEX_SOCKET") {
         return Ok(PathBuf::from(external));
     }
     let socket = socket_for(runtime_dir, session_id);
     let _ = std::fs::remove_file(&socket);
-    let mut cmd = Command::new(codex_binary());
+    let mut cmd = Command::new(codex_binary(binary));
     cmd.arg("app-server")
         .arg("--listen")
         .arg(format!("unix://{}", socket.display()))

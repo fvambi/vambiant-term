@@ -154,7 +154,7 @@ struct DirtyCtx(*mut c_void);
 // the shell promised it is safe to use from the reader thread.
 unsafe impl Send for DirtyCtx {}
 
-fn cstr<'a>(p: *const c_char) -> Option<&'a str> {
+pub(crate) fn cstr<'a>(p: *const c_char) -> Option<&'a str> {
     if p.is_null() {
         return None;
     }
@@ -282,7 +282,7 @@ thread_local! {
     static LAST_ERROR: std::cell::RefCell<std::ffi::CString> = std::cell::RefCell::new(std::ffi::CString::default());
 }
 
-fn set_error(e: String) {
+pub(crate) fn set_error(e: String) {
     LAST_ERROR.with(|c| *c.borrow_mut() = std::ffi::CString::new(e).unwrap_or_default());
 }
 

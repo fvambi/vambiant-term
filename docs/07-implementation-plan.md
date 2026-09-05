@@ -81,7 +81,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 - [x] `CADisplayLink` presentation, ProMotion-adaptive, idle when clean. *(renders on change; the link only coalesces bursts and pauses when clean — see the status note for why it does not also hold the panel at 120 Hz)*
 - [x] Attach to `vtermd`; measure the daemon hop against a direct-PTY baseline. **If it costs > 1 ms p99, execute the ADR-0004 fallback** (foreground pane's PTY in-process, background sessions in the daemon). *(measured, within budget — no fallback)*
 - [x] `Scripts/bundle.sh`: `.app` assembly, `Info.plist`, entitlements, codesign. *(ad-hoc signature until M9; no entitlements file yet because a terminal cannot be sandboxed and hardened-runtime flags come with the Developer ID)*
-- [ ] Configuration UI (added 2026-09-05 at the owner's request): a Preferences window that edits every `config.toml` and `keymap.toml` key from `09`, driven by the Rust config schema so it cannot drift from the file format.
+- [~] Configuration UI (added 2026-09-05 at the owner's request): a Preferences window that edits every `config.toml` and `keymap.toml` key from `09`, driven by the Rust config schema so it cannot drift from the file format. *(Rust side done: `vt-config` schema with defaults, validation, comment-preserving edits, resolved keymaps, themes, hot reload; daemon RPC `config.*`; `vterm config`/`vterm keys`. Swift Settings window in progress.)*
 
 **Exit:** p99 keystroke→glyph < 8.3 ms measured with a typometer-class harness on this Mac; visually indistinguishable from Ghostty at rest.
 
