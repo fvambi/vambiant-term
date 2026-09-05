@@ -98,12 +98,16 @@ extra_args       = []
 [agents.codex]
 binary           = "codex"
 transport        = "app-server"           # app-server | exec | hooks-only
-profile          = "vambiant-term"        # a Codex profile we own, not your main config
-extra_args       = []
+extra_args       = []                     # e.g. ["--sandbox", "workspace-write"]; reach the thread the TUI starts
+# No profile: as built in M3 the daemon starts a per-session `codex app-server`
+# that reads your own config.toml, and the TUI attaches to it with --remote.
+# Nothing is written to ~/.codex.
 
 [agents.generic]
 enabled          = true
 packs            = ["aider", "gemini-cli", "opencode", "cursor-cli"]
+# Pack files: the built-in `generic` pack ships in the binary; extra packs are
+# `<state>/packs/<name>.json` (state dir: ~/.local/state/vambiant-term).
 
 [notifications]
 awaiting_input   = true
