@@ -14,6 +14,7 @@
 #![allow(unsafe_code)] // openpty/fork/exec/ioctl live here and nowhere else.
 
 pub mod error;
+pub mod fdpass;
 pub mod signals;
 pub mod spawn;
 pub mod winsize;

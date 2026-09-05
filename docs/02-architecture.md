@@ -146,7 +146,7 @@ Per-repo: `.vambiant-term/policy.toml` (committable, narrows but never widens th
 
 | Failure | Behaviour |
 |---|---|
-| Daemon dies | App shows a banner, sessions survive as orphaned PTYs; daemon restarts via launchd `KeepAlive` and re-adopts by scanning its own session table + `/dev/ptmx` records. Sessions it cannot re-adopt are marked `orphaned`, never silently dropped |
+| Daemon dies | App shows a banner; every session's PTY lives on in its `vtermd-hold` process, which keeps buffering output. launchd `KeepAlive` restarts the daemon, which re-adopts each session from its holder (fd over `SCM_RIGHTS`, grid rebuilt from the holder's ring buffer, session labelled `readopted`). A holder that recorded an exit closes the session with that code; a holder that cannot be reached leaves the session `orphaned`, never silently dropped (ADR-0004 amendment) |
 | App dies | Nothing is lost. Reopen and reattach |
 | A provider is down | Circuit-breaker opens, feature degrades to history-only suggestions, banner in the pane, never a modal |
 | Hook installation blocked by enterprise policy | Adapter falls back to PTY heuristics, UI labels the session "limited observability" |

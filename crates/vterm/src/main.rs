@@ -57,9 +57,14 @@ fn main() {
             if sessions.is_empty() {
                 println!("no sessions (start one with `vterm new`)");
             }
+            if sessions.iter().any(|s| s.readopted) {
+                println!("* re-adopted after a daemon restart: grid rebuilt from buffered output");
+            }
             for s in sessions {
                 let state = if s.orphaned {
                     "orphaned".to_string()
+                } else if s.readopted {
+                    format!("{:?}*", s.state).to_lowercase()
                 } else {
                     format!("{:?}", s.state).to_lowercase()
                 };

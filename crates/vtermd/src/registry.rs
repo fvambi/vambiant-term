@@ -1,6 +1,7 @@
 //! Session table and the handle every other module uses.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
@@ -11,6 +12,7 @@ use vt_proto::session::{Capabilities, NewSession, SessionId, SessionInfo};
 use vt_store::Store;
 use vt_store::sessions::SessionRecord;
 
+use crate::holder::{self, ReadoptFailure};
 use crate::session::{self, SessionCmd};
 
 /// RFC 3339 UTC timestamp without a dependency: seconds since the epoch is
@@ -54,21 +56,23 @@ pub struct Registry {
     sessions: Mutex<HashMap<SessionId, SessionHandle>>,
     store: Arc<Mutex<Store>>,
     server: OnceLock<Arc<Server>>,
+    runtime_dir: PathBuf,
     counter: Mutex<u64>,
 }
 
 impl Registry {
-    /// Empty registry over `store`.
-    pub fn new(store: Arc<Mutex<Store>>) -> Self {
+    /// Empty registry over `store`; holder sockets live in `runtime_dir`.
+    pub fn new(store: Arc<Mutex<Store>>, runtime_dir: PathBuf) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
             store,
             server: OnceLock::new(),
+            runtime_dir,
             counter: Mutex::new(0),
         }
     }
 
-    /// Wire the IPC server so session threads can broadcast.
+    /// Wire the IPC server so session threads can publish.
     pub fn set_server(&self, server: Arc<Server>) {
         let _ = self.server.set(server);
     }
@@ -93,7 +97,7 @@ impl Registry {
         SessionId(format!("{:x}{:x}{:x}", t & 0xffff_ffff, pid & 0xffff, *c))
     }
 
-    /// Spawn a new session and its thread.
+    /// Spawn a new session (through an fd holder) and its thread.
     pub fn create(self: &Arc<Self>, req: &NewSession) -> Result<SessionInfo, String> {
         let id = self.next_id();
         let (cols, rows) = req.size.unwrap_or((80, 24));
@@ -113,6 +117,7 @@ impl Registry {
             .clone()
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| "/".into());
+        let held = holder::spawn(&self.runtime_dir, &id.0, &name, req, (cols, rows), &cwd)?;
         let info = SessionInfo {
             id: id.clone(),
             name,
@@ -123,10 +128,12 @@ impl Registry {
             pid: None,
             size: Some((cols, rows)),
             orphaned: false,
+            readopted: false,
             created_at: now(),
         };
-        let shared = Arc::new(Mutex::new(info.clone()));
-        let cmd = session::spawn(Arc::clone(self), Arc::clone(&shared), req)?;
+        let hold_socket = held.socket.display().to_string();
+        let shared = Arc::new(Mutex::new(info));
+        let cmd = session::start(Arc::clone(self), Arc::clone(&shared), held)?;
         let handle = SessionHandle {
             info: Arc::clone(&shared),
             cmd,
@@ -140,10 +147,11 @@ impl Registry {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .clone(),
-            argv: Vec::new(),
-            env: Vec::new(),
+            argv: req.argv.clone(),
+            env: req.env.clone(),
             pty_path: None,
             exit_code: None,
+            hold_socket: Some(hold_socket),
         };
         if let Err(e) = self
             .store
@@ -157,6 +165,71 @@ impl Registry {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone())
+    }
+
+    /// Re-adopt every session the previous daemon left running. Sessions
+    /// whose holder recorded an exit are closed with that code; sessions whose
+    /// holder cannot be reached are marked orphaned — never dropped.
+    pub fn readopt_all(self: &Arc<Self>) {
+        let live = match self
+            .store
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .live_sessions()
+        {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("vtermd: cannot read previous sessions: {e}");
+                return;
+            }
+        };
+        for rec in live {
+            let id = rec.info.id.clone();
+            let name = rec.info.name.clone();
+            let outcome = match rec.hold_socket.as_deref() {
+                Some(sock) => holder::readopt(Path::new(sock), &name),
+                None => Err(ReadoptFailure::Unreachable("no holder recorded".into())),
+            };
+            let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+            match outcome {
+                Ok(held) => {
+                    let mut info = rec.info.clone();
+                    info.readopted = true;
+                    info.orphaned = false;
+                    let shared = Arc::new(Mutex::new(info));
+                    match session::start(Arc::clone(self), Arc::clone(&shared), held) {
+                        Ok(cmd) => {
+                            self.sessions
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .insert(id.clone(), SessionHandle { info: shared, cmd });
+                            eprintln!(
+                                "vtermd: re-adopted session {} ({name}) from its holder",
+                                id.0
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "vtermd: session {} ({name}) could not be restarted: {e}; marking orphaned",
+                                id.0
+                            );
+                            let _ = store.mark_orphaned(&id);
+                        }
+                    }
+                }
+                Err(ReadoptFailure::Exited(exit)) => {
+                    eprintln!(
+                        "vtermd: session {} ({name}) exited while no daemon was attached (code {:?})",
+                        id.0, exit.code
+                    );
+                    let _ = store.end_session(&id, exit.code, &now());
+                }
+                Err(ReadoptFailure::Unreachable(why)) => {
+                    eprintln!("vtermd: session {} ({name}) is orphaned: {why}", id.0);
+                    let _ = store.mark_orphaned(&id);
+                }
+            }
+        }
     }
 
     /// Look up by id, or by unique name.

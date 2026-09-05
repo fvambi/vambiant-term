@@ -228,38 +228,54 @@ fn create_list_input_logs_kill() {
     }
 }
 
+fn spawn_daemon(socket: &std::path::Path, state: &std::path::Path) -> Child {
+    Command::new(env!("CARGO_BIN_EXE_vtermd"))
+        .arg("--socket")
+        .arg(socket)
+        .env("VAMBIANT_TERM_STATE", state)
+        .env("VTERMD_HOLD", env!("CARGO_BIN_EXE_vtermd-hold"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(
+            std::fs::File::create(state.parent().unwrap().join("vtermd.stderr"))
+                .map_or(Stdio::null(), Stdio::from),
+        )
+        .spawn()
+        .expect("spawn vtermd")
+}
+
+fn wait_socket(socket: &std::path::Path) {
+    let start = Instant::now();
+    while !socket.exists() {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "socket never appeared"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::thread::sleep(Duration::from_millis(80));
+}
+
 #[test]
-fn restart_marks_previous_sessions_orphaned() {
+fn sessions_survive_a_daemon_restart() {
     let dir = std::env::temp_dir().join(format!("vtermd-e2e-{}-restart", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let socket = dir.join("vtermd.sock");
     let state = dir.join("state");
-    let spawn = || {
-        Command::new(env!("CARGO_BIN_EXE_vtermd"))
-            .arg("--socket")
-            .arg(&socket)
-            .env("VAMBIANT_TERM_STATE", &state)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn vtermd")
-    };
-    let wait_socket = || {
-        let start = Instant::now();
-        while !socket.exists() {
-            assert!(start.elapsed() < Duration::from_secs(10));
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    };
-    let mut first = spawn();
-    wait_socket();
+    std::fs::create_dir_all(&state).unwrap();
+
+    let mut first = spawn_daemon(&socket, &state);
+    wait_socket(&socket);
     let mut c = Client::connect(&socket).unwrap();
     let req = NewSession {
         name: Some("survivor".into()),
-        argv: vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()],
+        argv: vec![
+            "/bin/sh".into(),
+            "-c".into(),
+            "echo BEFORE; read x; echo AFTER:$x; sleep 30".into(),
+        ],
+        cwd: Some(std::env::temp_dir()),
         ..Default::default()
     };
     let info: SessionInfo = serde_json::from_value(
@@ -267,24 +283,144 @@ fn restart_marks_previous_sessions_orphaned() {
             .unwrap(),
     )
     .unwrap();
+    wait_for_text(&mut c, &info.id.0, "BEFORE");
+    let pid_before = info.pid.expect("pid");
+
+    // Daemon dies hard; the holder keeps the PTY.
     first.kill().unwrap();
     first.wait().unwrap();
     drop(c);
     let _ = std::fs::remove_file(&socket);
 
-    let mut second = spawn();
-    wait_socket();
+    let mut second = spawn_daemon(&socket, &state);
+    wait_socket(&socket);
     let mut c = Client::connect(&socket).unwrap();
     let list: Vec<SessionInfo> =
         serde_json::from_value(c.call(method::SESSION_LIST, None).unwrap()).unwrap();
     let s = list
         .iter()
         .find(|s| s.id == info.id)
-        .expect("previous session still listed");
+        .expect("session still listed");
     assert!(
-        s.orphaned,
-        "previous daemon's session must be marked orphaned, not dropped: {s:?}"
+        !s.orphaned,
+        "session must be re-adopted, not orphaned: {s:?}"
     );
+    assert!(s.readopted, "re-adopted sessions are labelled as such");
+    assert_eq!(s.pid, Some(pid_before), "same child process");
+    // The grid was rebuilt from the holder's buffer.
+    let text = wait_for_text(&mut c, &info.id.0, "BEFORE");
+    assert!(text.contains("BEFORE"));
+    // And the session is fully alive: input still works.
+    let b64 = base64::engine::general_purpose::STANDARD.encode(b"still here\n");
+    c.call(
+        method::SESSION_INPUT,
+        Some(serde_json::json!({ "id": "survivor", "bytes": b64 })),
+    )
+    .unwrap();
+    wait_for_text(&mut c, &info.id.0, "AFTER:still here");
+
+    // Kill through the new daemon: exit is reported via the holder.
+    let mut watcher = Client::connect(&socket).unwrap();
+    watcher
+        .call(
+            method::SESSION_ATTACH,
+            Some(serde_json::json!({ "id": "survivor" })),
+        )
+        .unwrap();
+    c.call(
+        method::SESSION_KILL,
+        Some(serde_json::json!({ "id": "survivor", "signal": 9 })),
+    )
+    .unwrap();
+    let start = Instant::now();
+    loop {
+        let n = watcher.next_notification().unwrap().expect("notification");
+        if n.method == notification::SESSION_EXITED {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "no exit notification after re-adoption"
+        );
+    }
+    second.kill().unwrap();
+    second.wait().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn unreachable_holder_means_orphaned_and_recorded_exit_means_stopped() {
+    let dir = std::env::temp_dir().join(format!("vtermd-e2e-{}-orphan", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let socket = dir.join("vtermd.sock");
+    let state = dir.join("state");
+    std::fs::create_dir_all(&state).unwrap();
+
+    let mut first = spawn_daemon(&socket, &state);
+    wait_socket(&socket);
+    let mut c = Client::connect(&socket).unwrap();
+    let mk = |name: &str, cmd: &str| NewSession {
+        name: Some(name.into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), cmd.into()],
+        cwd: Some(std::env::temp_dir()),
+        ..Default::default()
+    };
+    let orphan: SessionInfo = serde_json::from_value(
+        c.call(
+            method::SESSION_NEW,
+            serde_json::to_value(mk("orphan", "sleep 30")).ok(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let quick: SessionInfo = serde_json::from_value(
+        c.call(
+            method::SESSION_NEW,
+            serde_json::to_value(mk("quick", "sleep 0.3; exit 7")).ok(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    first.kill().unwrap();
+    first.wait().unwrap();
+    drop(c);
+    let _ = std::fs::remove_file(&socket);
+    // Make the orphan's holder unreachable (as after a reboot) and let the
+    // quick one exit with nobody attached so its holder records the code.
+    let orphan_sock = dir.join(format!("hold-{}.sock", orphan.id.0));
+    let _ = std::fs::remove_file(&orphan_sock);
+    std::thread::sleep(Duration::from_millis(800));
+
+    let mut second = spawn_daemon(&socket, &state);
+    wait_socket(&socket);
+    let mut c = Client::connect(&socket).unwrap();
+    let list: Vec<SessionInfo> =
+        serde_json::from_value(c.call(method::SESSION_LIST, None).unwrap()).unwrap();
+    let o = list
+        .iter()
+        .find(|s| s.id == orphan.id)
+        .expect("orphan listed");
+    assert!(
+        o.orphaned,
+        "unreachable holder ⇒ orphaned, never dropped: {o:?}"
+    );
+    let q = list
+        .iter()
+        .find(|s| s.id == quick.id)
+        .expect("quick listed");
+    assert!(
+        q.pid.is_none() && !q.orphaned,
+        "recorded exit ⇒ stopped: {q:?}"
+    );
+    // Clean up the orphan's child (its holder is still alive under sleep 30).
+    // SAFETY-free: use the pid the first daemon reported.
+    if let Some(pid) = orphan.pid {
+        let _ = Command::new("kill")
+            .arg("-9")
+            .arg(format!("-{pid}"))
+            .status();
+    }
     second.kill().unwrap();
     second.wait().unwrap();
     let _ = std::fs::remove_dir_all(&dir);

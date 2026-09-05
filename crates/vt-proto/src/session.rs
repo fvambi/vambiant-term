@@ -56,6 +56,11 @@ pub struct SessionInfo {
     /// `true` when the daemon could not re-adopt the PTY after a restart.
     /// Never dropped silently (ADR-0004).
     pub orphaned: bool,
+    /// `true` when this daemon re-adopted the session from its fd holder
+    /// after a restart: the grid was rebuilt from buffered output and may be
+    /// incomplete until the program redraws (docs/02 §8).
+    #[serde(default)]
+    pub readopted: bool,
     /// Creation time, RFC 3339.
     #[serde(default)]
     pub created_at: String,

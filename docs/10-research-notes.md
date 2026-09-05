@@ -252,6 +252,7 @@ Settings precedence: subagent > skill > local > project > plugin > managed > use
 9. ⚠️ Haiku 4.5 successor / retirement date — not re-checked in M0.
 10. ⚠️ wgpu `drawableSize` — moot while ADR-0003 holds.
 11. ⚠️ Warp's mechanism — still undocumented; nothing to verify.
+19. ✅ `SCM_RIGHTS` fd passing over `AF_UNIX` works as expected on macOS 26.5 (`vt-pty::fdpass`, verified 2026-09-05); note that stream sockets coalesce the fd-carrying message with following bytes, so the receiver must take exactly one byte with the fd and read the rest of the handshake byte-wise.
 18. ℹ️ **Fixtures are deliberately untracked** (`.gitignore`): they contain real session ids, paths, costs and project names. They live on this Mac only; M3's fixture-replay tests in CI therefore need a sanitised subset (session ids, paths and costs rewritten) committed separately — see docs/08 §5.
 12. ✅ gitleaks GitHub token rules re-verified 2026-09-05 from `gitleaks/gitleaks` master `config/gitleaks.toml`: `github-pat` `ghp_[0-9a-zA-Z]{36}`, `github-oauth` `gho_…{36}`, `github-app-token` `(ghu|ghs)_…{36}`, `github-refresh-token` `ghr_…{36}`, `github-fine-grained-pat` `github_pat_\w{82}` — unchanged from the research (M-SEC vendors these).
 

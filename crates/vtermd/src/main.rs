@@ -3,16 +3,19 @@
 //! * `registry` — session table; one thread per session owning its PTY and
 //!   terminal core (libghostty handles are `!Send`, so the core never leaves
 //!   the thread that created it).
+//! * `holder`   — client side of `vtermd-hold`, the per-session process that
+//!   keeps the PTY master alive across daemon restarts (ADR-0004 amendment).
 //! * `session`  — the per-session loop: PTY bytes → core → damage, flushed to
 //!   attached viewers at display cadence (≥ 8 ms between deltas).
 //! * `rpc`      — the JSON-RPC handler over `vt-ipc`.
 //! * `wire`     — snapshot/delta encoding.
 //!
-//! Recovery: a PTY master file descriptor dies with the process that holds
-//! it, so sessions from a previous daemon incarnation are re-listed as
-//! **orphaned** (never silently dropped) until a per-session fd holder lands
-//! (ADR-0004 amendment, proposed 2026-09-05).
+//! On start the daemon re-adopts every session its predecessor left running;
+//! whatever cannot be re-adopted is marked orphaned, never dropped.
 
+#![allow(unsafe_code)] // reaping detached holders with waitpid; nothing else.
+
+mod holder;
 mod registry;
 mod rpc;
 mod session;
@@ -20,6 +23,7 @@ mod wire;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use vt_store::Store;
 
@@ -42,6 +46,9 @@ fn main() {
         .position(|a| a == "--socket")
         .and_then(|i| args.get(i + 1))
         .map_or_else(vt_ipc::transport::socket_path, PathBuf::from);
+    let runtime_dir = socket
+        .parent()
+        .map_or_else(vt_ipc::transport::runtime_dir, PathBuf::from);
     let db = state_dir().join("state.db");
 
     let store = match Store::open(&db) {
@@ -55,26 +62,11 @@ fn main() {
         Ok(swept) => eprintln!("vtermd: retention sweep removed {swept:?}"),
         Err(e) => eprintln!("vtermd: retention sweep failed: {e}"),
     }
-    // Sessions that were live when the previous daemon died cannot be
-    // re-attached to their PTYs; say so rather than pretend.
-    match store.live_sessions() {
-        Ok(live) => {
-            for rec in live {
-                if let Err(e) = store.mark_orphaned(&rec.info.id) {
-                    eprintln!("vtermd: cannot mark {} orphaned: {e}", rec.info.id.0);
-                } else {
-                    eprintln!(
-                        "vtermd: session {} ({}) is orphaned: its PTY belonged to a previous daemon",
-                        rec.info.id.0, rec.info.name
-                    );
-                }
-            }
-        }
-        Err(e) => eprintln!("vtermd: cannot read previous sessions: {e}"),
-    }
 
     let store = Arc::new(Mutex::new(store));
-    let registry = Arc::new(registry::Registry::new(Arc::clone(&store)));
+    let registry = Arc::new(registry::Registry::new(Arc::clone(&store), runtime_dir));
+    // Re-adopt before accepting clients so the first `session.list` is true.
+    registry.readopt_all();
     let handler = Arc::new(rpc::Rpc::new(Arc::clone(&registry), Arc::clone(&store)));
     let server = match vt_ipc::Server::start(&socket, handler) {
         Ok(s) => s,
@@ -84,6 +76,7 @@ fn main() {
         }
     };
     registry.set_server(Arc::new(server));
+
     eprintln!(
         "vtermd {} listening on {} (state: {})",
         env!("CARGO_PKG_VERSION"),
@@ -91,9 +84,17 @@ fn main() {
         db.display()
     );
 
-    // Park until killed. launchd (KeepAlive) restarts us; the socket file is
-    // recreated on start, so a stale one is harmless.
+    // Holders are spawned detached but remain our children while we live;
+    // reap the ones that exit so they do not linger as zombies.
     loop {
-        std::thread::park();
+        std::thread::sleep(Duration::from_secs(1));
+        loop {
+            let mut status = 0;
+            // SAFETY: waitpid with WNOHANG on any child; no memory is shared.
+            let pid = unsafe { libc::waitpid(-1, &raw mut status, libc::WNOHANG) };
+            if pid <= 0 {
+                break;
+            }
+        }
     }
 }

@@ -19,6 +19,14 @@ vt-proto.workspace = true
 vt-pty.workspace = true
 vt-store.workspace = true
 
+[[bin]]
+name = "vtermd"
+path = "src/main.rs"
+
+[[bin]]
+name = "vtermd-hold"
+path = "src/bin/hold.rs"
+
 [dev-dependencies]
 vt-ipc.workspace = true
 

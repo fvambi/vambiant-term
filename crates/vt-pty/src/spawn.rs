@@ -63,6 +63,9 @@ pub struct Pty {
     pid: libc::pid_t,
     session: String,
     exit: Option<ExitStatus>,
+    /// `true` when another process is the child's parent (an fd holder):
+    /// we may signal it but never reap it, and dropping must not hang it up.
+    adopted: bool,
 }
 
 impl Pty {
@@ -166,7 +169,26 @@ impl Pty {
             pid,
             session,
             exit: None,
+            adopted: false,
         })
+    }
+
+    /// Adopt a master fd whose child belongs to another process (the fd
+    /// holder of ADR-0004). Exit must be learned from that process;
+    /// [`Pty::try_wait`] always reports "still running" here.
+    pub fn adopt(master: std::os::fd::OwnedFd, pid: u32, session: impl Into<String>) -> Self {
+        Self {
+            master: File::from(master),
+            pid: pid.cast_signed(),
+            session: session.into(),
+            exit: None,
+            adopted: true,
+        }
+    }
+
+    /// Whether this PTY was adopted rather than spawned here.
+    pub fn is_adopted(&self) -> bool {
+        self.adopted
     }
 
     /// Child pid.
@@ -223,6 +245,9 @@ impl Pty {
         if let Some(s) = self.exit {
             return Ok(Some(s));
         }
+        if self.adopted {
+            return Ok(None);
+        }
         match signals::try_wait(self.pid) {
             Ok(Some(s)) => {
                 self.exit = Some(s);
@@ -252,9 +277,9 @@ impl Pty {
 impl Drop for Pty {
     fn drop(&mut self) {
         // A dropped Pty must not leave a zombie or an orphan owning the tty:
-        // hang up and reap. Sessions the daemon wants to keep alive are never
-        // dropped; they are re-adopted (ADR-0004).
-        if self.exit.is_none() {
+        // hang up and reap. An adopted PTY is someone else's child — dropping
+        // our fd must leave it running (that is the whole point of ADR-0004).
+        if self.exit.is_none() && !self.adopted {
             let _ = signals::kill(self.pid, libc::SIGHUP);
             let mut status: libc::c_int = 0;
             // SAFETY: blocking waitpid on our own child after SIGHUP.

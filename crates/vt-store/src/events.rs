@@ -104,12 +104,14 @@ mod tests {
                     pid: None,
                     size: None,
                     orphaned: false,
+                    readopted: false,
                     created_at: "t".into(),
                 },
                 argv: vec![],
                 env: vec![],
                 pty_path: None,
                 exit_code: None,
+                hold_socket: None,
             })
             .unwrap();
         let e1 = AgentEvent::Notification {

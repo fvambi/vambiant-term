@@ -16,8 +16,10 @@ pub struct SessionRecord {
     pub argv: Vec<String>,
     /// Extra environment.
     pub env: Vec<(String, String)>,
-    /// Slave tty path, for re-adoption after a daemon restart.
+    /// Slave tty path (informational).
     pub pty_path: Option<String>,
+    /// Control socket of the session's fd holder, for re-adoption.
+    pub hold_socket: Option<String>,
     /// Exit code once ended.
     pub exit_code: Option<i32>,
 }
@@ -55,11 +57,11 @@ impl Store {
         let i = &rec.info;
         self.conn
             .execute(
-                "INSERT INTO sessions (id, name, agent, state, cwd, argv, env, pid, pty_path, cols, rows, orphaned, created_at, exit_code)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                "INSERT INTO sessions (id, name, agent, state, cwd, argv, env, pid, pty_path, cols, rows, orphaned, created_at, exit_code, hold_socket)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT(id) DO UPDATE SET name=excluded.name, state=excluded.state, cwd=excluded.cwd,
                    pid=excluded.pid, pty_path=excluded.pty_path, cols=excluded.cols, rows=excluded.rows,
-                   orphaned=excluded.orphaned, exit_code=excluded.exit_code",
+                   orphaned=excluded.orphaned, exit_code=excluded.exit_code, hold_socket=excluded.hold_socket",
                 params![
                     i.id.0,
                     i.name,
@@ -75,6 +77,7 @@ impl Store {
                     i32::from(i.orphaned),
                     i.created_at,
                     rec.exit_code,
+                    rec.hold_socket,
                 ],
             )
             .map_err(|source| StoreError::Query { what: "upsert session", source })?;
@@ -170,7 +173,7 @@ impl Store {
     }
 }
 
-const SELECT_SESSION: &str = "SELECT id, name, agent, state, cwd, argv, env, pid, pty_path, cols, rows, orphaned, created_at, exit_code FROM sessions";
+const SELECT_SESSION: &str = "SELECT id, name, agent, state, cwd, argv, env, pid, pty_path, cols, rows, orphaned, created_at, exit_code, hold_socket FROM sessions";
 
 fn row_to_record(r: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRecord> {
     let agent = kind_from(&r.get::<_, String>(2)?);
@@ -195,12 +198,14 @@ fn row_to_record(r: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRecord> {
                 u16::try_from(rows).unwrap_or(24),
             )),
             orphaned: r.get::<_, i64>(11)? != 0,
+            readopted: false,
             created_at: r.get(12)?,
         },
         argv,
         env,
         pty_path: r.get(8)?,
         exit_code: r.get(13)?,
+        hold_socket: r.get(14)?,
     })
 }
 
@@ -220,12 +225,14 @@ mod tests {
                 pid: Some(4242),
                 size: Some((120, 40)),
                 orphaned: false,
+                readopted: false,
                 created_at: "2026-09-05T10:00:00Z".into(),
             },
             argv: vec!["claude".into(), "--bg".into()],
             env: vec![("A".into(), "b".into())],
             pty_path: Some("/dev/ttys009".into()),
             exit_code: None,
+            hold_socket: Some("/tmp/hold-s.sock".into()),
         }
     }
 
