@@ -101,29 +101,38 @@ fn a_stalled_client_never_blocks_the_others() {
     let mut live = Client::connect(&path).expect("connect");
     std::thread::sleep(Duration::from_millis(50));
     assert_eq!(server.connections(), 2);
-    // Far more than any socket buffer plus the outbox can hold.
-    let blob = "x".repeat(4096);
-    let started = std::time::Instant::now();
-    for i in 0..(vt_ipc::server::OUTBOX_CAPACITY + 64) {
-        server.broadcast("flood", Some(serde_json::json!({ "i": i, "blob": blob })));
-    }
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "broadcast blocked on the stalled client"
-    );
-    // The stalled client was dropped; the live one is still served.
-    std::thread::sleep(Duration::from_millis(100));
-    assert_eq!(server.connections(), 1);
-    let mut got = 0;
-    while let Some(n) = live.next_notification().unwrap() {
-        if n.method == "flood" {
-            got += 1;
-            if got == vt_ipc::server::OUTBOX_CAPACITY + 64 {
+    // Flood until the kernel buffer and the outbox of the stalled client are
+    // both full and it gets dropped; the live client drains concurrently.
+    let blob = "x".repeat(16 * 1024);
+    let drain = std::thread::spawn(move || {
+        let mut got = 0usize;
+        while let Some(n) = live.next_notification().unwrap() {
+            if n.method == "flood" {
+                got += 1;
+            } else if n.method == "done" {
                 break;
             }
         }
+        (live, got)
+    });
+    let started = std::time::Instant::now();
+    let mut sent = 0usize;
+    while server.connections() == 2 {
+        server.broadcast(
+            "flood",
+            Some(serde_json::json!({ "i": sent, "blob": blob })),
+        );
+        sent += 1;
+        assert!(sent < 20_000, "stalled client was never dropped");
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "broadcast blocked on the stalled client"
+        );
     }
-    assert_eq!(got, vt_ipc::server::OUTBOX_CAPACITY + 64);
+    server.broadcast("done", None);
+    let (mut live, got) = drain.join().unwrap();
+    assert_eq!(got, sent, "live client must receive every message");
+    assert_eq!(server.connections(), 1);
     let v = live.call("echo", Some(serde_json::json!(1))).unwrap();
     assert_eq!(v, serde_json::json!(1));
 }
