@@ -203,25 +203,27 @@ fn run(agents: &Arc<Agents>, session: &SessionId, socket: &Path) {
         let message = match server.next_message() {
             Ok(Some(m)) => m,
             Ok(None) => {
+                let message = "codex app-server connection closed; structured events stopped";
+                agents.degrade(session, Some(message.into()));
                 agents.record(
                     session,
                     &AgentEvent::Error {
                         kind: ErrorKind::Adapter,
-                        message: "codex app-server connection closed; structured events stopped"
-                            .into(),
+                        message: message.into(),
                         retrying: false,
                     },
                 );
                 return;
             }
             Err(e) => {
+                let message =
+                    format!("codex app-server read failed: {e}; structured events stopped");
+                agents.degrade(session, Some(message.clone()));
                 agents.record(
                     session,
                     &AgentEvent::Error {
                         kind: ErrorKind::Adapter,
-                        message: format!(
-                            "codex app-server read failed: {e}; structured events stopped"
-                        ),
+                        message,
                         retrying: false,
                     },
                 );

@@ -101,6 +101,7 @@ fn main() {
         ),
     }
     registry.set_agents(Arc::clone(&agents));
+    agents.start_watchdog();
     // Re-adopt before accepting clients so the first `session.list` is true.
     registry.readopt_all();
     let handler = Arc::new(rpc::Rpc::new(Arc::clone(&registry), Arc::clone(&store)));

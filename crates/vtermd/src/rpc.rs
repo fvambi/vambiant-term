@@ -231,6 +231,29 @@ impl Handler for Rpc {
                     .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "agent layer not ready"))?;
                 let id: String = Self::param(req, "id")?;
                 let decision: vt_proto::approval::Decision = Self::param(req, "decision")?;
+                if let vt_proto::approval::Decision::Allow {
+                    updated_input: Some(_),
+                } = &decision
+                {
+                    let session = agents
+                        .inbox()
+                        .into_iter()
+                        .find(|i| i.id.0 == id)
+                        .map(|i| i.session);
+                    let is_codex =
+                        session
+                            .and_then(|s| self.registry.find(&s.0))
+                            .is_some_and(|h| {
+                                h.info.lock().unwrap_or_else(PoisonError::into_inner).agent
+                                    == vt_proto::agent::AgentKind::Codex
+                            });
+                    if is_codex {
+                        return Err(RpcError::new(
+                            RpcError::INVALID_PARAMS,
+                            "Codex approvals accept or decline only; deny with a reason telling it what to run instead",
+                        ));
+                    }
+                }
                 let by = vt_proto::approval::DecisionSource::Human;
                 match agents.decide(&vt_proto::approval::ApprovalId(id.clone()), decision, by) {
                     Some(item) => serde_json::to_value(item).map_err(|e| internal(&e)),

@@ -60,14 +60,21 @@ fn main() {
             if sessions.iter().any(|s| s.readopted) {
                 println!("* re-adopted after a daemon restart: grid rebuilt from buffered output");
             }
+            let degraded: Vec<(String, String)> = sessions
+                .iter()
+                .filter_map(|s| s.degraded.clone().map(|d| (s.name.clone(), d)))
+                .collect();
             for s in sessions {
-                let state = if s.orphaned {
+                let mut state = if s.orphaned {
                     "orphaned".to_string()
                 } else if s.readopted {
                     format!("{:?}*", s.state).to_lowercase()
                 } else {
                     format!("{:?}", s.state).to_lowercase()
                 };
+                if s.degraded.is_some() {
+                    state.push('!');
+                }
                 let size = s.size.map_or(String::new(), |(c, r)| format!("{c}x{r}"));
                 println!(
                     "{:<14} {:<20} {:<10} {:<8} {:>6} {}",
@@ -78,6 +85,9 @@ fn main() {
                     s.pid.map_or("-".into(), |p| p.to_string()),
                     s.cwd.display()
                 );
+            }
+            for (name, why) in degraded {
+                println!("! {name}: degraded — {why}");
             }
         }
         Command::New {
@@ -350,16 +360,25 @@ fn inbox(cli: &Cli, cmd: &InboxCmd) {
                     .get("prompt_shown")
                     .and_then(serde_json::Value::as_bool)
                     .unwrap_or(false);
+                let reminders = it
+                    .get("reminders")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
                 let input = it
                     .pointer("/request/input")
                     .map(std::string::ToString::to_string)
                     .unwrap_or_default();
                 println!(
-                    "{id}\n  session {name} · {tool} · waiting {waiting}s{}\n  {}",
+                    "{id}\n  session {name} · {tool} · waiting {waiting}s{}{}\n  {}",
                     if shown {
                         " · prompt shown in terminal"
                     } else {
                         ""
+                    },
+                    if reminders > 0 {
+                        format!(" · reminded ×{reminders}")
+                    } else {
+                        String::new()
                     },
                     input.chars().take(160).collect::<String>()
                 );
@@ -375,7 +394,69 @@ fn inbox(cli: &Cli, cmd: &InboxCmd) {
                 &serde_json::json!({ "behavior": "deny", "reason": reason }),
             );
         }
+        InboxCmd::Edit { id, input } => {
+            let v = c.call("inbox.list", None).unwrap_or_else(|e| fail(e));
+            let Some(item) = v.as_array().and_then(|a| {
+                a.iter()
+                    .find(|i| i.get("id").and_then(|x| x.as_str()) == Some(id))
+            }) else {
+                fail(format!(
+                    "no pending approval `{id}` (see `vterm inbox list`)"
+                ))
+            };
+            let current = item
+                .pointer("/request/input")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let edited = match input {
+                Some(text) => serde_json::from_str::<serde_json::Value>(text)
+                    .unwrap_or_else(|e| fail(format!("--input is not JSON: {e}"))),
+                None => edit_in_editor(&current),
+            };
+            if edited == current {
+                println!("unchanged; use `vterm inbox allow {id}` to allow as-is");
+                return;
+            }
+            let decision = serde_json::json!({ "behavior": "allow", "updated_input": edited });
+            c.call(
+                "inbox.decide",
+                Some(serde_json::json!({ "id": id, "decision": decision })),
+            )
+            .unwrap_or_else(|e| fail(e));
+            println!("{id}: allow with edited input");
+        }
     }
+}
+
+/// Open `$VISUAL` / `$EDITOR` (or `vi`) on the pretty-printed input and read
+/// it back; exits with an explanation if the result is not JSON.
+fn edit_in_editor(current: &serde_json::Value) -> serde_json::Value {
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".into());
+    let path = std::env::temp_dir().join(format!("vterm-inbox-edit-{}.json", std::process::id()));
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(current).unwrap_or_default(),
+    )
+    .unwrap_or_else(|e| fail(format!("cannot write {}: {e}", path.display())));
+    let status = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(format!("{editor} \"$1\""))
+        .arg("sh")
+        .arg(&path)
+        .status()
+        .unwrap_or_else(|e| fail(format!("cannot run editor `{editor}`: {e}")));
+    if !status.success() {
+        let _ = std::fs::remove_file(&path);
+        fail(format!(
+            "editor `{editor}` exited with {status}; nothing decided"
+        ));
+    }
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    serde_json::from_str(&text)
+        .unwrap_or_else(|e| fail(format!("edited input is not JSON ({e}); nothing decided")))
 }
 
 fn decide_all(c: &mut vt_ipc::Client, id: &str, decision: &serde_json::Value) {

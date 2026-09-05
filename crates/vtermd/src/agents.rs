@@ -17,6 +17,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use vt_agent::hooks::answer;
+use vt_agent::watchdog::Watchdog;
 use vt_agent::{AdapterInput, AgentAdapter, ClaudeAdapter, GenericAdapter};
 use vt_ipc::http::{HttpHandler, HttpRequest, HttpResponse};
 use vt_proto::agent::{AgentEvent, AgentKind, AgentState};
@@ -28,6 +29,27 @@ use crate::registry::{Registry, now};
 /// How long a hook request is held waiting for an inbox decision before the
 /// agent's own prompt takes over. Under Claude Code's 600 s hook timeout.
 pub const HOLD_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Reminder cadence for unanswered approvals (`VTERMD_REMINDER_SECS`).
+fn reminder_interval() -> Duration {
+    Duration::from_secs(
+        std::env::var("VTERMD_REMINDER_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(120),
+    )
+}
+
+/// How long a Claude session may run without a single hook event before it
+/// is labelled degraded (`VTERMD_HOOK_GRACE_SECS`).
+fn hook_grace() -> Duration {
+    Duration::from_secs(
+        std::env::var("VTERMD_HOOK_GRACE_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30),
+    )
+}
 
 /// A pending approval as the inbox sees it.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -49,6 +71,9 @@ pub struct InboxItem {
     /// `true` once the hold expired and the agent shows its own prompt: an
     /// inbox answer can no longer be delivered through the hook.
     pub prompt_shown: bool,
+    /// Reminders raised so far (every [`reminder_interval`]).
+    #[serde(default)]
+    pub reminders: u32,
 }
 
 /// An approval waiting for a decision.
@@ -59,6 +84,7 @@ pub struct PendingApproval {
     decided: Condvar,
     hook_open: Mutex<bool>,
     withdrawn: Mutex<bool>,
+    reminders: Mutex<u32>,
 }
 
 impl PendingApproval {
@@ -74,6 +100,10 @@ pub struct AgentSession {
     pub adapter: Mutex<Box<dyn AgentAdapter>>,
     /// Vendor session id once known.
     pub vendor_session_id: Mutex<Option<String>>,
+    /// When the session was registered (for the no-events grace period).
+    pub since: Instant,
+    /// Whether the vendor has produced any structured input at all.
+    pub heard_from: Mutex<bool>,
 }
 
 /// Everything agent-related the daemon shares.
@@ -81,6 +111,7 @@ pub struct Agents {
     registry: Arc<Registry>,
     by_token: Mutex<HashMap<String, (SessionId, Arc<AgentSession>)>>,
     pending: Mutex<HashMap<ApprovalId, Arc<PendingApproval>>>,
+    watchdog: Mutex<Watchdog>,
     /// Loopback receiver base URL, e.g. `http://127.0.0.1:4711`.
     pub receiver: Mutex<String>,
 }
@@ -92,7 +123,114 @@ impl Agents {
             registry,
             by_token: Mutex::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
+            watchdog: Mutex::new(Watchdog::default()),
             receiver: Mutex::new(String::new()),
+        }
+    }
+
+    /// Run the watchdog: reminders for unanswered approvals and the
+    /// no-events grace period for Claude sessions. Ticks every second.
+    pub fn start_watchdog(self: &Arc<Self>) {
+        let agents = Arc::clone(self);
+        let _ = std::thread::Builder::new()
+            .name("agent-watchdog".into())
+            .spawn(move || {
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    agents.tick();
+                }
+            });
+    }
+
+    fn tick(&self) {
+        let due = self
+            .watchdog
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .due(reminder_interval());
+        for id in due {
+            let item = self
+                .pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(&id)
+                .map(|p| {
+                    *p.reminders.lock().unwrap_or_else(PoisonError::into_inner) += 1;
+                    p.item.clone()
+                });
+            if let Some(item) = item {
+                let waited = self
+                    .pending
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .get(&id)
+                    .map_or(0, |p| p.since.elapsed().as_secs());
+                notify_desktop(
+                    &item.session_name,
+                    &item.request.tool,
+                    Some(&format!("still waiting after {waited} s")),
+                );
+                self.broadcast_inbox();
+            }
+        }
+        // Claude sessions that never call home are degraded, not idle.
+        let sessions: Vec<(SessionId, Arc<AgentSession>)> = self
+            .by_token
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .cloned()
+            .collect();
+        for (session, state) in sessions {
+            if state
+                .adapter
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .kind()
+                != AgentKind::Claude
+            {
+                continue;
+            }
+            let heard = *state
+                .heard_from
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if !heard && state.since.elapsed() >= hook_grace() {
+                self.degrade(
+                    &session,
+                    Some(format!(
+                        "no hook events in {} s: hooks may be blocked (managed settings) or the program is not claude; only the terminal is observed",
+                        hook_grace().as_secs()
+                    )),
+                );
+            }
+        }
+    }
+
+    /// Label (or clear) a session's degraded state; broadcast when changed.
+    pub fn degrade(&self, session: &SessionId, reason: Option<String>) {
+        let Some(h) = self.registry.find(&session.0) else {
+            return;
+        };
+        let changed = {
+            let mut info = h.info.lock().unwrap_or_else(PoisonError::into_inner);
+            if info.degraded == reason {
+                false
+            } else {
+                info.degraded = reason;
+                true
+            }
+        };
+        if changed && let Some(server) = self.registry.server() {
+            let i = h
+                .info
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            server.broadcast(
+                vt_proto::session::notification::SESSION_CHANGED,
+                serde_json::to_value(i).ok(),
+            );
         }
     }
 
@@ -111,6 +249,8 @@ impl Agents {
         let state = Arc::new(AgentSession {
             adapter: Mutex::new(adapter),
             vendor_session_id: Mutex::new(None),
+            since: Instant::now(),
+            heard_from: Mutex::new(false),
         });
         self.by_token
             .lock()
@@ -178,6 +318,7 @@ impl Agents {
                 let mut item = p.item.clone();
                 item.waiting_secs = p.since.elapsed().as_secs();
                 item.prompt_shown = !*p.hook_open.lock().unwrap_or_else(PoisonError::into_inner);
+                item.reminders = *p.reminders.lock().unwrap_or_else(PoisonError::into_inner);
                 item
             })
             .collect();
@@ -197,6 +338,10 @@ impl Agents {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(id)?;
+        self.watchdog
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .disarm(id);
         *pending
             .decision
             .lock()
@@ -245,6 +390,16 @@ impl Agents {
         ingested: vt_agent::hooks::Ingested,
     ) -> Option<Arc<PendingApproval>> {
         let state = self.by_session(session)?;
+        {
+            let mut heard = state
+                .heard_from
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if !*heard {
+                *heard = true;
+                self.degrade(session, None);
+            }
+        }
         for w in &ingested.warnings {
             eprintln!("vtermd: session {}: {}", session.0, w.0);
         }
@@ -275,6 +430,10 @@ impl Agents {
             .unwrap_or_else(PoisonError::into_inner)
             .remove(id);
         if let Some(p) = removed {
+            self.watchdog
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .disarm(id);
             *p.withdrawn.lock().unwrap_or_else(PoisonError::into_inner) = true;
             p.decided.notify_all();
             self.record_event(
@@ -400,13 +559,19 @@ impl Agents {
                             requested_at: now(),
                             waiting_secs: 0,
                             prompt_shown: false,
+                            reminders: 0,
                         },
                         since: Instant::now(),
                         decision: Mutex::new(None),
                         decided: Condvar::new(),
                         hook_open: Mutex::new(true),
                         withdrawn: Mutex::new(false),
+                        reminders: Mutex::new(0),
                     });
+                    self.watchdog
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .arm(req.id.clone());
                     self.pending
                         .lock()
                         .unwrap_or_else(PoisonError::into_inner)

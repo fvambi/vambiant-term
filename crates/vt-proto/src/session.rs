@@ -61,6 +61,11 @@ pub struct SessionInfo {
     /// incomplete until the program redraws (docs/02 §8).
     #[serde(default)]
     pub readopted: bool,
+    /// Why structured observation is unavailable right now (hooks never
+    /// arrived, app-server unreachable). `None` while the adapter is live.
+    /// Shown verbatim: a degraded session must look degraded.
+    #[serde(default)]
+    pub degraded: Option<String>,
     /// Creation time, RFC 3339.
     #[serde(default)]
     pub created_at: String,

@@ -241,6 +241,7 @@ impl Registry {
             size: Some((cols, rows)),
             orphaned: false,
             readopted: false,
+            degraded: None,
             created_at: now(),
         };
         // Persist before spawning: the child's first hook may arrive before

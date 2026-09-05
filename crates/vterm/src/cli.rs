@@ -170,4 +170,12 @@ pub enum InboxCmd {
         #[arg(long, default_value = "denied from the Vambiant Term inbox")]
         reason: String,
     },
+    /// Edit the tool input, then allow (Claude Code `updatedInput`).
+    Edit {
+        /// Approval id.
+        id: String,
+        /// Replacement input as JSON; without it `$VISUAL`/`$EDITOR` opens.
+        #[arg(long)]
+        input: Option<String>,
+    },
 }

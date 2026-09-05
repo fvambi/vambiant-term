@@ -801,3 +801,103 @@ fn codex_approval_is_observed_answered_and_withdrawn_through_app_server() {
     )
     .unwrap();
 }
+
+#[test]
+fn reminders_edit_then_allow_and_degraded_labels() {
+    let daemon = Daemon::start_with_env(
+        "watchdog",
+        &[
+            ("VTERMD_REMINDER_SECS", "1".into()),
+            ("VTERMD_HOOK_GRACE_SECS", "1".into()),
+        ],
+    );
+    let mut c = daemon.client();
+    // A "claude" that never calls home: degraded after the grace period.
+    let mute = NewSession {
+        name: Some("mute".into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()],
+        cwd: Some(std::env::temp_dir()),
+        env: vec![],
+        size: Some((80, 24)),
+        agent: Some(vt_proto::agent::AgentKind::Claude),
+    };
+    c.call(method::SESSION_NEW, serde_json::to_value(mute).ok())
+        .unwrap();
+    // A "claude" that asks for permission and echoes the reply.
+    let script = r#"
+        perm='{"hook_event_name":"PermissionRequest","session_id":"fake-2","cwd":"/tmp","tool_name":"Bash","tool_use_id":"toolu_1","tool_input":{"command":"rm -rf build"},"permission_mode":"default","prompt_id":"p1","transcript_path":"/tmp/t","permission_suggestions":[]}'
+        reply=$(curl -s -X POST -H 'Content-Type: application/json' --data "$perm" "$VAMBIANT_TERM_HOOK_URL")
+        echo "REPLY:$reply"
+        sleep 30
+    "#;
+    let asks = NewSession {
+        name: Some("asks".into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        cwd: Some(std::env::temp_dir()),
+        env: vec![],
+        size: Some((160, 24)),
+        agent: Some(vt_proto::agent::AgentKind::Claude),
+    };
+    let info: SessionInfo = serde_json::from_value(
+        c.call(method::SESSION_NEW, serde_json::to_value(asks).ok())
+            .unwrap(),
+    )
+    .unwrap();
+    let item = inbox_first(&mut c, Duration::from_secs(10)).expect("inbox item");
+    let id = item["id"].as_str().unwrap().to_string();
+
+    // Reminders accrue while nobody answers.
+    let start = Instant::now();
+    loop {
+        let item = inbox_first(&mut c, Duration::from_millis(100)).expect("still pending");
+        if item["reminders"].as_u64().unwrap_or(0) >= 1 {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "no reminder: {item}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    // Degraded label on the mute session, none on the one that called home.
+    let start = Instant::now();
+    loop {
+        let list: Vec<SessionInfo> =
+            serde_json::from_value(c.call(method::SESSION_LIST, None).unwrap()).unwrap();
+        let mute = list.iter().find(|s| s.name == "mute").unwrap();
+        let asks = list.iter().find(|s| s.name == "asks").unwrap();
+        assert!(
+            asks.degraded.is_none(),
+            "live session mislabelled: {asks:?}"
+        );
+        if let Some(why) = &mute.degraded {
+            assert!(why.contains("no hook events"), "{why}");
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "mute never degraded"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    // Edit-then-allow: the hook reply carries updatedInput.
+    c.call(
+        "inbox.decide",
+        Some(serde_json::json!({ "id": id, "decision": { "behavior": "allow", "updated_input": { "command": "rm -rf build/tmp" } } })),
+    )
+    .unwrap();
+    let text = wait_for_text(&mut c, &info.id.0, "REPLY:");
+    assert!(
+        text.contains(r#""updatedInput":{"command":"rm -rf build/tmp"}"#),
+        "grid: {text}"
+    );
+    for name in ["mute", "asks"] {
+        c.call(
+            method::SESSION_KILL,
+            Some(serde_json::json!({ "id": name, "signal": 9 })),
+        )
+        .unwrap();
+    }
+}

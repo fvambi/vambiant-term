@@ -105,6 +105,7 @@ mod tests {
                     size: None,
                     orphaned: false,
                     readopted: false,
+                    degraded: None,
                     created_at: "t".into(),
                 },
                 argv: vec![],
