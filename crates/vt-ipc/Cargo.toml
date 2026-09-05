@@ -1,16 +1,18 @@
-    [package]
-    name = "vt-ipc"
-    description = "JSON-RPC client/server plumbing over the vtermd Unix socket"
-    version.workspace = true
-    edition.workspace = true
-    rust-version.workspace = true
-    publish.workspace = true
+[package]
+name = "vt-ipc"
+description = "JSON-RPC client/server plumbing over the vtermd Unix socket"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 license.workspace = true
-    repository.workspace = true
+repository.workspace = true
 
-    [dependencies]
-    vt-proto.workspace = true
+[dependencies]
+libc.workspace = true
+serde_json.workspace = true
+vt-proto.workspace = true
 thiserror.workspace = true
 
-    [lints]
-    workspace = true
+[lints]
+workspace = true
