@@ -22,9 +22,11 @@ pub const GENERIC_LABEL: &str =
     "generic adapter: state is a heuristic guess from terminal output; approvals cannot be routed";
 
 pub fn now() -> String {
-    let secs = std::time::SystemTime::now()
+    let since_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+        .unwrap_or_default();
+    let secs = since_epoch.as_secs();
+    let millis = since_epoch.subsec_millis();
     // Civil-from-days (Howard Hinnant), UTC.
     let days = i64::try_from(secs / 86_400).unwrap_or(0);
     let rem = secs % 86_400;
@@ -39,7 +41,7 @@ pub fn now() -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     format!(
-        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{millis:03}Z",
         rem / 3600,
         (rem % 3600) / 60,
         rem % 60

@@ -155,13 +155,140 @@ fn approval_id(thread: &str, rpc_id: &Value) -> ApprovalId {
     ApprovalId(format!("{thread}:rpc-{rpc_id}"))
 }
 
+/// Translate one `codex exec --json` line (dotted `type`, verified shapes in
+/// `tests/fixtures/codex/exec/`, 0.153.2) into events.
+#[allow(clippy::too_many_lines)]
+pub fn ingest_exec_line(v: &Value, counter: u64) -> Ingested {
+    let mut out = Ingested::default();
+    let item = v.get("item").cloned().unwrap_or(Value::Null);
+    match v.get("type").and_then(Value::as_str) {
+        Some("thread.started") => {
+            let id = s(v, "thread_id").unwrap_or_default();
+            out.agent_session_id = Some(id.clone());
+            out.events.push(AgentEvent::SessionStarted {
+                agent_session_id: id,
+                model: None,
+                cwd: std::path::PathBuf::new(),
+            });
+        }
+        Some("turn.started") => out.state = Some(AgentState::Thinking),
+        Some("turn.completed") => {
+            if let Some(usage) = v.get("usage") {
+                out.events.push(AgentEvent::Usage(vt_proto::usage::Usage {
+                    input: u(usage, "input_tokens"),
+                    output: u(usage, "output_tokens"),
+                    cache_read: u(usage, "cached_input_tokens"),
+                    cache_write: u(usage, "cache_write_input_tokens"),
+                    cost_usd: None,
+                    context_used_pct: None,
+                }));
+            }
+            out.state = Some(AgentState::Idle);
+            out.events.push(AgentEvent::Notification {
+                title: Some("turn".into()),
+                body: "turn completed".into(),
+            });
+        }
+        Some("turn.failed") => out.events.push(AgentEvent::Error {
+            kind: vt_proto::agent::ErrorKind::Api,
+            message: v
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .unwrap_or("turn failed")
+                .to_string(),
+            retrying: false,
+        }),
+        Some(kind @ ("item.started" | "item.completed")) => {
+            let id = s(&item, "id").unwrap_or_else(|| format!("item-{counter}"));
+            match s(&item, "type").as_deref() {
+                Some("command_execution") if kind == "item.started" => {
+                    out.events.push(AgentEvent::ToolCallStart {
+                        id,
+                        name: "shell".into(),
+                        input: json!({ "command": s(&item, "command") }),
+                    });
+                }
+                Some("command_execution") => out.events.push(AgentEvent::ToolCallEnd {
+                    id,
+                    ok: item.get("exit_code").and_then(Value::as_i64) == Some(0),
+                    output: s(&item, "aggregated_output"),
+                    duration_ms: 0,
+                }),
+                Some("agent_message") if kind == "item.completed" => {
+                    out.events.push(AgentEvent::AssistantText {
+                        text: s(&item, "text").unwrap_or_default(),
+                        streaming: false,
+                    });
+                }
+                Some("file_change") if kind == "item.completed" => {
+                    for change in item
+                        .get("changes")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default()
+                    {
+                        out.events.push(AgentEvent::FileChanged {
+                            path: std::path::PathBuf::from(s(&change, "path").unwrap_or_default()),
+                            diff: s(&change, "diff"),
+                        });
+                    }
+                }
+                Some("error") => out.events.push(AgentEvent::Error {
+                    kind: vt_proto::agent::ErrorKind::Other,
+                    message: s(&item, "message").unwrap_or_default(),
+                    retrying: false,
+                }),
+                Some("collab_tool_call") if kind == "item.started" => {
+                    out.events.push(AgentEvent::SubagentStart {
+                        id: s(&item, "sender_thread_id").unwrap_or(id),
+                        kind: s(&item, "tool").unwrap_or_default(),
+                    });
+                }
+                Some("collab_tool_call") => out.events.push(AgentEvent::SubagentStop {
+                    id: s(&item, "sender_thread_id").unwrap_or(id),
+                }),
+                Some("reasoning" | "web_search" | "mcp_tool_call" | "todo_list") | None => {}
+                Some(other) => {
+                    out.warnings.push(Warning(format!(
+                        "unknown codex exec item `{other}`; passing through as Unknown"
+                    )));
+                    out.events.push(AgentEvent::Unknown {
+                        name: format!("{kind}/{other}"),
+                        payload: v.clone(),
+                    });
+                }
+            }
+        }
+        Some("error") => out.events.push(AgentEvent::Error {
+            kind: vt_proto::agent::ErrorKind::Api,
+            message: s(v, "message").unwrap_or_default(),
+            retrying: false,
+        }),
+        Some(other) => {
+            out.warnings.push(Warning(format!(
+                "unknown codex exec line `{other}`; passing through as Unknown"
+            )));
+            out.events.push(AgentEvent::Unknown {
+                name: other.to_string(),
+                payload: v.clone(),
+            });
+        }
+        None => {}
+    }
+    out
+}
+
 /// Translate one app-server message into normalised events. Server requests
 /// (approvals) become `ApprovalNeeded` with the JSON-RPC id inside the
-/// approval id so the answer can be routed back.
+/// approval id so the answer can be routed back. Lines from `codex exec
+/// --json` (dotted `type`, no `method`) are handled too.
 #[allow(clippy::too_many_lines)]
 pub fn ingest(message: &Value, counter: u64) -> Ingested {
     let mut out = Ingested::default();
     let Some(method) = message.get("method").and_then(Value::as_str) else {
+        if message.get("type").is_some() && message.get("id").is_none() {
+            return ingest_exec_line(message, counter);
+        }
         return out; // a response to one of our own requests
     };
     let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -365,6 +492,28 @@ mod tests {
             }),
             json!({ "decision": "decline" })
         );
+    }
+
+    #[test]
+    fn exec_json_lines_become_events() {
+        let started = json!({"type":"thread.started","thread_id":"t9"});
+        let got = ingest(&started, 1);
+        assert_eq!(got.agent_session_id.as_deref(), Some("t9"));
+        let cmd = json!({"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"/bin/zsh -lc 'cat big.txt'","status":"in_progress"}});
+        assert!(
+            matches!(&ingest(&cmd, 2).events[0], AgentEvent::ToolCallStart { name, .. } if name == "shell")
+        );
+        let done = json!({"type":"turn.completed","usage":{"input_tokens":51_958,"cached_input_tokens":41_216,"cache_write_input_tokens":0,"output_tokens":95}});
+        let got = ingest(&done, 3);
+        assert!(matches!(&got.events[0], AgentEvent::Usage(u) if u.cache_read == 41_216));
+        assert_eq!(got.state, Some(AgentState::Idle));
+        let err = json!({"type":"item.completed","item":{"id":"item_0","type":"error","message":"hooks bypassed"}});
+        assert!(matches!(
+            &ingest(&err, 4).events[0],
+            AgentEvent::Error { .. }
+        ));
+        let weird = json!({"type":"thread.renamed"});
+        assert_eq!(ingest(&weird, 5).warnings.len(), 1);
     }
 
     #[test]

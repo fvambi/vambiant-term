@@ -21,9 +21,7 @@ const IDLE_AFTER: Duration = Duration::from_millis(700);
 const MAX_LINE: usize = 256 * 1024;
 
 pub enum Observer {
-    /// Nothing to do beyond what hooks / app-server provide.
-    None,
-    /// Claude: parse `stream-json` lines out of the PTY stream.
+    /// Claude / Codex headless: parse JSON lines out of the PTY stream.
     Stream { carry: Vec<u8> },
     /// Generic: heuristics over modes, idleness and screen text.
     Heuristic {
@@ -37,8 +35,10 @@ impl Observer {
     pub fn new(registry: &Arc<Registry>, id: &SessionId, info: &Arc<Mutex<SessionInfo>>) -> Self {
         let kind = info.lock().unwrap_or_else(PoisonError::into_inner).agent;
         match kind {
-            AgentKind::Claude => Self::Stream { carry: Vec::new() },
-            AgentKind::Codex => Self::None,
+            // Both vendors print one JSON object per line in headless mode
+            // (`claude -p --output-format stream-json`, `codex exec --json`);
+            // interactive TUIs never emit a line starting with `{"type":`.
+            AgentKind::Claude | AgentKind::Codex => Self::Stream { carry: Vec::new() },
             AgentKind::Generic => {
                 let (packs, problems) = vt_agent::generic::load_packs(&registry.packs_dir());
                 for p in problems {
@@ -55,7 +55,6 @@ impl Observer {
 
     pub fn on_output(&mut self, registry: &Registry, id: &SessionId, bytes: &[u8]) {
         match self {
-            Self::None => {}
             Self::Stream { carry } => {
                 carry.extend_from_slice(bytes);
                 while let Some(nl) = carry.iter().position(|b| *b == b'\n') {
