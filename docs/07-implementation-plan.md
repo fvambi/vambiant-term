@@ -38,6 +38,8 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 **Exit:** headless terminal passes the triaged conformance set; throughput within 2× of Ghostty on the same corpus.
 
+> **M1 exit met on 2026-09-05.** `mise run conformance`: 487/568 esctest2 tests pass with every failure triaged (all unanswered queries, none rendering). Throughput through `TerminalCore` is 1.00–1.24× raw libghostty-vt on the six M0 corpora (hyperfine medians, serial: ascii 40→40 ms, japanese 39→48, sgr 106→112, cursor 89→96, long-lines 28→35, scroll-region 38→38), i.e. at parity with Ghostty's own parser. Open: vttest is a manual per-release run; OSC 777 notifications wait on a libghostty callback (docs/10 §1).
+
 ## M2 — Daemon + CLI (3–4 weeks) ← *first daily-driver milestone*
 
 - [ ] `vtermd` as a launchd LaunchAgent with `KeepAlive`; socket 0700 with peer credential checks.

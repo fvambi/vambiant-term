@@ -437,6 +437,7 @@ version = "0.0.0"
 dependencies = [
  "alacritty_terminal",
  "libghostty-vt",
+ "vt-core",
 ]
 
 [[package]]
@@ -534,6 +535,8 @@ dependencies = [
 name = "vt-ipc"
 version = "0.0.0"
 dependencies = [
+ "libc",
+ "serde_json",
  "thiserror",
  "vt-proto",
 ]

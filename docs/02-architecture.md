@@ -23,7 +23,7 @@ Three processes. Two languages. One socket.
 │  └──────────────────────────────────────────────────────────┘    │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │ JSON-RPC 2.0 over Unix socket
-                                │ $XDG_RUNTIME_DIR-equivalent, 0700
+                                │ $TMPDIR/vambiant-term-<uid>/vtermd.sock, 0700
 ┌───────────────────────────────▼──────────────────────────────────┐
 │  vtermd                    (Rust · launchd LaunchAgent)          │
 │  ────────────────────────────────────────────────────────────    │
@@ -118,6 +118,8 @@ New in Swift 6.3: the `@c` attribute exposes Swift functions as clean C symbols,
 Fonts, shaping and glyphs never cross the FFI boundary. Rust sends cell content and attributes; Swift owns everything visual. This is the same split Ghostty uses on macOS, and it is why we do not need `wgpu`, `winit`, `cosmic-text` or `swash` at all.
 
 ## 7. Storage
+
+Runtime (not persisted): the daemon socket is `$TMPDIR/vambiant-term-<uid>/vtermd.sock` — macOS gives every user a private `$TMPDIR` under `/var/folders`, the closest thing to `$XDG_RUNTIME_DIR` the platform has. `VAMBIANT_TERM_RUNTIME` overrides the directory (tests, multiple daemons). The directory is forced to `0700` and the socket to `0600` on bind, and `getpeereid` rejects any peer whose uid is not the daemon's (`vt-ipc::auth`, decided 2026-09-05). Framing is one JSON object per line.
 
 `~/.local/state/vambiant-term/`
 
