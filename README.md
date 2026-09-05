@@ -8,7 +8,7 @@ It is also a fast, correct, GPU-rendered terminal. In a plain shell pane it shou
 
 ## Status
 
-**Specification.** No code yet. Start at `docs/07-implementation-plan.md`, milestone M0.
+**M1 in progress** (terminal core). M0 verified the spec against the real binaries and benchmarked the two terminal cores — `docs/10-research-notes.md` has every finding with an *as verified on* line; `docs/07-implementation-plan.md` tracks the milestones. The core is `libghostty-vt` behind a `TerminalCore` trait (ADR-0001 amendment); `vt-pty`, the headless harness, snapshot fixtures and the esctest2 conformance runner exist and run in `mise run ci`.
 
 ## Design
 
@@ -29,9 +29,9 @@ It is also a fast, correct, GPU-rendered terminal. In a plain shell pane it shou
 
 ## Stack
 
-Rust core (`alacritty_terminal` behind a trait, PTY, providers, redaction, policy, daemon) + SwiftUI/AppKit shell with a Metal renderer and CoreText shaping. Local Unix-socket daemon owns every PTY so closing a window never kills an agent.
+Rust core (`libghostty-vt` behind a trait, PTY, providers, redaction, policy, daemon) + SwiftUI/AppKit shell with a Metal renderer and CoreText shaping. Local Unix-socket daemon owns every PTY so closing a window never kills an agent.
 
-Requires: Rust ≥ 1.98.1, Swift 6.3+, full Xcode, mise. macOS only.
+Requires: Rust ≥ 1.98.1, zig 0.15.2 (for the vendored Ghostty core), Swift 6.3+, full Xcode (from M4), mise. macOS only. Clone with `--recurse-submodules`; `mise install` provides every toolchain.
 
 ## Security posture
 
