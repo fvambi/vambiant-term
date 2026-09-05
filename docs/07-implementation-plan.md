@@ -42,14 +42,16 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 ## M2 — Daemon + CLI (3–4 weeks) ← *first daily-driver milestone*
 
-- [~] `vtermd` as a launchd LaunchAgent with `KeepAlive`; socket 0700 with peer credential checks. *(socket + `getpeereid` done 2026-09-05; launchd plist pending)*
+- [x] `vtermd` as a launchd LaunchAgent with `KeepAlive`; socket 0700 with peer credential checks. *(`vterm daemon install|start|stop|uninstall` writes and bootstraps `~/Library/LaunchAgents/com.vambiant.term.vtermd.plist`; socket + `getpeereid` in `vt-ipc`)*
 - [x] Session registry, PTY ownership, attach/detach, snapshot + damage delta protocol. *(`vtermd`: one thread per session, deltas ≥ 8 ms apart, `session.*` methods in `vt-proto`)*
 - [x] `vt-store`: SQLite schema for sessions, blocks, events, decisions, egress, worktrees. WAL. Migrations from commit one.
 - [x] `vterm` CLI: `ls`, `new`, `attach`, `kill`, `rename`, `logs`, all with `--json`. *(plus `send`, `daemon status|start`; `attach` is a raw-mode viewer with Ctrl-\ d to detach)*
 - [~] Crash recovery: daemon restart re-adopts sessions; unadoptable sessions marked `orphaned`, never dropped silently. *(orphan marking done and tested; re-adoption needs the fd-holder helper — ADR-0004 amendment proposed, the original mechanism is not implementable on macOS)*
-- [ ] Loopback HTTP/WS API with a Keychain-stored bearer token.
+- [ ] Loopback HTTP/WS API with a Keychain-stored bearer token. *(not started)*
 
 **Exit:** you can start an agent with `vterm new --agent claude`, close the Ghostty window, and reattach. Sessions survive a daemon restart.
+
+> **M2 status 2026-09-05:** `vterm new -- claude` / `vterm attach` / detach with Ctrl-\ d / reattach work against a launchd-managed daemon; sessions survive closing the window. `--agent claude` provisioning is M3. Sessions do **not yet** survive a daemon restart (they are listed as orphaned) — see the proposed ADR-0004 amendment; the loopback HTTP/WS API is not started.
 
 ## M3 — Agent adapters + the inbox (4–5 weeks)
 
