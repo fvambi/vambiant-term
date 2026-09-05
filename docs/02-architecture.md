@@ -13,7 +13,7 @@ Three processes. Two languages. One socket.
 │           │  C ABI (cbindgen header, main-thread marshalled)     │
 │  ┌────────▼─────────────────────────────────────────────────┐    │
 │  │ libvambiant_term.a    (Rust · staticlib)                 │    │
-│  │  vt-core   VTE state, grid, damage        (alacritty_*)  │    │
+│  │  vt-core   VTE state, grid, damage      (libghostty-vt)  │    │
 │  │  vt-pty    PTY spawn, resize, signals                    │    │
 │  │  vt-blocks OSC 133/633 semantic segmentation             │    │
 │  │  vt-ai     provider layer                                │    │
@@ -155,7 +155,7 @@ Per-repo: `.vambiant-term/policy.toml` (committable, narrows but never widens th
 ## 9. Dependency policy
 
 - Pin exact versions in `Cargo.lock`; `cargo deny` in CI for licences and advisories.
-- `alacritty_terminal` is **Apache-2.0 only** (not the usual dual licence) and offers **no API stability guarantee** — it has shipped breaking changes in consecutive minors. It sits behind our own `TerminalCore` trait so a swap to `libghostty-vt` is a crate change, not a rewrite (ADR-0001).
+- The terminal core is `libghostty-vt` (MIT/Apache-2.0, pre-1.0 C API with expected breaking changes) behind our own `TerminalCore` trait; `alacritty_terminal` (Apache-2.0 only, no stability guarantee) is the documented fallback behind the same trait (ADR-0001 amendment, 2026-09-05). The Ghostty source is vendored as a submodule and built by zig 0.15.2 under mise.
 - Prefer zero-dependency solutions on the hot path. `vt-core`, `vt-pty` and `vt-redact` should have a dependency tree you can read in one screen.
 - No crate enters the tree without a note in `docs/10-research-notes.md` recording version, licence, maintenance status.
 

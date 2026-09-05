@@ -28,11 +28,11 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 ## M1 — Terminal core (3–4 weeks)
 
-- [ ] `vt-pty`: spawn under `login`, `-q` with `~/.hushlogin`, winsize, `SIGWINCH`/`SIGCHLD`, drain-on-exit.
-- [ ] `vt-core`: `TerminalCore` trait; `alacritty_terminal` implementation behind it; grid, scrollback, damage, modes.
-- [ ] Headless renderer harness: feed a byte stream, dump the grid as text. This is the test substrate for everything after.
+- [x] `vt-pty`: spawn under `login`, `-q` with `~/.hushlogin`, winsize, `SIGWINCH`/`SIGCHLD`, drain-on-exit. *(2026-09-05; libc only, five tests)*
+- [x] `vt-core`: `TerminalCore` trait; **`libghostty-vt` implementation** behind it (ADR-0001 amendment, gates met); grid, scrollback, damage, events. `alacritty_terminal` stays the documented fallback, unimplemented.
+- [x] Headless renderer harness: feed a byte stream, dump the grid as text. This is the test substrate for everything after. *(`vt_core::harness`, `tests/fixtures/vt/`)*
 - [ ] Kitty keyboard protocol push/pop; OSC 7/8/52-write/133/633/777/1337 handling.
-- [ ] `terminfo` entry.
+- [x] `terminfo` entry. *(`terminfo/vambiant-term.terminfo`, derived from Ghostty's since the core is libghostty; `scripts/terminfo-install.sh`)*
 - [ ] esctest2 + vttest run and triaged (100% is not the bar — no shipping terminal clears it; a triaged known-fail list is).
 - [ ] vtebench-style throughput harness following Ghostty's methodology: pre-generated inputs, hyperfine, medians, serial runs.
 

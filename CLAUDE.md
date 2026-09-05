@@ -15,7 +15,7 @@ You are working on **Vambiant Term**: a native macOS terminal emulator that supe
 ## Architecture rules
 
 - Nothing in `crates/` may depend on `app/`. The Rust side is fully headless-testable — that is what makes CI meaningful.
-- Nothing outside `vt-core` names an `alacritty_terminal` type. It lives behind the `TerminalCore` trait.
+- Nothing outside `vt-core` names a backend type (`libghostty_vt`, `alacritty_terminal`). They live behind the `TerminalCore` trait.
 - No model id is hardcoded anywhere in code. Ids live in `providers.toml`.
 - Hot-path FFI is plain `extern "C"` + `cbindgen`. `swift-bridge` is for the cold path only.
 - Edition 2024: `#[unsafe(no_mangle)]`, not `#[no_mangle]`. Use `extern "C-unwind"` where Swift can unwind through Rust.
