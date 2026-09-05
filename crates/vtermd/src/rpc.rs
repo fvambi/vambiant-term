@@ -44,11 +44,7 @@ impl Rpc {
     }
 
     /// A persisted session by id or unique name (running or not).
-    fn stored_session(
-        &self,
-        store: &Store,
-        key: &str,
-    ) -> Option<vt_store::sessions::SessionRecord> {
+    fn stored_session(store: &Store, key: &str) -> Option<vt_store::sessions::SessionRecord> {
         let all = store.all_sessions().ok()?;
         if let Some(r) = all.iter().find(|r| r.info.id.0 == key) {
             return Some(r.clone());
@@ -205,7 +201,7 @@ impl Handler for Rpc {
                         // Ended sessions keep their final grid in the store.
                         let key: String = Self::param(req, "id")?;
                         let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
-                        let rec = self.stored_session(&store, &key).ok_or(not_running)?;
+                        let rec = Self::stored_session(&store, &key).ok_or(not_running)?;
                         let text = store
                             .last_output(&rec.info.id)
                             .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?
@@ -255,7 +251,7 @@ impl Handler for Rpc {
                         .clone(),
                     Err(not_running) => {
                         let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
-                        self.stored_session(&store, &key)
+                        Self::stored_session(&store, &key)
                             .ok_or(not_running)?
                             .info
                             .id
