@@ -16,4 +16,5 @@ pub mod generic;
 pub mod hooks;
 pub mod watchdog;
 
-pub use adapter::{AdapterInput, AgentAdapter};
+pub use adapter::{AdapterInput, AgentAdapter, ClaudeAdapter, GenericAdapter};
+pub use hooks::{Ingested, Warning};
