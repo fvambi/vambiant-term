@@ -52,13 +52,17 @@ extension PaneController {
             prompt: prompt, feature: feature, session: session?.id, history: agentPanel.conversation.history
         )
         let daemon = self.daemon
-        Task.detached(priority: .userInitiated) { [weak self] in
+        // The same shape as `runFind`: the blocking call off the main
+        // thread, the hop back explicit, `self` never sent across.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result: Result<AgentRequestReply, Error> = Result { try daemon.call("ai.ask", params: params) }
-            await MainActor.run {
-                guard let self else { return }
-                switch result {
-                case let .success(reply): self.agentPanel.conversation.request = reply.request
-                case let .failure(error): self.agentPanel.conversation.fail(Self.agentMessage(error))
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    switch result {
+                    case let .success(reply): self.agentPanel.conversation.request = reply.request
+                    case let .failure(error): self.agentPanel.conversation.fail(Self.agentMessage(error))
+                    }
                 }
             }
         }
