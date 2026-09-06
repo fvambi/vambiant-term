@@ -61,6 +61,21 @@ struct AgentTests {
         #expect(c.totalTokens == (1234, 340))
     }
 
+    @Test func deltasStreamIntoTheThinkingRow() {
+        var c = AgentConversation()
+        c.ask("why", profile: "route ask")
+        c.request = "r1"
+        c.append(delta: "Run ")
+        c.append(delta: "pwd.")
+        #expect(c.turns.last == .streaming(partial: "Run pwd.", since: c.since ?? .distantPast))
+        #expect(c.isThinking)
+        #expect(c.history.isEmpty)
+        c.answer(answer("Run pwd."))
+        #expect(c.request == nil, "the request ends with the answer")
+        c.append(delta: "late")
+        #expect(c.turns.last == .answer(answer("Run pwd.")), "deltas after the end are ignored")
+    }
+
     @Test func replyDecodesTheDaemonsShape() throws {
         let json = """
         {"text":"Run pwd.","profile":"mock","model":"test-model",

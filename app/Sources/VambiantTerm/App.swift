@@ -149,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         guard method == "session.block" || method == "session.event" || method == "session.changed"
-            || method == "session.block_changed",
+            || method == "session.block_changed" || method.hasPrefix("ai."),
             let data = params.data(using: .utf8),
             let json = try? JSONDecoder().decode(JSONValue.self, from: data)
         else { return }

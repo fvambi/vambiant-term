@@ -78,6 +78,8 @@ enum AgentTurn: Equatable, Sendable {
     case user(String)
     /// A request in flight; `since` drives the "Thinking for Ns" row.
     case thinking(profile: String, since: Date)
+    /// Deltas arriving; `partial` is the text so far.
+    case streaming(partial: String, since: Date)
     case answer(AgentAnswer)
     /// The daemon refused or the provider failed; the message is the
     /// daemon's, verbatim, so a redaction refusal reads as one.
@@ -86,12 +88,24 @@ enum AgentTurn: Equatable, Sendable {
 
 struct AgentConversation: Equatable, Sendable {
     private(set) var turns: [AgentTurn] = []
+    /// The daemon's id for the request in flight; events for any other
+    /// request are stale and ignored.
+    var request: String?
 
+    /// A request is out (thinking or streaming).
     var isThinking: Bool {
-        if case .thinking = turns.last {
-            return true
+        switch turns.last {
+        case .thinking, .streaming: true
+        default: false
         }
-        return false
+    }
+
+    /// When the request in flight started.
+    var since: Date? {
+        switch turns.last {
+        case let .thinking(_, since), let .streaming(_, since): since
+        default: nil
+        }
     }
 
     var isEmpty: Bool {
@@ -108,6 +122,16 @@ struct AgentConversation: Equatable, Sendable {
         return true
     }
 
+    /// One delta of the answer; the thinking row becomes the live text.
+    mutating func append(delta: String) {
+        guard isThinking, let since else { return }
+        var partial = ""
+        if case let .streaming(text, _) = turns[turns.count - 1] {
+            partial = text
+        }
+        turns[turns.count - 1] = .streaming(partial: partial + delta, since: since)
+    }
+
     mutating func answer(_ answer: AgentAnswer) {
         replaceThinking(with: .answer(answer))
     }
@@ -122,6 +146,7 @@ struct AgentConversation: Equatable, Sendable {
         } else {
             turns.append(turn)
         }
+        request = nil
     }
 
     /// Prior turns as `ai.ask` expects them: a question counts only once it
@@ -140,7 +165,7 @@ struct AgentConversation: Equatable, Sendable {
                     out.append(AgentHistoryTurn(role: "assistant", text: answer.text))
                 }
                 pending = nil
-            case .thinking, .failure:
+            case .thinking, .streaming, .failure:
                 pending = nil
             }
         }
@@ -173,12 +198,19 @@ struct AgentHistoryTurn: Equatable, Sendable, Encodable {
     let text: String
 }
 
-/// `ai.ask` parameters.
+/// `ai.ask` parameters. `stream` makes the reply `{ request }` and the
+/// answer arrive as `ai.chunk`/`ai.done`/`ai.error` notifications.
 struct AgentAskParams: Encodable, Sendable {
     let prompt: String
     let feature: String
     let session: String?
     let history: [AgentHistoryTurn]
+    var stream = true
+}
+
+/// The `{ request }` reply of a streaming `ai.ask`.
+struct AgentRequestReply: Decodable, Sendable {
+    let request: String
 }
 
 struct AgentUsage: Decodable, Sendable {

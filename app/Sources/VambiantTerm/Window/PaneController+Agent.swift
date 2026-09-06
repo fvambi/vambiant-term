@@ -1,7 +1,7 @@
 // Agent Mode (ADR-0011 D2): ⌘↩ or ⌘K sends the editor's text to the
 // daemon's `ai.ask` with this session as context and shows the answer in
-// the pane's conversation panel. The call blocks on the daemon, so it runs
-// off the main thread; one request per pane at a time.
+// the pane's conversation panel as it streams (`ai.chunk`, `ai.done`,
+// `ai.error` notifications). One request per pane at a time.
 
 import AppKit
 
@@ -52,18 +52,39 @@ extension PaneController {
             prompt: prompt, feature: feature, session: session?.id, history: agentPanel.conversation.history
         )
         let daemon = self.daemon
-        let started = Date()
         Task.detached(priority: .userInitiated) { [weak self] in
-            let result: Result<AgentAskReply, Error> = Result { try daemon.call("ai.ask", params: params) }
-            let seconds = Date().timeIntervalSince(started)
+            let result: Result<AgentRequestReply, Error> = Result { try daemon.call("ai.ask", params: params) }
             await MainActor.run {
                 guard let self else { return }
                 switch result {
-                case let .success(reply): self.agentPanel.conversation.answer(reply.answer(seconds: seconds))
+                case let .success(reply): self.agentPanel.conversation.request = reply.request
                 case let .failure(error): self.agentPanel.conversation.fail(Self.agentMessage(error))
                 }
-                self.container.needsLayout = true
             }
+        }
+    }
+
+    /// `ai.chunk` / `ai.done` / `ai.error` for this pane's session; only
+    /// the request in flight is applied.
+    func handleAgent(event method: String, params: JSONValue) {
+        guard let request = params[path: "request"]?.stringValue, request == agentPanel.conversation.request else {
+            return
+        }
+        switch method {
+        case "ai.chunk":
+            agentPanel.conversation.append(delta: params[path: "delta"]?.stringValue ?? "")
+        case "ai.done":
+            let seconds = agentPanel.conversation.since.map { Date().timeIntervalSince($0) } ?? 0
+            if let data = try? JSONEncoder().encode(params),
+               let reply = try? JSONDecoder().decode(AgentAskReply.self, from: data) {
+                agentPanel.conversation.answer(reply.answer(seconds: seconds))
+            } else {
+                agentPanel.conversation.fail("unreadable ai.done from the daemon")
+            }
+        case "ai.error":
+            agentPanel.conversation.fail(params[path: "message"]?.stringValue ?? "request failed")
+        default:
+            break
         }
     }
 

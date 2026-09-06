@@ -114,7 +114,7 @@ final class AgentPanel: NSView {
         }
         ticker?.invalidate()
         ticker = nil
-        if conversation.isThinking {
+        if case .thinking = conversation.turns.last {
             ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.render() }
             }
@@ -167,6 +167,9 @@ final class AgentPanel: NSView {
                 out.append(NSAttributedString(string: "● Thinking for \(secs)s · \(profile)\n\n", attributes: [
                     .font: small, .foregroundColor: dim,
                 ]))
+            case let .streaming(partial, _):
+                out.append(body(partial + "▍", theme: theme, font: font))
+                out.append(NSAttributedString(string: "\n", attributes: [.font: small]))
             case let .answer(answer):
                 out.append(body(answer.text, theme: theme, font: font))
                 out.append(NSAttributedString(string: "\n\(answer.footer)\n\n", attributes: [
