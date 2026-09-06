@@ -41,6 +41,8 @@ final class PaneController {
         didSet { view.blocks = blocks }
     }
 
+    /// `[editor] program` for ⌘-clicked files; nil or empty means the default app.
+    var editorProgram: String?
     /// Pending approvals for this session, oldest first (`inbox.changed`).
     var approvals: [InboxItem] = [] {
         didSet {
@@ -72,6 +74,7 @@ final class PaneController {
         container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
         wireAgent()
         wireInbox()
+        wireLinks()
     }
 
     // MARK: Warp-mode input

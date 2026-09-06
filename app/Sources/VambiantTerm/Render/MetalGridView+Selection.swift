@@ -96,6 +96,30 @@ extension MetalGridView {
     }
 }
 
+extension MetalGridView {
+
+    // MARK: Clipboard actions (Edit menu, ⌘C/⌘V)
+
+    @objc func paste(_ sender: Any?) {
+        guard let viewer, let text = NSPasteboard.general.string(forType: .string) else { return }
+        // Bracketed paste is a terminal mode the daemon owns; raw bytes are
+        // correct until `session.paste` exists (M5).
+        viewer.send(text: text)
+    }
+
+    /// ⌘C copies the text selection, else the selected block's output.
+    @objc func copy(_ sender: Any?) {
+        if copyTextSelection() {
+            return
+        }
+        guard let block = selectedBlock.flatMap(blocks.command(seq:)) else {
+            NSSound.beep()
+            return
+        }
+        onBlockAction?(.copyOutput, block)
+    }
+}
+
 extension VtGridView {
     /// One viewport row as text, trailing blanks kept (callers trim).
     func line(_ r: Int) -> String {

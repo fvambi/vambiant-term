@@ -354,6 +354,12 @@ pub fn fields() -> Vec<Field> {
             Later { milestone: "M5.5" }
         ),
         f!(
+            "editor.program",
+            "Program that opens ⌘-clicked files (code, zed, idea, nvim, …); empty means the default app.",
+            Text,
+            Now
+        ),
+        f!(
             "blocks.dividers",
             "Hairline above each command block.",
             Bool,

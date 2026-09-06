@@ -104,6 +104,17 @@ final class MetalGridView: NSView {
 
     /// `[terminal] copy_on_select`.
     var copyOnSelect = false
+    /// The link under the pointer (`MetalGridView+Links`), underlined.
+    var hoveredLink: Link? {
+        didSet {
+            if (hoveredLink == nil) != (oldValue == nil) {
+                window?.invalidateCursorRects(for: self)
+            }
+        }
+    }
+
+    /// ⌘-click on a link; the pane resolves paths against its cwd.
+    var onOpenLink: ((Link) -> Void)?
     /// Rows of text for a selection, from the pane (the daemon knows the scrollback).
     var textProvider: ((ClosedRange<UInt64>) -> [String])?
     /// Per-pane override of `[blocks] sticky_header`.
@@ -224,11 +235,14 @@ final class MetalGridView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        updateHover(at: convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        updateHover(at: point)
+        updateLinkHover(at: point)
     }
 
     override func mouseExited(with event: NSEvent) {
         updateHover(at: nil)
+        updateLinkHover(at: nil)
     }
 
     override func viewDidChangeBackingProperties() {
@@ -377,13 +391,14 @@ final class MetalGridView: NSView {
             )
             let marks = findState.visible(top: view.top, rows: Int(view.rows))
             let spans = textSelection?.spans(top: view.top, rows: Int(view.rows), cols: Int(view.cols)) ?? []
+            let links = hoveredLink.map { [SelectionSpan(row: $0.row, col: $0.range.lowerBound, len: $0.range.count)] } ?? []
             updateStickyHeader(top: view.top)
             var ok = renderer.build(
                 view,
                 origin: origin,
                 focused: focused,
                 cursorOn: cursorOn,
-                overlays: GridOverlays(decorations: decor, matches: marks, selection: spans)
+                overlays: GridOverlays(decorations: decor, matches: marks, selection: spans, links: links)
             )
             if !ok {
                 ok = renderer.build(
@@ -391,7 +406,7 @@ final class MetalGridView: NSView {
                     origin: origin,
                     focused: focused,
                     cursorOn: cursorOn,
-                    overlays: GridOverlays(decorations: decor, matches: marks, selection: spans)
+                    overlays: GridOverlays(decorations: decor, matches: marks, selection: spans, links: links)
                 )
             }
             if onPresented != nil {
@@ -467,24 +482,5 @@ final class MetalGridView: NSView {
         guard keymap.isCommandBinding(chord) else { return false }
         keyDown(with: event)
         return true
-    }
-
-    @objc func paste(_ sender: Any?) {
-        guard let viewer, let text = NSPasteboard.general.string(forType: .string) else { return }
-        // Bracketed paste is a terminal mode the daemon owns; raw bytes are
-        // correct until `session.paste` exists (M5).
-        viewer.send(text: text)
-    }
-
-    /// ⌘C copies the text selection, else the selected block's output.
-    @objc func copy(_ sender: Any?) {
-        if copyTextSelection() {
-            return
-        }
-        guard let block = selectedBlock.flatMap(blocks.command(seq:)) else {
-            NSSound.beep()
-            return
-        }
-        onBlockAction?(.copyOutput, block)
     }
 }

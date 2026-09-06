@@ -44,6 +44,8 @@ struct GridOverlays {
     var decorations: [BlockDecoration] = []
     var matches: [MatchDecoration] = []
     var selection: [SelectionSpan] = []
+    /// The hovered link, underlined.
+    var links: [SelectionSpan] = []
 }
 
 @MainActor
@@ -223,6 +225,18 @@ final class GridRenderer {
         }
         appendMatches(overlays.matches, cols: plane.cols, rows: rows, origin: plane.origin, cell: plane.cell)
         appendSelection(overlays.selection, cols: plane.cols, rows: rows, origin: plane.origin, cell: plane.cell)
+        appendLinks(overlays.links, cols: plane.cols, rows: rows, origin: plane.origin, cell: plane.cell)
+    }
+
+    /// A one-pixel-ish underline in the link colour along the bottom of the span.
+    private func appendLinks(_ spans: [SelectionSpan], cols: Int, rows: Int, origin: SIMD2<Float>, cell: SIMD2<Float>) {
+        let colour = theme.palette[4].simd
+        let thickness = max(1, (cell.y / 12).rounded())
+        for s in spans where s.row < rows && s.col < cols {
+            let width = Float(min(s.len, cols - s.col)) * cell.x
+            let o = SIMD2(origin.x + Float(s.col) * cell.x, origin.y + Float(s.row + 1) * cell.y - thickness)
+            bg.append(CellInstance(origin: o, size: SIMD2(width, thickness), uv: .zero, fg: colour, bg: colour, flags: 0))
+        }
     }
 
     /// Find highlights sit over the cell backgrounds and under the glyphs

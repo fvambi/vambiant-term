@@ -83,6 +83,9 @@ sudo_wrap        = false
 [input]
 mode             = "warp"                 # warp | classic (ADR-0011; applies to new sessions)
 
+[editor]
+program          = ""                     # opens ⌘-clicked files: code | zed | idea | nvim | …; empty = default app
+
 # ─── Blocks ────────────────────────────────────────────────────
 [blocks]
 dividers         = true                   # hairline above each command block

@@ -115,6 +115,10 @@ section!(Terminal {
     osc: Osc = Osc::default(),
 });
 
+section!(Editor {
+    program: String = String::new(),
+});
+
 section!(Blocks {
     dividers: bool = true,
     failed_tint: bool = true,
@@ -238,6 +242,7 @@ section!(
         shell_integration: ShellIntegration = ShellIntegration::default(),
         blocks: Blocks = Blocks::default(),
         input: Input = Input::default(),
+        editor: Editor = Editor::default(),
         mux: Mux = Mux::default(),
         agents: Agents = Agents::default(),
         notifications: Notifications = Notifications::default(),

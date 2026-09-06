@@ -51,6 +51,9 @@ extension MetalGridView {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
+        if event.modifierFlags.contains(.command), openLink(at: point) {
+            return
+        }
         let inGutter = point.x < padding.width
         guard let block = block(at: point) else {
             selectedBlock = nil

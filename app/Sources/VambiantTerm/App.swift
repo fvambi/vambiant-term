@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func configure(_ pane: PaneController) {
         configure(pane.view)
         pane.setInputMode(warp: shellConfig.map { $0.input.mode == "warp" } ?? true)
+        pane.editorProgram = shellConfig?.editor?.program
     }
 
     private var allPanes: [PaneController] {

@@ -201,6 +201,10 @@ struct ShellInput: Decodable, Equatable, Sendable {
     var mode: String
 }
 
+struct ShellEditor: Decodable, Equatable, Sendable {
+    var program: String
+}
+
 struct ShellConfig: Decodable, Equatable, Sendable {
     var font: ShellFont
     var theme: ShellThemeRef
@@ -211,6 +215,8 @@ struct ShellConfig: Decodable, Equatable, Sendable {
     var input: ShellInput
     /// Absent on daemons older than `copy_on_select`.
     var terminal: ShellTerminal?
+    /// Absent on daemons older than `[editor]`.
+    var editor: ShellEditor?
 }
 
 struct SetParams: Encodable {
