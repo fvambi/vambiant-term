@@ -178,7 +178,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 - [ ] Config hot reload with an error overlay; JSON Schema.
 - [x] Theme import (Ghostty/iTerm2/Alacritty/base16). *(2026-09-06, plus Warp YAML: `vt-config::theme_import`, `config.theme.import`, `vterm theme import`, Settings → Import….)*
-- [ ] Session restore across reboot; layouts.
+- [~] Session restore across reboot; layouts. *(2026-09-06: running sessions reattach as tabs at launch, `⌘⇧T` reopens the last closed tab, quit says what keeps running. Split layouts and named layouts not yet.)*
 - [ ] Onboarding sheet.
 - [ ] Accessibility pass.
 - [ ] Hardened runtime, notarization path, `mise run release`.

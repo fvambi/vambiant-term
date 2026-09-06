@@ -21,6 +21,38 @@ struct SessionInfo: Decodable, Sendable {
     let state: String?
     let degraded: String?
     let cwd: String?
+    /// The daemon lost the holder (a reboot); nothing to reattach.
+    var orphaned: Bool?
+    /// RFC 3339, for restore order.
+    var createdAt: String?
+    var agent: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, size, state, degraded, cwd, orphaned, agent
+        case createdAt = "created_at"
+    }
+
+    init(
+        id: String,
+        name: String,
+        size: [UInt16],
+        state: String?,
+        degraded: String? = nil,
+        cwd: String? = nil,
+        orphaned: Bool? = nil,
+        createdAt: String? = nil,
+        agent: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.size = size
+        self.state = state
+        self.degraded = degraded
+        self.cwd = cwd
+        self.orphaned = orphaned
+        self.createdAt = createdAt
+        self.agent = agent
+    }
 
     var cols: UInt16 {
         size.first ?? 0

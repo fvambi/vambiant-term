@@ -66,6 +66,8 @@ Rules for this screen:
 - `j`/`k` move, `a`/`d`/`e`/`A`/`s` act, `Enter` opens the source pane, `⎋` closes.
 - A request that has been deferred and is still waiting shows a "still waiting — 4m" counter. Permission prompts never time out on the agent side; ours must never look resolved when it is not.
 
+> **As built (sessions across restarts, 2026-09-06):** at launch every session still running in the daemon comes back as a tab, oldest first; with none, a fresh shell opens. `⌘⇧T` (`tab.reopen`) reattaches the newest running session no pane shows. Quitting shows, once (suppressible), that N sessions keep running in vtermd and that `vterm ls` lists them; the sessions are never killed by quitting.
+>
 > **As built (app inbox, 2026-09-06):** the app takes `inbox.list` at start and `inbox.changed` after; every pane whose session has a pending request shows an **approval card** above its input area (who asks to run what, waiting time, the command or `Edit path (+n −m)`, the verdict line with rule and token, the floor reason, "asked because…", Allow / Deny / Inbox ⌘⇧A — buttons, never a bare ↩), and the sidebar row shows `✋ n`. `⌘⇧A` (`inbox.open`, also `<prefix> a` and Agent → Approvals…) opens the **sheet**: pending requests oldest first, `j`/`k`, `a` allow, `d` deny, `e` edit & allow through the command field (`updated_input`; hidden for Codex, whose approvals are accept/decline), `⎋` closes. "Asked because" reads "autonomy is off: every <tool> request is asked" until M8 puts rule evaluation on this path; always-allow and snooze are not drawn until they exist. A request whose hold expired says so and its buttons are disabled. Verified through a fake Claude posting a `PermissionRequest` under an isolated daemon (`VAMBIANT_TERM_SCREENSHOT_AGENT`).
 
 ## 4. Blocks
@@ -131,6 +133,7 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 | **Approval inbox** | `⌘⇧A` | `<prefix> a` |
 | Notifications mailbox | `⌘⇧M` | `<prefix> m` |
 | Command history search (Warp-mode editor) | `⌃R` | — |
+| Reopen the last closed tab (reattach) | `⌘⇧T` | — |
 | Show last payload sent | `⌥⌘E` | — |
 | Next pending approval | `⌘⇧↩` | `<prefix> A` |
 | Command palette | `⌘⇧P` | `<prefix> :` |

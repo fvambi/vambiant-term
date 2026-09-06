@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         installMenu()
-        newWindow(tabbedWith: nil)
+        restoreSessions()
         NSApp.activate(ignoringOtherApps: true)
         if let shot = ProcessInfo.processInfo.environment["VAMBIANT_TERM_SCREENSHOT_SETTINGS"] {
             showSettings(nil)
@@ -105,8 +105,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    func newWindow(tabbedWith existing: NSWindow?) -> TerminalWindowController {
-        let controller = TerminalWindowController(daemon: daemon, renderer: renderer)
+    func newWindow(tabbedWith existing: NSWindow?, attach: SessionInfo? = nil) -> TerminalWindowController {
+        let controller = TerminalWindowController(daemon: daemon, renderer: renderer, attach: attach)
         windows.append(controller)
         if let existing, let w = controller.window {
             existing.addTabbedWindow(w, ordered: .above)
@@ -114,6 +114,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         return controller
+    }
+
+    /// Launch: every running daemon session comes back as a tab, oldest
+    /// first (docs/01 A3.6); with none, a fresh shell.
+    private func restoreSessions() {
+        let running = SessionRestore.running((try? daemon.sessions()) ?? [])
+        guard let first = running.first else {
+            newWindow(tabbedWith: nil)
+            return
+        }
+        let anchor = newWindow(tabbedWith: nil, attach: first)
+        for info in running.dropFirst() {
+            newWindow(tabbedWith: anchor.window, attach: info)
+        }
+        anchor.window?.makeKeyAndOrderFront(nil)
+        NSLog("restored %d running session(s)", running.count)
+    }
+
+    /// ⌘⇧T: the newest running session no pane shows, as a new tab.
+    func reopenClosedTab(from window: NSWindow?) {
+        let attached = Set(windows.flatMap(\.container.panes).compactMap { $0.session?.id })
+        guard let info = SessionRestore.reopenCandidate((try? daemon.sessions()) ?? [], attached: attached) else {
+            NSSound.beep()
+            return
+        }
+        newWindow(tabbedWith: window, attach: info)
+    }
+
+    /// Quitting leaves sessions running in the daemon (docs/06 C14): say
+    /// so once, with the way back.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let running = SessionRestore.running((try? daemon.sessions()) ?? []).count
+        guard running > 0, !UserDefaults.standard.bool(forKey: "quitNoticeSuppressed") else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "\(running) session\(running == 1 ? "" : "s") keep\(running == 1 ? "s" : "") running"
+        alert.informativeText = "Quitting closes the windows, not the sessions: vtermd keeps them, "
+            + "`vterm ls` lists them, and the next launch brings them back as tabs."
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        let quit = alert.runModal() == .alertFirstButtonReturn
+        if alert.suppressionButton?.state == .on {
+            UserDefaults.standard.set(true, forKey: "quitNoticeSuppressed")
+        }
+        return quit ? .terminateNow : .terminateCancel
     }
 
     func forget(_ controller: TerminalWindowController) {

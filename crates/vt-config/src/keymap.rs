@@ -153,6 +153,11 @@ impl Chord {
 /// Every action the shell knows, with the milestone that builds it.
 pub const ACTIONS: &[(&str, &str, &str)] = &[
     ("tab.new", "New tab", "M4"),
+    (
+        "tab.reopen",
+        "Reopen the last closed tab (reattach its session)",
+        "M5.5",
+    ),
     ("window.new", "New window", "M4"),
     ("pane.split_right", "Split right", "M4"),
     ("pane.split_down", "Split down", "M4"),
@@ -258,6 +263,7 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
 /// docs/06 §7, macOS column.
 pub const MACOS: &[(&str, &str)] = &[
     ("cmd+t", "tab.new"),
+    ("cmd+shift+t", "tab.reopen"),
     ("cmd+n", "window.new"),
     ("cmd+d", "pane.split_right"),
     ("cmd+shift+d", "pane.split_down"),

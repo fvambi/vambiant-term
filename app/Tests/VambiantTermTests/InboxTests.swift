@@ -2,6 +2,26 @@ import Foundation
 import Testing
 @testable import VambiantTerm
 
+struct SessionRestoreTests {
+    private func info(_ id: String, state: String?, at: String, orphaned: Bool? = nil) -> SessionInfo {
+        SessionInfo(id: id, name: id, size: [80, 24], state: state, orphaned: orphaned, createdAt: at)
+    }
+
+    @Test func runningSessionsComeBackOldestFirst() {
+        let all = [
+            info("b", state: "idle", at: "2026-09-06T10:00:02Z"),
+            info("dead", state: "stopped", at: "2026-09-06T10:00:00Z"),
+            info("a", state: "thinking", at: "2026-09-06T10:00:01Z"),
+            info("lost", state: "idle", at: "2026-09-06T09:00:00Z", orphaned: true),
+            info("crash", state: "crashed", at: "2026-09-06T10:00:03Z"),
+        ]
+        #expect(SessionRestore.running(all).map(\.id) == ["a", "b"])
+        #expect(SessionRestore.reopenCandidate(all, attached: ["b"])?.id == "a")
+        #expect(SessionRestore.reopenCandidate(all, attached: ["a", "b"]) == nil)
+        #expect(ShellAction.from(id: "tab.reopen", label: "", milestone: "") == .reopenTab)
+    }
+}
+
 struct InboxTests {
     private let bash = """
     {"id":"toolu_9","session":"abc","session_name":"fake-claude",

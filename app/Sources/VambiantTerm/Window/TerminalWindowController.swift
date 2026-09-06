@@ -16,7 +16,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private var diffRefresh: Date = .distantPast
     static let tabbingIdentifier = "com.vambiant.term.main"
 
-    init(daemon: DaemonClient, renderer: GridRenderer) {
+    /// `attach` reattaches an existing daemon session instead of starting one.
+    init(daemon: DaemonClient, renderer: GridRenderer, attach: SessionInfo? = nil) {
         self.daemon = daemon
         self.renderer = renderer
         let cell = CGSize(width: renderer.fonts.metrics.width, height: renderer.fonts.metrics.height)
@@ -66,7 +67,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         first.focus()
         applyTheme()
         // The view has a size now, so the session can be created at it.
-        first.start(cwd: NSHomeDirectory(), cols: max(first.view.cols, 80), rows: max(first.view.rows, 24))
+        if let attach {
+            first.attach(to: attach)
+            if first.view.cols > 0 {
+                first.viewer?.resize(cols: first.view.cols, rows: first.view.rows)
+            }
+        } else {
+            first.start(cwd: NSHomeDirectory(), cols: max(first.view.cols, 80), rows: max(first.view.rows, 24))
+        }
         window.title = first.title
     }
 
@@ -203,7 +211,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
              .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
              .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext, .mailboxOpen, .historySearch,
-             .showLastPayload:
+             .showLastPayload, .reopenTab:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -218,6 +226,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .explainLastFailure: pane.explainLastFailure()
         case .inboxOpen, .inboxNext: showInboxAction(nil)
         case .mailboxOpen: showMailboxAction(nil)
+        case .reopenTab: (NSApp.delegate as? AppDelegate)?.reopenClosedTab(from: window)
         case .historySearch: pane.openHistorySearch()
         case .showLastPayload: pane.showLastPayload()
         default: return false
