@@ -169,7 +169,16 @@ fn viewer_sees_output_and_routes_keys() {
     assert_eq!((view.cols, view.rows), (40, 6));
     assert!(view.cursor_visible);
     assert!(!view.disconnected);
-    assert!(dirty.load(Ordering::SeqCst) >= 1, "dirty fired on attach");
+    // The first signal comes from the viewer's thread, which may not have
+    // run yet when READY was already in the attach snapshot.
+    let start = Instant::now();
+    while dirty.load(Ordering::SeqCst) == 0 {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "dirty never fired after attach"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
 
     // Type "hi" + Enter through the key path (Enter = 58, see KeyCode).
     for k in [key(0, "h"), key(0, "i"), key(58, "\r")] {
