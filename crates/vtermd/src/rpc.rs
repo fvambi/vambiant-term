@@ -304,6 +304,19 @@ impl Handler for Rpc {
                     })?;
                 Ok(serde_json::json!(find_rows(&h, &re, from, to, limit)))
             }
+            method::AI_ASK => {
+                let prompt: String = Self::param(req, "prompt")?;
+                let feature: String = Self::param(req, "feature").unwrap_or_else(|_| "ask".into());
+                let session: Option<String> = Self::param(req, "session").ok();
+                crate::ai::ask(
+                    &self.registry,
+                    &self.store,
+                    &prompt,
+                    &feature,
+                    session.as_deref(),
+                )
+            }
+            method::AI_DOCTOR => crate::ai::doctor(&self.registry),
             method::HISTORY_SEARCH => {
                 let prefix: String = Self::param(req, "prefix").unwrap_or_default();
                 let limit: usize = Self::param(req, "limit").unwrap_or(200);

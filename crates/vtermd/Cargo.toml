@@ -21,6 +21,8 @@ vt-pty.workspace = true
 vt-store.workspace = true
 vt-config.workspace = true
 vt-blocks.workspace = true
+vt-ai.workspace = true
+vt-redact.workspace = true
 regex.workspace = true
 vt-shell.workspace = true
 

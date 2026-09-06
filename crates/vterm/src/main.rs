@@ -46,6 +46,13 @@ fn main() {
         Command::Config { cmd } => config(&cli, cmd),
         Command::Keys { json } => keys(&cli, *json),
         Command::Blocks { session, json } => blocks(&cli, session, *json),
+        Command::Ask {
+            prompt,
+            session,
+            feature,
+            json,
+        } => ask(&cli, &prompt.join(" "), session.as_deref(), feature, *json),
+        Command::Ai { cmd } => ai(&cli, cmd),
         Command::Ls { json } => {
             let mut c = client(&cli);
             let v = c
@@ -654,5 +661,109 @@ fn blocks(cli: &Cli, session: &str, json: bool) {
             Some("background") => println!("\u{2248} (background output)"),
             _ => println!("{mark} (prompt)"),
         }
+    }
+}
+
+fn ask(cli: &Cli, prompt: &str, session: Option<&str>, feature: &str, json: bool) {
+    let mut c = client(cli);
+    let v = c
+        .call(
+            vt_proto::session::method::AI_ASK,
+            Some(serde_json::json!({ "prompt": prompt, "session": session, "feature": feature })),
+        )
+        .unwrap_or_else(|e| fail(e));
+    if json {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        return;
+    }
+    println!("{}", v["text"].as_str().unwrap_or_default().trim_end());
+    let cost = v["cost_usd_estimate"].as_f64().unwrap_or(0.0);
+    let redactions = v["redactions"].as_u64().unwrap_or(0);
+    eprintln!(
+        "\n— {} · {} · in {} out {} tokens · est. ${cost:.4}{}",
+        v["profile"].as_str().unwrap_or("?"),
+        v["model"].as_str().unwrap_or("?"),
+        v["usage"]["input_tokens"],
+        v["usage"]["output_tokens"],
+        if redactions > 0 {
+            format!(" · {redactions} redaction(s) applied before sending")
+        } else {
+            String::new()
+        }
+    );
+}
+
+fn ai(cli: &Cli, cmd: &cli::AiCmd) {
+    match cmd {
+        cli::AiCmd::Doctor { json } => {
+            let mut c = client(cli);
+            let v = c
+                .call(vt_proto::session::method::AI_DOCTOR, None)
+                .unwrap_or_else(|e| fail(e));
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+                return;
+            }
+            println!(
+                "providers: {} ({})",
+                v["providers_path"].as_str().unwrap_or("?"),
+                if v["exists"].as_bool().unwrap_or(false) {
+                    "file"
+                } else {
+                    "bundled defaults; write it with your profiles"
+                }
+            );
+            for p in v["profiles"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+            {
+                let key = if p["key"].as_bool().unwrap_or(false) {
+                    "key ✓"
+                } else {
+                    "no key"
+                };
+                let reach = if p["reachable"].as_bool().unwrap_or(false) {
+                    format!(
+                        "reachable, {} model(s)",
+                        p["models"].as_array().map_or(0, Vec::len)
+                    )
+                } else {
+                    format!("unreachable: {}", p["error"].as_str().unwrap_or("?"))
+                };
+                println!(
+                    "  {:<14} {:<10} {:<28} {key:<7} {reach}",
+                    p["name"].as_str().unwrap_or("?"),
+                    p["kind"].as_str().unwrap_or("?"),
+                    p["model"].as_str().unwrap_or("?")
+                );
+                if let Some(h) = p["start_hint"]
+                    .as_str()
+                    .filter(|h| !h.is_empty() && !p["reachable"].as_bool().unwrap_or(false))
+                {
+                    println!("  {:<14} start it: {h}", "");
+                }
+            }
+            println!("routes: {}", v["routes"]);
+        }
+        cli::AiCmd::Key { cmd } => match cmd {
+            cli::KeyCmd::Set { profile } => {
+                use std::io::Read as _;
+                let mut key = String::new();
+                if std::io::stdin().read_to_string(&mut key).is_err() || key.trim().is_empty() {
+                    fail(format!(
+                        "vterm ai key set {profile}: pipe the key on stdin, e.g. `pbpaste | vterm ai key set {profile}`"
+                    ));
+                }
+                match vt_ai::keychain::store(profile, key.trim()) {
+                    Ok(()) => println!("stored the key for `{profile}` in the Keychain"),
+                    Err(e) => fail(e),
+                }
+            }
+            cli::KeyCmd::Remove { profile } => match vt_ai::keychain::remove(profile) {
+                Ok(()) => println!("removed the key for `{profile}`"),
+                Err(e) => fail(e),
+            },
+        },
     }
 }

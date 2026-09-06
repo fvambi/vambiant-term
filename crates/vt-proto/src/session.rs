@@ -112,6 +112,13 @@ pub mod method {
     /// `{id, query, regex?, case_sensitive?, from?, to?, limit?}` →
     /// `[{row, col, len}]` over absolute rows, oldest first.
     pub const SESSION_FIND: &str = "session.find";
+    /// `{prompt, feature?: "ask", session?}` → `{text, profile, model,
+    /// usage, cost_usd_estimate, redactions}`. Every text part is redacted
+    /// first; a redaction failure refuses the request (ADR-0007).
+    pub const AI_ASK: &str = "ai.ask";
+    /// `{}` → `{providers_path, profiles: [{name, kind, base_url, model,
+    /// key, reachable, models|error}], routes}`.
+    pub const AI_DOCTOR: &str = "ai.doctor";
     /// `{prefix?, limit?}` → `[cmdline]`: distinct command lines across all
     /// sessions, most recent first (the Warp-mode editor's history).
     pub const HISTORY_SEARCH: &str = "history.search";

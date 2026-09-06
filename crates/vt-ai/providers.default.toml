@@ -1,0 +1,50 @@
+# Vambiant Term — provider profiles (docs/04, docs/09 [ai.routes]).
+# No secrets here: keys live in the Keychain (`vterm ai key set <profile>`)
+# or in the environment variable named by `api_key_env`.
+
+[[profile]]
+name = "claude-strong"
+kind = "anthropic"
+model = "claude-sonnet-5"
+models = ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"]
+api_key_env = "ANTHROPIC_API_KEY"
+# Recent Opus-class models reject non-default temperature/top_p (HTTP 400).
+default_only_sampling = ["claude-opus-5"]
+
+[[profile]]
+name = "openai"
+kind = "openai"
+model = "gpt-5"
+api_key_env = "OPENAI_API_KEY"
+
+[[profile]]
+name = "local-fast"
+kind = "ollama"
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5-coder:1.5b-base"
+
+[routes]
+suggest  = "local-fast"
+classify = "none"
+ask      = "claude-strong"
+explain  = "claude-strong"
+agent    = "claude-strong"
+
+# USD per million tokens, list price; shown as estimates.
+[pricing."claude-sonnet-5"]
+input = 3.0
+output = 15.0
+cache_read = 0.3
+cache_write = 3.75
+
+[pricing."claude-opus-5"]
+input = 15.0
+output = 75.0
+cache_read = 1.5
+cache_write = 18.75
+
+[pricing."claude-haiku-4-5-20251001"]
+input = 1.0
+output = 5.0
+cache_read = 0.1
+cache_write = 1.25

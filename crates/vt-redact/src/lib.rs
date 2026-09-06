@@ -1,14 +1,15 @@
-//! Streaming secret redaction (ADR-0007). **Fails closed.**
+//! Secret redaction (ADR-0007). **Fails closed.**
 //!
 //! If anything in this crate errors, panics or times out, the caller drops
 //! the outbound request and tells the user. There is no fail-open path and
 //! there will never be a "redact later". Recall wins every tie with
 //! precision.
 //!
-//! Layers: vendored gitleaks regexes in one `RegexSet` ([`rules`]), a
-//! Shannon-entropy layer ([`entropy`]), a sliding window that survives any
-//! chunk boundary ([`stream`]), and a stateful multi-line PEM mode ([`pem`]).
-//! Property tests in `tests/` assert no secret survives any split pattern.
+//! Built so far: the rule set ([`rules`]) applied to whole payloads with a
+//! time budget and panic containment ([`pipeline`]). Still to build
+//! (docs/07 M-SEC): the sliding window over PTY chunk boundaries
+//! ([`stream`]), the Shannon-entropy layer ([`entropy`]) and streaming
+//! multi-line PEM mode ([`pem`]); those modules are placeholders.
 
 pub mod entropy;
 pub mod pem;
@@ -16,4 +17,4 @@ pub mod pipeline;
 pub mod rules;
 pub mod stream;
 
-pub use pipeline::{RedactError, Redacted};
+pub use pipeline::{RedactError, Redacted, redact, redact_within};

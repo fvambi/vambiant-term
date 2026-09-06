@@ -135,6 +135,27 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Ask the configured model a question with the terminal's context.
+    Ask {
+        /// The question (words are joined with spaces).
+        #[arg(required = true)]
+        prompt: Vec<String>,
+        /// Session id or name whose cwd and last blocks are the context.
+        #[arg(long)]
+        session: Option<String>,
+        /// Route (`ask`, `explain`); see config.toml [ai.routes].
+        #[arg(long, default_value = "ask")]
+        feature: String,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Provider layer: keys, health, models.
+    Ai {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: AiCmd,
+    },
     /// Command blocks of a session (OSC 133/633 segmentation).
     Blocks {
         /// Session id or unique name.
@@ -233,5 +254,37 @@ pub enum InboxCmd {
         /// Replacement input as JSON; without it `$VISUAL`/`$EDITOR` opens.
         #[arg(long)]
         input: Option<String>,
+    },
+}
+
+/// `vterm ai …`
+#[derive(Subcommand, Debug)]
+pub enum AiCmd {
+    /// Print every profile with its key status and reachability.
+    Doctor {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Store or remove a profile's API key in the Keychain.
+    Key {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: KeyCmd,
+    },
+}
+
+/// `vterm ai key …`
+#[derive(Subcommand, Debug)]
+pub enum KeyCmd {
+    /// Read the key from stdin (never from an argument) and store it.
+    Set {
+        /// Profile name from providers.toml.
+        profile: String,
+    },
+    /// Remove the stored key.
+    Remove {
+        /// Profile name from providers.toml.
+        profile: String,
     },
 }

@@ -136,6 +136,8 @@ suggest_debounce_ms = 40
 suggest_budget_ms   = 120                 # a late suggestion is discarded, not shown
 explain_on_failure  = true
 
+# Profile names come from providers.toml next to this file (`vterm ai doctor`
+# prints its path); a bundled default set is used until you write one.
 [ai.routes]
 suggest   = "local-fast"
 classify  = "none"                        # deterministic rules; model is a second opinion only

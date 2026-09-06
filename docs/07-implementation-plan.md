@@ -119,19 +119,19 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 ## M-AI (parallel from M1) — Provider layer (3 weeks of effort, spread)
 
-- [ ] `Provider` trait; capability tables including `SamplingSupport`.
-- [ ] Anthropic Messages client: streaming, prompt caching with breakpoint budgeting, `count_tokens`.
-- [ ] OpenAI Responses + Chat clients; generic OpenAI-compatible adapter.
-- [ ] Local adapters: Ollama, `llama-server` (Messages + `/infill`), MLX, LM Studio.
-- [ ] Route table, fallback chains, circuit breakers, cancellation.
-- [ ] Cost accounting, budgets with hard stop, `vterm ai spend`.
-- [ ] Keychain integration; `vterm ai doctor`.
+- [x] `Provider` trait; capability tables including `SamplingSupport`. *(2026-09-06: `vt-ai::provider` — Messages-shaped `Request`/`Content`/`Chunk`, a synchronous `Provider` trait (the daemon runs a request per thread; docs/04's async sketch is the same contract without a runtime), `Assembler` for streams, `SamplingSupport` per model.)*
+- [x] Anthropic Messages client: streaming, ~~prompt caching with breakpoint budgeting, `count_tokens`~~. *(Streaming SSE with every documented event kind and tolerance for unknown ones; `DefaultOnly` sampling drops `temperature`/`top_p` per model; caching and `count_tokens` not yet.)*
+- [x] ~~OpenAI Responses +~~ Chat clients; generic OpenAI-compatible adapter. *(Chat Completions with the safe subset from docs/04 §2, tool calls mapped by index; Responses API not yet.)*
+- [x] Local adapters: Ollama, `llama-server` (Messages ~~+ `/infill`~~), ~~MLX,~~ LM Studio. *(Ollama and LM Studio through the compatible adapter, llama.cpp through the Messages adapter; `/infill` and MLX not yet.)*
+- [x] Route table, ~~fallback chains, circuit breakers, cancellation~~. *(`providers.toml` profiles, models, pricing and routes; `config.toml [ai.routes]` wins. Fallbacks, breakers and cancellation not yet.)*
+- [x] Cost accounting, ~~budgets with hard stop, `vterm ai spend`~~. *(List-price estimates per request, recorded in the egress log; budgets and `spend` not yet.)*
+- [x] Keychain integration; `vterm ai doctor`. *(`security-framework` generic passwords under `com.vambiant.term`, env var per profile first; `vterm ai key set|remove`, `vterm ai doctor`, `vterm ask`. Every outbound text part goes through `vt-redact` and a failure refuses the request; the e2e test proves a key in the prompt never reaches the mock server.)*
 
 **Exit:** `vterm ask` works against all four provider families; `vterm ai doctor` prints resolved capabilities and flags missing models.
 
 ## M-SEC (parallel from M1) — Redaction & policy (3 weeks of effort, spread)
 
-- [ ] `vt-redact`: gitleaks rule import into a `RegexSet`, entropy layer, streaming sliding window, stateful multi-line PEM mode.
+- [ ] `vt-redact`: gitleaks rule import into a `RegexSet`, entropy layer, streaming sliding window, stateful multi-line PEM mode. *(2026-09-06: the rule set (14 credential shapes written from their public formats, in a `RegexSet` plus per-rule regexes), whole-payload PEM, a time budget and panic containment that fail closed, with a golden test per rule. Entropy, the streaming window and streaming PEM are still placeholders.)*
 - [ ] Property tests across all chunk boundaries; golden corpus in CI.
 - [ ] `vt-policy`: POSIX shell parser, classification, the never-auto floor.
 - [ ] Per-workspace policy files with intersection semantics.

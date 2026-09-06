@@ -9,8 +9,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+regex.workspace = true
+security-framework = "3"
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+toml.workspace = true
+ureq = { version = "3", features = ["json"] }
 
 [lints]
 workspace = true
