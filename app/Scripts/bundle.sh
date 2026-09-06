@@ -13,7 +13,7 @@ out="$app/build/Vambiant Term.app"
 
 cd "$root"
 mise run ffi:staticlib
-cargo build --release -p vtermd -p vterm
+cargo build --release -p vtermd -p vterm --bins
 cd "$app"
 swift build -c "$config"
 bin="$(swift build -c "$config" --show-bin-path)"
@@ -22,12 +22,14 @@ rm -rf "$out"
 mkdir -p "$out/Contents/MacOS" "$out/Contents/Resources"
 cp "$app/Resources/Info.plist" "$out/Contents/"
 cp "$bin/VambiantTerm" "$out/Contents/MacOS/VambiantTerm"
-cp "$root/target/release/vtermd" "$root/target/release/vterm" "$out/Contents/MacOS/"
+# vtermd resolves vtermd-hold next to its own executable (holder.rs), so the
+# per-session fd holder must ship beside the daemon or every session.new fails.
+cp "$root/target/release/vtermd" "$root/target/release/vtermd-hold" "$root/target/release/vterm" "$out/Contents/MacOS/"
 if [[ "$config" == "release" ]]; then
-  strip -x "$out/Contents/MacOS/VambiantTerm" "$out/Contents/MacOS/vtermd" "$out/Contents/MacOS/vterm"
+  strip -x "$out/Contents/MacOS/VambiantTerm" "$out/Contents/MacOS/vtermd" "$out/Contents/MacOS/vtermd-hold" "$out/Contents/MacOS/vterm"
 fi
 echo -n "APPL????" > "$out/Contents/PkgInfo"
-codesign --force --sign - --identifier com.vambiant.term "$out/Contents/MacOS/vtermd" "$out/Contents/MacOS/vterm"
+codesign --force --sign - --identifier com.vambiant.term "$out/Contents/MacOS/vtermd" "$out/Contents/MacOS/vtermd-hold" "$out/Contents/MacOS/vterm"
 codesign --force --sign - --identifier com.vambiant.term "$out"
 codesign --verify --deep --strict "$out"
 echo "bundle: $out"
