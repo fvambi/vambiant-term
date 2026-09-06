@@ -25,6 +25,7 @@ enum ShellAction: Equatable, Sendable {
     case findOpen, findNext, findPrevious
     case stickyHeaderToggle
     case sidebarToggle
+    case paletteOpen
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -76,6 +77,7 @@ enum ShellAction: Equatable, Sendable {
         "find.previous": .findPrevious,
         "block.sticky_toggle": .stickyHeaderToggle,
         "sidebar.toggle": .sidebarToggle,
+        "palette.open": .paletteOpen,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),
@@ -173,7 +175,7 @@ struct Keymap: Sendable {
             KeyChord("home", shift: true): .scroll(.top),
             KeyChord("end", shift: true): .scroll(.bottom),
             KeyChord("a", command: true, shift: true): .unavailable("Approval inbox (inbox.open, M5)"),
-            KeyChord("p", command: true, shift: true): .unavailable("Command palette (palette.open, M5)"),
+            KeyChord("p", command: true, shift: true): .paletteOpen,
             KeyChord("k", command: true): .unavailable("⌘K assistant (ai.ask, M-AI)"),
         ]
         prefixed = [

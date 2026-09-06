@@ -172,7 +172,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             pane.view.scroll(step)
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
-             .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle:
+             .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
+             .paletteOpen:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -199,6 +200,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .findPrevious: pane.findStep(forward: false)
         case .stickyHeaderToggle: pane.view.toggleStickyHeader(nil)
         case .sidebarToggle: toggleSidebar(nil)
+        case .paletteOpen: (NSApp.delegate as? AppDelegate)?.showPalette(for: self, pane: pane)
         case let .block(blockAction):
             if let block = pane.view.selectedBlock.flatMap(pane.blocks.command(seq:)) {
                 pane.perform(blockAction, on: block)

@@ -142,7 +142,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 ## M6 — Intelligence in the terminal (3–4 weeks)
 
 - [ ] Inline ghost text with history-first ranking, debounce, cancellation, late-discard.
-- [ ] ⌘K palette with staging, explanation and verdict.
+- [ ] ⌘K palette with staging, explanation and verdict. *(The command palette itself exists since 2026-09-06: ⌘⇧P / `<prefix> :` opens a panel over actions with their chords, every session, the daemon's history and the repo's tracked files, with Warp's `actions:` `sessions:` `history:` `files:` scopes and fuzzy ranking; picking an action performs it, a session focuses it, history or a file lands in the editor. ⌘K's natural-language mode waits for the provider layer.)*
 - [ ] `⌥E` explain-failure returning a patch, not prose.
 - [ ] Context builder with inspectable payload (`⌥⌘E`).
 - [ ] Safety verdicts surfaced inline on typed commands and in the inbox.

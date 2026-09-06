@@ -129,6 +129,10 @@ extension MetalGridView {
         onAction?(.findPrevious)
     }
 
+    @objc func paletteAction(_ sender: Any?) {
+        onAction?(.paletteOpen)
+    }
+
     @objc func toggleStickyHeader(_ sender: Any?) {
         stickyHeaderEnabled.toggle()
         lastSeqReset()

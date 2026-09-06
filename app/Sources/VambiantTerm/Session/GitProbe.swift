@@ -105,6 +105,32 @@ enum GitProbe {
         }
     }
 
+    /// Tracked files of the repository containing `cwd` (`git ls-files`),
+    /// off the main thread, capped; empty outside a repo.
+    static func files(in cwd: String, limit: Int = 3000, completion: @escaping @Sendable ([String]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            p.arguments = ["git", "-C", cwd, "ls-files", "-z"]
+            let out = Pipe()
+            p.standardOutput = out
+            p.standardError = FileHandle.nullDevice
+            do {
+                try p.run()
+            } catch {
+                completion([])
+                return
+            }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0, let text = String(bytes: data, encoding: .utf8) else {
+                completion([])
+                return
+            }
+            completion(Array(text.split(separator: "\0").map(String.init).prefix(limit)))
+        }
+    }
+
     /// `~/code/app` for a path under the home directory.
     static func abbreviated(_ path: String) -> String {
         let home = NSHomeDirectory()
