@@ -95,12 +95,18 @@ pub fn inject(shell: Shell, dir: &Path, user_zdotdir: &Path, controls_argv: bool
             // zsh reads .zshrc from $ZDOTDIR; point it at our dir and chain
             // to the user's. This survives `login -p`.
             let user_rc = user_zdotdir.join(".zshrc");
+            // macOS /etc/zshrc runs before us and sets
+            // HISTFILE=${ZDOTDIR:-$HOME}/.zsh_history, i.e. inside our
+            // private dir. Point it back at the user's before their rc runs
+            // so history is never diverted into a per-session directory.
             let rc = format!(
                 "# Vambiant Term: load the user's config, then our integration.\n\
                  export ZDOTDIR={user}\n\
+                 [[ \"$HISTFILE\" == {dir}/* ]] && HISTFILE=\"$ZDOTDIR/.zsh_history\"\n\
                  [ -f {user_rc} ] && source {user_rc}\n\
                  source {snippet}\n",
                 user = shquote(&user_zdotdir.display().to_string()),
+                dir = shquote(&dir.display().to_string()),
                 user_rc = shquote(&user_rc.display().to_string()),
                 snippet = shquote(&dir.join("vambiant.zsh").display().to_string()),
             );
@@ -215,6 +221,22 @@ mod tests {
             .1;
         assert!(rc.contains("source '/home/u/.zshrc'"), "{rc}");
         assert!(inj.files.iter().any(|(p, _)| p.ends_with("vambiant.zsh")));
+        // /etc/zshrc derives HISTFILE from ZDOTDIR before our rc runs; the
+        // wrapper must send it back home or history lands in our dir.
+        assert!(
+            rc.contains(&format!(
+                "[[ \"$HISTFILE\" == '{}'/* ]] && HISTFILE=\"$ZDOTDIR/.zsh_history\"",
+                dir.display()
+            )),
+            "{rc}"
+        );
+    }
+
+    #[test]
+    fn every_snippet_reports_the_command_line() {
+        for shell in [Shell::Zsh, Shell::Bash, Shell::Fish] {
+            assert!(shell.snippet().contains("633;E;"), "{shell:?} emits 633;E");
+        }
     }
 
     #[test]

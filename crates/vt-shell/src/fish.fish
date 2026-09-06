@@ -14,6 +14,8 @@ function __vt_prompt --on-event fish_prompt
   __vt_osc7
 end
 function __vt_preexec --on-event fish_preexec
+  set -l line (string replace -a '\\' '\\x5c' -- $argv[1] | string replace -a ';' '\\x3b' | string join '\\x0a')
+  printf '\033]633;E;%s\033\\' "$line"
   printf '\033]133;C\033\\'
 end
 function __vt_postexec --on-event fish_postexec

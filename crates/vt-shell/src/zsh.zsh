@@ -24,7 +24,17 @@ __vt_precmd() {
   __vt_osc7
   printf '\033]133;A\033\\'
 }
+# 633;E carries the command line so a block can be titled; `;` and `\`
+# are escaped as \x3b and \x5c, newlines as \x0a (the 633 convention).
+__vt_escape() {
+  local s=$1
+  s=${s//\\/\\x5c}
+  s=${s//;/\\x3b}
+  s=${s//$'\n'/\\x0a}
+  print -rn -- "$s"
+}
 __vt_preexec() {
+  printf '\033]633;E;%s\033\\' "$(__vt_escape "$1")"
   printf '\033]133;C\033\\'
   __vt_cmd_active=1
 }

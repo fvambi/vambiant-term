@@ -139,7 +139,14 @@ fn injected_zsh_integration_produces_blocks() {
     // Give zsh a moment to print its first prompt (emits A), then run a
     // command (B on the prompt, C on preexec, D on the next precmd).
     std::thread::sleep(Duration::from_millis(800));
-    let bytes = base64::engine::general_purpose::STANDARD.encode("false\n");
+    // Also record where zsh keeps its history: macOS /etc/zshrc derives
+    // HISTFILE from ZDOTDIR, and our injected ZDOTDIR must not capture it.
+    let hist_probe = daemon.dir.join("histfile");
+    let cmd = format!(
+        "false; print -r -- \"$HISTFILE\" > {}\n",
+        hist_probe.display()
+    );
+    let bytes = base64::engine::general_purpose::STANDARD.encode(cmd);
     c.call(
         method::SESSION_INPUT,
         Some(serde_json::json!({ "id": info.id.0, "bytes": bytes })),
@@ -155,11 +162,16 @@ fn injected_zsh_integration_produces_blocks() {
             )
             .unwrap();
         let arr = blocks.as_array().cloned().unwrap_or_default();
-        // `false` exits 1; the injected D;<exit> carries it.
-        if arr
-            .iter()
-            .any(|b| b["block"]["kind"]["kind"] == "command" && b["block"]["kind"]["exit"] == 1)
-        {
+        // The line exits 0 (the redirect is last); the injected 633;E must
+        // carry the command line verbatim.
+        if let Some(b) = arr.iter().find(|b| {
+            b["block"]["kind"]["kind"] == "command"
+                && b["block"]["kind"]["cmdline"]
+                    .as_str()
+                    .is_some_and(|c| c.starts_with("false; print"))
+        }) {
+            assert_eq!(b["block"]["kind"]["exit"], 0, "{b}");
+            assert_eq!(b["block"]["confidence"], "marked");
             break;
         }
         assert!(
@@ -169,6 +181,12 @@ fn injected_zsh_integration_produces_blocks() {
         );
         std::thread::sleep(Duration::from_millis(100));
     }
+    let histfile = std::fs::read_to_string(&hist_probe).unwrap_or_default();
+    let ours = daemon.dir.join("state").join("shell-integration");
+    assert!(
+        !histfile.trim().is_empty() && !histfile.starts_with(&ours.display().to_string()),
+        "HISTFILE was diverted into the integration dir: {histfile:?}"
+    );
 }
 
 fn which_zsh() -> Option<String> {

@@ -642,11 +642,13 @@ fn blocks(cli: &Cli, session: &str, json: bool) {
         } else {
             " "
         };
-        match b["kind"].as_str() {
+        // `BlockKind` serialises tagged: `kind: {kind: "command", cmdline, exit}`.
+        let kind = &b["kind"];
+        match kind["kind"].as_str() {
             Some("command") => {
-                let exit = b["exit"].as_i64();
+                let exit = kind["exit"].as_i64();
                 let chip = exit.map_or_else(|| "· running".to_owned(), |e| format!("exit {e}"));
-                let cmd = b["cmdline"].as_str().unwrap_or("<no command line>");
+                let cmd = kind["cmdline"].as_str().unwrap_or("<no command line>");
                 println!("{mark} [{chip}] {cmd}");
             }
             _ => println!("{mark} (prompt)"),

@@ -21,6 +21,15 @@ __vt_preexec() {
   # after a prompt is the user's command line.
   [ -n "$__vt_cmd_active" ] && return
   case "$BASH_COMMAND" in __vt_precmd) return ;; esac
+  # The whole line, not just the first simple command: bash appends the
+  # line to history before running it.
+  local line
+  line=$(HISTTIMEFORMAT= builtin history 1)
+  line=${line#*[0-9]  }
+  line=${line//\\/\\x5c}
+  line=${line//;/\\x3b}
+  line=${line//$'\n'/\\x0a}
+  printf '\033]633;E;%s\033\\' "$line"
   printf '\033]133;C\033\\'
   __vt_cmd_active=1
 }
