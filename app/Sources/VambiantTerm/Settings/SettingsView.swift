@@ -65,14 +65,31 @@ struct SettingsView: View {
 struct StatusBanner: View {
     let model: ConfigModel
 
-    var body: some View {
+    /// Built imperatively: one long array expression made Swift 6.1 give
+    /// up type-checking it.
+    static func problems(in model: ConfigModel) -> [(String, Color)] {
+        var out: [(String, Color)] = []
         let snap = model.snapshot
-        let problems: [(String, Color)] =
-            [snap?.configError.map { ("config.toml is not being applied — \($0)", Color.red) }].compactMap(\.self)
-                + [snap?.keymapError.map { ("keymap.toml is not being applied — \($0)", Color.red) }].compactMap(\.self)
-                + (snap?.configWarnings ?? []).map { ("config.toml: \($0)", Color.orange) }
-                + (snap?.themeWarnings ?? []).map { ("themes: \($0)", Color.orange) }
-                + [model.lastError.map { ("refused: \($0)", Color.red) }].compactMap(\.self)
+        if let e = snap?.configError {
+            out.append(("config.toml is not being applied — \(e)", .red))
+        }
+        if let e = snap?.keymapError {
+            out.append(("keymap.toml is not being applied — \(e)", .red))
+        }
+        for w in snap?.configWarnings ?? [] {
+            out.append(("config.toml: \(w)", .orange))
+        }
+        for w in snap?.themeWarnings ?? [] {
+            out.append(("themes: \(w)", .orange))
+        }
+        if let e = model.lastError {
+            out.append(("refused: \(e)", .red))
+        }
+        return out
+    }
+
+    var body: some View {
+        let problems = Self.problems(in: model)
         if !problems.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(problems.enumerated()), id: \.offset) { _, p in
