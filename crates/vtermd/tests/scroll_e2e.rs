@@ -17,8 +17,8 @@ struct Daemon {
 }
 
 impl Daemon {
-    fn start() -> Self {
-        let dir = std::env::temp_dir().join(format!("vtermd-scroll-{}", std::process::id()));
+    fn start(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("vtermd-scroll-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let socket = dir.join("vtermd.sock");
@@ -80,7 +80,7 @@ fn row_text(d: &OutputDelta, row: u16) -> String {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
-    let daemon = Daemon::start();
+    let daemon = Daemon::start("viewport");
     let mut c = daemon.client();
     let script = "i=1; while [ $i -le 40 ]; do echo line$i; i=$((i+1)); done; sleep 30";
     let req = NewSession {
@@ -264,7 +264,7 @@ fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
 /// counts grid rows, not logical lines.
 #[test]
 fn find_counts_grid_rows_not_logical_lines() {
-    let daemon = Daemon::start();
+    let daemon = Daemon::start("wrap");
     let mut c = daemon.client();
     // 30 a's wrap over two 20-column rows; NEEDLE is on grid row 2.
     let script = "printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nNEEDLE\\n'; sleep 30";
