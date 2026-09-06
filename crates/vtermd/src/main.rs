@@ -15,6 +15,7 @@
 
 #![allow(unsafe_code)] // reaping detached holders with waitpid; nothing else.
 
+mod agent_mode;
 mod agents;
 mod ai;
 mod codex;

@@ -159,6 +159,12 @@ pub mod notification {
     pub const AI_DONE: &str = "ai.done";
     /// `{ request, id, message }` — the request was refused or failed.
     pub const AI_ERROR: &str = "ai.error";
+    /// `{ request, id, tool_use, command, verdict, floor?, decision, applied, approval? }`
+    /// — Agent Mode wants to run a command; `approval` is the inbox id
+    /// when a human decides.
+    pub const AI_TOOL_REQUEST: &str = "ai.tool_request";
+    /// `{ request, id, tool_use, exit?, output?, denied?, reason? }`.
+    pub const AI_TOOL_RESULT: &str = "ai.tool_result";
     /// `{ id, exit_code? , signal? }` — child exited.
     pub const SESSION_EXITED: &str = "session.exited";
     /// `SessionInfo` — a session was created, renamed or removed.

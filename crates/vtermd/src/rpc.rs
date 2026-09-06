@@ -311,7 +311,10 @@ impl Handler for Rpc {
                 let history: Vec<crate::ai::HistoryTurn> =
                     Self::param(req, "history").unwrap_or_default();
                 let stream: bool = Self::param(req, "stream").unwrap_or(false);
-                let run = if stream {
+                let agent: bool = Self::param(req, "agent").unwrap_or(false);
+                let run = if agent {
+                    crate::agent_mode::run
+                } else if stream {
                     crate::ai::ask_streaming
                 } else {
                     crate::ai::ask

@@ -519,6 +519,40 @@ impl Agents {
         }
     }
 
+    /// Puts a request in the inbox: the watchdog is armed, the session
+    /// shows as awaiting input, the desktop is told, every viewer sees the
+    /// new inbox. Agent Mode's command requests and vendor hooks both
+    /// come through here, so the card, the sheet and `vterm inbox` treat
+    /// them alike.
+    pub fn ask(&self, item: InboxItem) -> Arc<PendingApproval> {
+        let session = item.session.clone();
+        let name = item.session_name.clone();
+        let tool = item.request.tool.clone();
+        let reason = item.request.reason.clone();
+        let id = item.id.clone();
+        let pending = Arc::new(PendingApproval {
+            item,
+            since: Instant::now(),
+            decision: Mutex::new(None),
+            decided: Condvar::new(),
+            hook_open: Mutex::new(true),
+            withdrawn: Mutex::new(false),
+            reminders: Mutex::new(0),
+        });
+        self.watchdog
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .arm(id.clone());
+        self.pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, Arc::clone(&pending));
+        self.set_state(&session, AgentState::AwaitingInput);
+        notify_desktop(&self.registry, &name, &tool, reason.as_deref());
+        self.broadcast_inbox();
+        pending
+    }
+
     /// Block until the inbox decides (`Some`) or the item is withdrawn
     /// (`None`). No timeout: the agent's own prompt is visible all along.
     pub fn wait_decision(pending: &Arc<PendingApproval>) -> Option<Decision> {
@@ -670,38 +704,19 @@ impl Agents {
                 AgentEvent::ApprovalNeeded(req) => {
                     let name = self.session_name(session);
                     let (verdict, floor) = self.classify_request(session, req);
-                    let pending = Arc::new(PendingApproval {
-                        item: InboxItem {
-                            id: req.id.clone(),
-                            session: session.clone(),
-                            session_name: name.clone(),
-                            request: req.clone(),
-                            hook_event: req.source.clone(),
-                            requested_at: now(),
-                            waiting_secs: 0,
-                            prompt_shown: false,
-                            reminders: 0,
-                            verdict,
-                            floor,
-                        },
-                        since: Instant::now(),
-                        decision: Mutex::new(None),
-                        decided: Condvar::new(),
-                        hook_open: Mutex::new(true),
-                        withdrawn: Mutex::new(false),
-                        reminders: Mutex::new(0),
-                    });
-                    self.watchdog
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .arm(req.id.clone());
-                    self.pending
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .insert(req.id.clone(), Arc::clone(&pending));
-                    self.set_state(session, AgentState::AwaitingInput);
-                    notify_desktop(&self.registry, &name, &req.tool, req.reason.as_deref());
-                    hold = Some(pending);
+                    hold = Some(self.ask(InboxItem {
+                        id: req.id.clone(),
+                        session: session.clone(),
+                        session_name: name,
+                        request: req.clone(),
+                        hook_event: req.source.clone(),
+                        requested_at: now(),
+                        waiting_secs: 0,
+                        prompt_shown: false,
+                        reminders: 0,
+                        verdict,
+                        floor,
+                    }));
                 }
                 _ => {}
             }

@@ -47,6 +47,8 @@ pub enum SessionCmd {
     Export(u64, u64, TextFormat, Sender<String>),
     /// Drop the scrollback; the next flush is full.
     Clear,
+    /// Whether the shell is reading a command line (between `A` and `C`).
+    AtPrompt(Sender<bool>),
     /// Send a signal to the child.
     Signal(i32),
     /// Rename.
@@ -276,6 +278,9 @@ fn run(
                 }
                 SessionCmd::Snapshot(reply_to) => {
                     let _ = reply_to.send(core.snapshot());
+                }
+                SessionCmd::AtPrompt(reply_to) => {
+                    let _ = reply_to.send(segmenter.at_prompt());
                 }
                 SessionCmd::Signal(sig) => {
                     let _ = pty.signal(sig);

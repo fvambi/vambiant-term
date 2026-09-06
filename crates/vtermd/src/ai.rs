@@ -21,7 +21,7 @@ pub fn providers_path() -> std::path::PathBuf {
         .with_file_name("providers.toml")
 }
 
-fn internal(msg: impl Into<String>) -> RpcError {
+pub(crate) fn internal(msg: impl Into<String>) -> RpcError {
     RpcError::new(RpcError::INTERNAL, msg.into())
 }
 
@@ -156,18 +156,18 @@ fn history_messages(history: &[HistoryTurn]) -> Result<(Vec<Message>, usize), Rp
 }
 
 /// A request that passed routing and redaction; nothing has left yet.
-struct Prepared {
-    profile: String,
-    model: String,
-    feature: String,
-    provider: Box<dyn vt_ai::Provider>,
-    req: Request,
-    pricing: vt_ai::cost::Pricing,
-    redactions: u64,
-    bytes_sent: u64,
+pub(crate) struct Prepared {
+    pub(crate) profile: String,
+    pub(crate) model: String,
+    pub(crate) feature: String,
+    pub(crate) provider: Box<dyn vt_ai::Provider>,
+    pub(crate) req: Request,
+    pub(crate) pricing: vt_ai::cost::Pricing,
+    pub(crate) redactions: u64,
+    pub(crate) bytes_sent: u64,
 }
 
-fn prepare(
+pub(crate) fn prepare(
     registry: &Arc<Registry>,
     store: &Arc<Mutex<Store>>,
     prompt: &str,
@@ -233,7 +233,11 @@ fn prepare(
 }
 
 /// Records the egress and shapes the reply once the stream ended.
-fn finish(store: &Arc<Mutex<Store>>, p: &Prepared, done: &vt_ai::Completion) -> serde_json::Value {
+pub(crate) fn finish(
+    store: &Arc<Mutex<Store>>,
+    p: &Prepared,
+    done: &vt_ai::Completion,
+) -> serde_json::Value {
     let text: String = done
         .content
         .iter()
@@ -283,7 +287,7 @@ pub fn ask(
     Ok(finish(store, &p, &done))
 }
 
-fn request_id() -> String {
+pub(crate) fn request_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
