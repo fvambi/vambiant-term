@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use clap::Parser;
 
-use cli::{Cli, Command, ConfigCmd, DaemonCmd, EgressCmd, InboxCmd, ThemeCmd};
+use cli::{Cli, Command, ConfigCmd, DaemonCmd, EgressCmd, InboxCmd, ThemeCmd, WorkflowCmd};
 
 fn socket(cli: &Cli) -> PathBuf {
     cli.socket
@@ -191,6 +191,7 @@ fn main() {
         Command::Inbox { cmd } => inbox(&cli, cmd),
         Command::Egress { cmd } => egress(&cli, cmd),
         Command::Theme { cmd } => theme(&cli, cmd),
+        Command::Workflow { cmd } => workflow(&cli, cmd),
         Command::Events {
             session,
             after,
@@ -400,6 +401,61 @@ fn classify(cli: &Cli, command: &str, session: Option<&str>, cwd: Option<&str>, 
     if let Some(floor) = v.get("floor") {
         let reason = floor.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
         println!("  never auto-approved: {reason}");
+    }
+}
+
+fn workflow(cli: &Cli, cmd: &WorkflowCmd) {
+    let mut c = client(cli);
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let v = c
+        .call(
+            vt_proto::session::method::WORKFLOWS_LIST,
+            Some(serde_json::json!({ "cwd": cwd })),
+        )
+        .unwrap_or_else(|e| fail(e));
+    let list: Vec<vt_workflows::Workflow> =
+        serde_json::from_value(v["workflows"].clone()).unwrap_or_default();
+    match cmd {
+        WorkflowCmd::List { json } => {
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+                return;
+            }
+            if list.is_empty() {
+                println!(
+                    "no workflows: put YAML files in ~/.config/vambiant-term/workflows or <repo>/.vambiant-term/workflows"
+                );
+            }
+            for w in &list {
+                let args: Vec<&str> = w.arguments.iter().map(|a| a.name.as_str()).collect();
+                println!(
+                    "{:<28} {}{}  [{}]",
+                    w.name,
+                    w.description,
+                    if args.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  ({{{{{}}}}})", args.join("}} {{"))
+                    },
+                    if w.warp { "warp" } else { "vambiant" }
+                );
+            }
+            for p in v["problems"].as_array().into_iter().flatten() {
+                println!("  problem: {}", p.as_str().unwrap_or(""));
+            }
+        }
+        WorkflowCmd::Show { name, args } => {
+            let Some(w) = list.iter().find(|w| w.name.eq_ignore_ascii_case(name)) else {
+                fail(format!("no workflow named `{name}`"));
+            };
+            let values: Vec<(String, String)> = args
+                .iter()
+                .filter_map(|a| a.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned())))
+                .collect();
+            println!("{}", w.render(&values));
+        }
     }
 }
 

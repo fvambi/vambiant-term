@@ -166,6 +166,12 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Workflows: parameterised saved commands (Warp YAML, drop-in compatible).
+    Workflow {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: WorkflowCmd,
+    },
     /// Themes: import from Warp, Ghostty, Alacritty, iTerm2 or base16.
     Theme {
         /// What to do.
@@ -254,6 +260,24 @@ pub enum DaemonCmd {
 }
 
 /// `vterm inbox …`.
+#[derive(Subcommand, Debug)]
+pub enum WorkflowCmd {
+    /// Every workflow found for the current directory.
+    List {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print a workflow's command with arguments filled in (never runs it).
+    Show {
+        /// The workflow's name.
+        name: String,
+        /// `key=value` arguments.
+        #[arg(long = "arg")]
+        args: Vec<String>,
+    },
+}
+
 #[derive(Subcommand, Debug)]
 pub enum ThemeCmd {
     /// Import a theme file into `themes/<name>.toml`.

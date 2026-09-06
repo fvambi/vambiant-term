@@ -134,6 +134,9 @@ pub mod method {
     /// `{} -> [ names ]`: executables on the daemon's PATH (12 §B5, the
     /// editor's unknown-command underline); rescanned every minute.
     pub const PATH_EXECUTABLES: &str = "path.executables";
+    /// `{ cwd? } -> { workflows: [ … ], problems: [ … ] }`: saved commands
+    /// from the user's and the repo's workflow directories (12 §B12).
+    pub const WORKFLOWS_LIST: &str = "workflows.list";
     /// `{prefix?, limit?}` → `[cmdline]`: distinct command lines across all
     /// sessions, most recent first (the Warp-mode editor's history).
     pub const HISTORY_SEARCH: &str = "history.search";

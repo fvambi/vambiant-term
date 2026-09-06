@@ -13,6 +13,22 @@ struct PaletteTests {
         ]
     }
 
+    @Test func workflowsRenderLikeTheDaemon() throws {
+        let json = """
+        {"workflows":[{"name":"Kill process on port","command":"lsof -i tcp:{{port}} | xargs kill","description":"d",
+          "tags":["unix"],"arguments":[{"name":"port","description":"The port","default_value":"8080"}],"warp":true}],"problems":[]}
+        """
+        let reply = try JSONDecoder().decode(WorkflowsReply.self, from: Data(json.utf8))
+        let w = try #require(reply.workflows.first)
+        #expect(w.warp && w.arguments[0].defaultValue == "8080")
+        #expect(w.render([:]) == "lsof -i tcp:8080 | xargs kill")
+        #expect(w.render(["port": "3000"]) == "lsof -i tcp:3000 | xargs kill")
+        let unset = Workflow(name: "x", command: "ssh {{host}} ", arguments: [WorkflowArgument(name: "host")])
+        #expect(unset.render([:]) == "ssh {{host}}", "an unset placeholder stays visible")
+        #expect(PaletteScope.parse("w: kill") == (.workflows, "kill"))
+        #expect(PaletteItem(kind: .workflow(w), title: w.name, detail: "").scope == .workflows)
+    }
+
     @Test func scopesParseWarpsPrefixes() {
         #expect(PaletteScope.parse("sessions: cargo") == (.sessions, "cargo"))
         #expect(PaletteScope.parse("h:git") == (.history, "git"))

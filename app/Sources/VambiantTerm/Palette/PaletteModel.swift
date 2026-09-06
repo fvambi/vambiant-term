@@ -5,14 +5,15 @@
 import Foundation
 
 enum PaletteScope: Equatable, Sendable {
-    case all, actions, sessions, history, files
+    case all, actions, sessions, history, files, workflows
 
-    /// `actions:`/`a:`, `sessions:`/`s:`, `history:`/`h:`, `files:`/`f:`.
+    /// `actions:`/`a:`, `sessions:`/`s:`, `history:`/`h:`, `files:`/`f:`, `workflows:`/`w:`.
     static func parse(_ query: String) -> (scope: PaletteScope, text: String) {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         let table: [(String, PaletteScope)] = [
             ("actions:", .actions), ("a:", .actions), ("sessions:", .sessions), ("s:", .sessions),
             ("history:", .history), ("h:", .history), ("files:", .files), ("f:", .files),
+            ("workflows:", .workflows), ("w:", .workflows),
         ]
         for (prefix, scope) in table where trimmed.lowercased().hasPrefix(prefix) {
             return (scope, String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces))
@@ -27,6 +28,7 @@ struct PaletteItem: Equatable, Sendable, Identifiable {
         case session(paneID: ObjectIdentifier)
         case history(command: String)
         case file(path: String)
+        case workflow(Workflow)
     }
 
     let kind: Kind
@@ -40,6 +42,7 @@ struct PaletteItem: Equatable, Sendable, Identifiable {
         case let .session(p): "session:\(p.hashValue)"
         case let .history(c): "history:\(c)"
         case let .file(p): "file:\(p)"
+        case let .workflow(w): "workflow:\(w.name)"
         }
     }
 
@@ -49,6 +52,7 @@ struct PaletteItem: Equatable, Sendable, Identifiable {
         case .session: .sessions
         case .history: .history
         case .file: .files
+        case .workflow: .workflows
         }
     }
 }

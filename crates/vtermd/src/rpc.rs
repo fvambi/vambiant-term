@@ -373,6 +373,21 @@ impl Handler for Rpc {
                         .collect(),
                 ))
             }
+            method::WORKFLOWS_LIST => {
+                let cwd: Option<String> = Self::param(req, "cwd").ok();
+                let config_dir = vt_config::load::Paths::default_paths()
+                    .config
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+                    .unwrap_or_default();
+                let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+                let repo = cwd
+                    .as_deref()
+                    .and_then(|c| crate::policy::git_root(std::path::Path::new(c)));
+                let (workflows, problems) =
+                    vt_workflows::discover(&config_dir, home.as_deref(), repo.as_deref());
+                Ok(serde_json::json!({ "workflows": workflows, "problems": problems }))
+            }
             method::PATH_EXECUTABLES => {
                 Ok(serde_json::to_value(&*crate::correct::executables()).unwrap_or_default())
             }

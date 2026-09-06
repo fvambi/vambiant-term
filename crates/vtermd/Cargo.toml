@@ -24,6 +24,7 @@ vt-blocks.workspace = true
 vt-ai.workspace = true
 vt-redact.workspace = true
 vt-policy.workspace = true
+vt-workflows.workspace = true
 regex.workspace = true
 vt-shell.workspace = true
 

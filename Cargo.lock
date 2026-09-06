@@ -1377,6 +1377,7 @@ dependencies = [
 name = "vt-blocks"
 version = "0.0.0"
 dependencies = [
+ "regex",
  "serde",
  "vt-core",
 ]
@@ -1481,6 +1482,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vt-workflows"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "vt-worktree"
 version = "0.0.0"
 dependencies = [
@@ -1513,6 +1522,7 @@ dependencies = [
  "vt-config",
  "vt-ipc",
  "vt-proto",
+ "vt-workflows",
 ]
 
 [[package]]
@@ -1537,6 +1547,7 @@ dependencies = [
  "vt-redact",
  "vt-shell",
  "vt-store",
+ "vt-workflows",
 ]
 
 [[package]]

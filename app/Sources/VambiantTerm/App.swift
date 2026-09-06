@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var mailbox = Mailbox()
     lazy var mailboxSheet = MailboxSheet()
     lazy var payloadSheet = TextSheet()
+    lazy var workflowSheet = WorkflowSheet()
     let notifier = DesktopNotifier()
     var shellConfig: ShellConfig?
 
@@ -270,68 +271,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for pane in allPanes {
             configure(pane)
             pane.view.configChanged()
-        }
-    }
-
-    /// ⌘⇧P: actions with their chords, every session, the daemon's
-    /// history and the repo's files (Warp's `actions:` `sessions:`
-    /// `history:` `files:` scopes). Files arrive asynchronously.
-    func showPalette(for controller: TerminalWindowController, pane: PaneController, query: String = "") {
-        var items: [PaletteItem] = []
-        let bindings = configModel.snapshot?.keymap.bindings ?? []
-        for a in configModel.snapshot?.actions ?? [] {
-            // The macOS chord when both profiles bind the action.
-            let bound = bindings.filter { $0.action == a.id }
-            let chord = (bound.first { !$0.chord.hasPrefix("prefix ") } ?? bound.first)?.chord ?? ""
-            items.append(PaletteItem(kind: .action(id: a.id), title: a.label, detail: chord))
-        }
-        for w in windows {
-            for p in w.container.panes {
-                items.append(PaletteItem(
-                    kind: .session(paneID: ObjectIdentifier(p)), title: p.blocks.commands.last?.cmdline ?? p.title,
-                    detail: p.cwd.map(GitProbe.abbreviated) ?? ""
-                ))
-            }
-        }
-        for h in pane.history(prefix: "") {
-            items.append(PaletteItem(kind: .history(command: h), title: h, detail: "history"))
-        }
-        palette.onPick = { [weak self] item in self?.perform(item, controller: controller, pane: pane) }
-        palette.present(items: items, theme: renderer.theme, over: controller.window, query: query)
-        if let cwd = pane.cwd {
-            let snapshot = items
-            GitProbe.files(in: cwd) { [weak self] files in
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        guard let self, self.palette.isVisible else { return }
-                        self.palette.update(items: snapshot + files.map {
-                            PaletteItem(kind: .file(path: $0), title: $0, detail: "file")
-                        })
-                    }
-                }
-            }
-        }
-    }
-
-    private func perform(_ item: PaletteItem, controller: TerminalWindowController, pane: PaneController) {
-        switch item.kind {
-        case let .action(id):
-            let meta = configModel.snapshot?.actions.first { $0.id == id }
-            controller.perform(ShellAction.from(id: id, label: meta?.label ?? id, milestone: meta?.milestone ?? "?"), on: pane)
-        case let .session(paneID):
-            for w in windows {
-                if let p = w.container.panes.first(where: { ObjectIdentifier($0) == paneID }) {
-                    w.window?.makeKeyAndOrderFront(nil)
-                    w.container.focus(p)
-                }
-            }
-        case let .history(command):
-            pane.container.input.editor.string = command
-            pane.container.input.editor.didChangeText()
-            pane.focus()
-        case let .file(path):
-            pane.container.input.editor.insertText(path, replacementRange: pane.container.input.editor.selectedRange())
-            pane.focus()
         }
     }
 

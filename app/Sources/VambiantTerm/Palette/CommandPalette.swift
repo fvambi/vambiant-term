@@ -138,6 +138,7 @@ final class CommandPalette: NSPanel, NSSearchFieldDelegate, NSTableViewDataSourc
             case .session: ">_"
             case .history: "↺"
             case .file: "📄"
+            case .workflow: "⚙"
             }
         }())
         icon.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)

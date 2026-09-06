@@ -327,6 +327,24 @@ profile = "tmux"
 
 `vterm keys` prints the fully resolved map and flags conflicts — including conflicts against the shell's own bindings where it can detect them.
 
+## Workflows
+
+Parameterised saved commands in Warp's workflow YAML, read from `~/.config/vambiant-term/workflows/*.yaml` and `<repo>/.vambiant-term/workflows/*.yaml`, plus `~/.warp/workflows/` and `<repo>/.warp/workflows/` read-only for drop-in compatibility (as built 2026-09-06):
+
+```yaml
+name: Kill process on port
+command: lsof -i tcp:{{port}} | awk 'NR!=1 {print $2}' | xargs kill
+description: Kill a process running on a given port
+tags: [unix, process]
+arguments:
+  - name: port
+    description: The port number
+    default_value: 8080
+shells: [zsh, bash]
+```
+
+`{{name}}` placeholders are arguments; one the file does not declare is added without a default. `vterm workflow list`, `vterm workflow show <name> --arg port=3000` (prints, never runs), and the palette's `w:` scope, which asks for arguments in a sheet and stages the command into the editor.
+
 ## Themes
 
 Native format is TOML. On first run the app scans for and offers to import existing themes from Ghostty, iTerm2 (`.itermcolors`), Alacritty and base16/tinted-theming.
