@@ -265,3 +265,60 @@ fn ask_streams_deltas_as_notifications() {
     assert!(done["id"].is_null(), "no session was named: {done}");
     assert_eq!(done["usage"]["output_tokens"], 6);
 }
+
+#[test]
+fn a_hard_budget_stop_refuses_before_anything_leaves() {
+    let (base, rx) = mock_server("Once.");
+    let providers = format!(
+        "[[profile]]\nname = \"mock\"\nkind = \"compat\"\nbase_url = \"{base}\"\nmodel = \"test-model\"\n\n\
+         [pricing.\"test-model\"]\ninput = 2.0\noutput = 10.0\n"
+    );
+    let daemon = Daemon::start("budget", &providers);
+    std::fs::write(
+        daemon.dir.join("config/config.toml"),
+        "[ai.routes]\nask = \"mock\"\n[ai.budget]\ndaily_usd = 0.00001\nmonthly_usd = 60.0\nhard_stop = true\n",
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(1500)); // the daemon re-reads config within a second
+    let mut c = daemon.client();
+
+    // Under budget: the first request goes out and is priced.
+    let v = c
+        .call(
+            method::AI_ASK,
+            Some(serde_json::json!({ "prompt": "hello" })),
+        )
+        .unwrap();
+    assert_eq!(v["text"], "Once.");
+    let cost = v["cost_usd_estimate"].as_f64().unwrap();
+    assert!(cost > 0.00001, "{v}");
+    assert!(v["budget"]["daily_used"].as_f64().unwrap() >= cost, "{v}");
+    assert_eq!(v["budget"]["hard_stop"], true);
+    let _ = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+    // Over budget: refused with the numbers, and the mock sees nothing more.
+    let err = c
+        .call(
+            method::AI_ASK,
+            Some(serde_json::json!({ "prompt": "again" })),
+        )
+        .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("daily AI budget reached"), "{msg}");
+    assert!(msg.contains("daily_usd"), "{msg}");
+    assert!(
+        rx.recv_timeout(Duration::from_millis(500)).is_err(),
+        "a refused request must not reach the provider"
+    );
+
+    // The log says what was spent.
+    let spend = c
+        .call(
+            method::AI_SPEND,
+            Some(serde_json::json!({ "since": "24h" })),
+        )
+        .unwrap();
+    assert_eq!(spend["spend"]["requests"], 1, "{spend}");
+    assert!((spend["spend"]["total_usd"].as_f64().unwrap() - cost).abs() < 1e-12);
+    assert_eq!(spend["spend"]["by_purpose"][0][0], "ask");
+}

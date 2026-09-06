@@ -36,6 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var payloadSheet = TextSheet()
     lazy var workflowSheet = WorkflowSheet()
     let notifier = DesktopNotifier()
+    /// The last budget banner shown, so a threshold is announced once.
+    var lastBudgetWarning: String?
     var shellConfig: ShellConfig?
 
     func applicationDidFinishLaunching(_ notification: Notification) {

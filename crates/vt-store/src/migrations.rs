@@ -96,6 +96,9 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE blocks ADD COLUMN duration_ms INTEGER;",
     // v7 — M5.5: the row a command's output starts on (its `C` mark).
     "ALTER TABLE blocks ADD COLUMN output_line INTEGER;",
+    // v8 — M-AI: list-price cost and the session a request was made for
+    // (docs/04 §7 budgets, `vterm ai spend`).
+    "ALTER TABLE egress ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0; ALTER TABLE egress ADD COLUMN session_id TEXT;",
 ];
 
 /// Newest schema version this binary understands.
@@ -148,7 +151,7 @@ mod tests {
     fn migrates_fresh_and_is_idempotent() {
         let mut store = Store::open_in_memory().unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
-        assert_eq!(CURRENT_VERSION, 7);
+        assert_eq!(CURRENT_VERSION, 8);
         migrate(&mut store).unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
         let tables: Vec<String> = store

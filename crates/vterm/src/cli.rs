@@ -352,6 +352,18 @@ pub enum AiCmd {
         #[arg(long)]
         json: bool,
     },
+    /// What has been spent on providers (list-price estimates) and the budget.
+    Spend {
+        /// `24h`, `7d`, `30d`, or an RFC 3339 prefix (`2026-09`); today by default.
+        #[arg(long)]
+        since: Option<String>,
+        /// Only requests made for this session.
+        #[arg(long)]
+        session: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
     /// Store or remove a profile's API key in the Keychain.
     Key {
         /// What to do.

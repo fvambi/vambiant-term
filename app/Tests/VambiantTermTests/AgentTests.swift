@@ -76,6 +76,19 @@ struct AgentTests {
         #expect(c.turns.last == .answer(answer("Run pwd.")), "deltas after the end are ignored")
     }
 
+    @Test func budgetWarningsAtEightyAndHundredPercent() {
+        func b(_ used: Double, limit: Double = 5) -> AgentBudget {
+            AgentBudget(dailyUsed: used, dailyLimit: limit, monthlyUsed: 0, monthlyLimit: 60, hardStop: true)
+        }
+        #expect(b(1).warning == nil)
+        #expect(b(4.1).warning == "AI budget at 82%: $4.10 of $5.00 today")
+        #expect(b(5.2).warning?.hasPrefix("AI budget reached: $5.20 of $5.00 today") == true)
+        #expect(b(5.2).warning?.hasSuffix("further cloud requests are refused") == true)
+        var a = answer("x")
+        a.budget = (used: 0.5, limit: 5)
+        #expect(a.footer.hasSuffix("· $0.50 of $5.00 today"))
+    }
+
     @Test func replyDecodesTheDaemonsShape() throws {
         let json = """
         {"text":"Run pwd.","profile":"mock","model":"test-model",

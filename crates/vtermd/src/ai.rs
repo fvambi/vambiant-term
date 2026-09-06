@@ -160,6 +160,8 @@ pub(crate) struct Prepared {
     pub(crate) profile: String,
     pub(crate) model: String,
     pub(crate) feature: String,
+    pub(crate) session: Option<String>,
+    pub(crate) limits: BudgetLimits,
     pub(crate) provider: Box<dyn vt_ai::Provider>,
     pub(crate) req: Request,
     pub(crate) pricing: vt_ai::cost::Pricing,
@@ -184,6 +186,28 @@ pub(crate) fn prepare(
     }
     let file = ProvidersFile::load(&providers_path()).map_err(internal)?;
     let profile = route(&cfg, &file, feature)?;
+    // Budgets (docs/04 §7): a hard stop refuses here, loudly, before anything leaves.
+    let budget = budget_status(&cfg, store);
+    if cfg.ai.budget.hard_stop {
+        if budget.daily_used >= budget.daily_limit {
+            return Err(RpcError::new(
+                RpcError::INVALID_PARAMS,
+                format!(
+                    "daily AI budget reached: ${:.2} of ${:.2} spent today (config.toml [ai.budget] daily_usd; hard_stop = false to continue)",
+                    budget.daily_used, budget.daily_limit
+                ),
+            ));
+        }
+        if budget.monthly_used >= budget.monthly_limit {
+            return Err(RpcError::new(
+                RpcError::INVALID_PARAMS,
+                format!(
+                    "monthly AI budget reached: ${:.2} of ${:.2} spent this month (config.toml [ai.budget] monthly_usd)",
+                    budget.monthly_used, budget.monthly_limit
+                ),
+            ));
+        }
+    }
     let key = vt_ai::keychain::secret(&profile.name, profile.api_key_env.as_deref());
     let provider = vt_ai::route::build(profile, key);
 
@@ -236,6 +260,8 @@ pub(crate) fn prepare(
         profile: profile.name.clone(),
         model: profile.model.clone(),
         feature: feature.to_owned(),
+        session: session.map(str::to_owned),
+        limits: limits_of(&cfg),
         provider,
         req,
         pricing: file.pricing(&profile.model),
@@ -270,8 +296,11 @@ pub(crate) fn finish(
             redactions: p.redactions,
             // The redacted request itself (docs/05 §4.2), pruned with the log.
             payload: serde_json::to_string(&p.req).ok(),
+            cost_usd: cost,
+            session: p.session.clone(),
         });
     }
+    let budget = budget_with(p.limits, store);
     serde_json::json!({
         "text": text,
         "profile": p.profile,
@@ -280,7 +309,59 @@ pub(crate) fn finish(
         "cost_usd_estimate": cost,
         "redactions": p.redactions,
         "stop": done.stop,
+        "budget": budget,
     })
+}
+
+/// Today's and this month's spend against `[ai.budget]`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BudgetStatus {
+    /// USD spent since midnight UTC.
+    pub daily_used: f64,
+    /// `[ai.budget] daily_usd`.
+    pub daily_limit: f64,
+    /// USD spent since the first of the month.
+    pub monthly_used: f64,
+    /// `[ai.budget] monthly_usd`.
+    pub monthly_limit: f64,
+    /// `[ai.budget] hard_stop`.
+    pub hard_stop: bool,
+}
+
+/// The budget status for the current config.
+pub fn budget_status(cfg: &vt_config::Config, store: &Arc<Mutex<Store>>) -> BudgetStatus {
+    budget_with(limits_of(cfg), store)
+}
+
+pub(crate) fn limits_of(cfg: &vt_config::Config) -> BudgetLimits {
+    BudgetLimits {
+        daily: cfg.ai.budget.daily_usd,
+        monthly: cfg.ai.budget.monthly_usd,
+        hard_stop: cfg.ai.budget.hard_stop,
+    }
+}
+
+/// `[ai.budget]` as prepared, so `finish` can report the status after
+/// recording without the registry.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BudgetLimits {
+    pub(crate) daily: f64,
+    pub(crate) monthly: f64,
+    pub(crate) hard_stop: bool,
+}
+
+fn budget_with(limits: BudgetLimits, store: &Arc<Mutex<Store>>) -> BudgetStatus {
+    let stamp = now();
+    let today = stamp.get(..10).unwrap_or(&stamp).to_owned();
+    let month = stamp.get(..7).unwrap_or(&stamp).to_owned();
+    let store = store.lock().unwrap_or_else(PoisonError::into_inner);
+    BudgetStatus {
+        daily_used: store.spend_since(&today, None).map_or(0.0, |s| s.total_usd),
+        daily_limit: limits.daily,
+        monthly_used: store.spend_since(&month, None).map_or(0.0, |s| s.total_usd),
+        monthly_limit: limits.monthly,
+        hard_stop: limits.hard_stop,
+    }
 }
 
 /// `ai.ask`: the whole answer in the reply.
@@ -412,4 +493,29 @@ pub fn doctor(registry: &Arc<Registry>) -> Result<serde_json::Value, RpcError> {
             "ask": cfg.ai.routes.ask, "explain": cfg.ai.routes.explain, "search": cfg.ai.routes.search,
         },
     }))
+}
+
+/// `since` for `ai.spend`: an RFC 3339 prefix as given, `24h`/`7d`/`30d`
+/// relative to now, or today when absent.
+pub fn since_stamp(since: Option<&str>) -> String {
+    let stamp = now();
+    let Some(s) = since.map(str::trim).filter(|s| !s.is_empty()) else {
+        return stamp.get(..10).unwrap_or(&stamp).to_owned();
+    };
+    let secs = match s.strip_suffix('h').and_then(|n| n.parse::<u64>().ok()) {
+        Some(h) => Some(h * 3600),
+        None => s
+            .strip_suffix('d')
+            .and_then(|n| n.parse::<u64>().ok())
+            .map(|d| d * 86_400),
+    };
+    match secs {
+        Some(secs) => {
+            let then = std::time::SystemTime::now()
+                .checked_sub(std::time::Duration::from_secs(secs))
+                .unwrap_or(std::time::UNIX_EPOCH);
+            crate::registry::stamp_at(then)
+        }
+        None => s.to_owned(),
+    }
 }

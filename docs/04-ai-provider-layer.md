@@ -139,6 +139,8 @@ Cancellation is mandatory and immediate: one in-flight suggestion request per pa
 - Anthropic's `total_cost_usd` from agent runs is a **client-side estimate at list price** — display it labelled as an estimate.
 - `vterm ai spend --by feature --since 7d` is a real command, not a nice-to-have. You cannot control what you cannot see.
 
+> **As built (2026-09-06):** every egress record carries its list-price estimate and the session it was made for (store v8). `[ai.budget] daily_usd` / `monthly_usd` are checked in the daemon before a request is built; with `hard_stop = true` the request is refused with the numbers ("daily AI budget reached: $x of $y…") and the provider never sees it (e2e). Replies carry the budget status; the app writes it in the answer footer and raises a banner once at 80 % and at 100 %. `ai.spend { since, session }` and `vterm ai spend [--since 24h|7d|30d|2026-09] [--session]` total the log by purpose and provider. Per-session budgets and token attribution by feature are not built.
+
 ## 8. Credentials
 
 - Keys live in the **Keychain**, never in `config.toml`. `providers.toml` holds `base_url`, model ids, routing — no secrets.

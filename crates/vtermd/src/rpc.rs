@@ -329,6 +329,19 @@ impl Handler for Rpc {
                 )
             }
             method::AI_DOCTOR => crate::ai::doctor(&self.registry),
+            method::AI_SPEND => {
+                let since: Option<String> = Self::param(req, "since").ok();
+                let session: Option<String> = Self::param(req, "session").ok();
+                let since = crate::ai::since_stamp(since.as_deref());
+                let spend = self
+                    .store
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .spend_since(&since, session.as_deref())
+                    .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+                let budget = crate::ai::budget_status(&self.registry.cfg(), &self.store);
+                Ok(serde_json::json!({ "since": since, "spend": spend, "budget": budget }))
+            }
             method::AI_PAYLOAD_LAST => {
                 let session: Option<String> = Self::param(req, "session").ok();
                 let key = session

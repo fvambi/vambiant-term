@@ -891,8 +891,61 @@ fn ask(cli: &Cli, prompt: &str, session: Option<&str>, feature: &str, json: bool
     );
 }
 
+/// `vterm ai spend`: the egress log's costs and the budget (docs/04 §7).
+fn ai_spend(cli: &Cli, since: Option<&str>, session: Option<&str>, json: bool) {
+    let mut c = client(cli);
+    let mut params = serde_json::json!({});
+    if let Some(s) = since {
+        params["since"] = serde_json::Value::String(s.to_owned());
+    }
+    if let Some(s) = session {
+        params["session"] = serde_json::Value::String(s.to_owned());
+    }
+    let v = c
+        .call(vt_proto::session::method::AI_SPEND, Some(params))
+        .unwrap_or_else(|e| fail(e));
+    if json {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        return;
+    }
+    let spend = &v["spend"];
+    println!(
+        "since {}: {} request(s), ≈${:.4} (list-price estimates)",
+        v["since"].as_str().unwrap_or("?"),
+        spend["requests"].as_u64().unwrap_or(0),
+        spend["total_usd"].as_f64().unwrap_or(0.0)
+    );
+    for (label, key) in [("by purpose", "by_purpose"), ("by provider", "by_provider")] {
+        for row in spend[key].as_array().into_iter().flatten() {
+            println!(
+                "  {label:<12} {:<16} ≈${:.4}",
+                row[0].as_str().unwrap_or("?"),
+                row[1].as_f64().unwrap_or(0.0)
+            );
+        }
+    }
+    let b = &v["budget"];
+    println!(
+        "budget: ≈${:.2} of ${:.2} today, ≈${:.2} of ${:.2} this month{}",
+        b["daily_used"].as_f64().unwrap_or(0.0),
+        b["daily_limit"].as_f64().unwrap_or(0.0),
+        b["monthly_used"].as_f64().unwrap_or(0.0),
+        b["monthly_limit"].as_f64().unwrap_or(0.0),
+        if b["hard_stop"].as_bool().unwrap_or(true) {
+            " (hard stop on)"
+        } else {
+            " (hard stop off)"
+        }
+    );
+}
+
 fn ai(cli: &Cli, cmd: &cli::AiCmd) {
     match cmd {
+        cli::AiCmd::Spend {
+            since,
+            session,
+            json,
+        } => ai_spend(cli, since.as_deref(), session.as_deref(), *json),
         cli::AiCmd::Doctor { json } => {
             let mut c = client(cli);
             let v = c

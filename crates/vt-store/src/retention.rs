@@ -98,6 +98,8 @@ mod tests {
             bytes_sent: 1,
             redactions: 0,
             payload: None,
+            cost_usd: 0.0,
+            session: None,
         };
         store.record_egress(&mk("2025-01-01T00:00:00Z")).unwrap();
         store.record_egress(&mk("2026-09-01T00:00:00Z")).unwrap();

@@ -125,6 +125,10 @@ pub mod method {
     /// `{ session? } -> { at, feature, profile, model, redactions, request }`:
     /// the last redacted request sent on the session's behalf (⌥⌘E).
     pub const AI_PAYLOAD_LAST: &str = "ai.payload.last";
+    /// `{ since?, session? } -> { since, requests, total_usd, by_purpose, by_provider, budget }`
+    /// — spend from the egress log (docs/04 §7); `since` is an RFC 3339
+    /// prefix (`2026-09-06`, `2026-09`) or `24h`/`7d`/`30d`.
+    pub const AI_SPEND: &str = "ai.spend";
     /// `{ limit?, payload? } -> [ { at, provider, model, purpose, bytes_sent, redactions, payload? } ]`
     /// newest first, from the egress log (docs/05 §4.2).
     pub const EGRESS_TAIL: &str = "egress.tail";

@@ -54,6 +54,20 @@ extension AppDelegate {
                 ),
                 source: .agentMode
             )
+            // The budget banner (docs/06 §8): once per threshold crossing.
+            if let data = try? JSONEncoder().encode(params[path: "budget"] ?? .null),
+               let budget = try? JSONDecoder().decode(AgentBudget.self, from: data),
+               let warning = budget.warning, warning != lastBudgetWarning {
+                lastBudgetWarning = warning
+                let reached = warning.hasPrefix("AI budget reached")
+                deliver(
+                    Note(
+                        id: "budget-\(Int(Date().timeIntervalSince1970))", kind: reached ? .error : .info,
+                        title: reached ? "AI budget reached" : "AI budget warning", body: warning, session: nil, at: Date()
+                    ),
+                    source: .budget
+                )
+            }
         case "ai.error":
             let message = params[path: "message"]?.stringValue ?? "request failed"
             deliver(

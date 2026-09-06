@@ -6,6 +6,13 @@
 import Foundation
 
 struct AgentAnswer: Equatable, Sendable {
+    static func == (a: AgentAnswer, b: AgentAnswer) -> Bool {
+        a.text == b.text && a.profile == b.profile && a.model == b.model && a.inputTokens == b.inputTokens
+            && a.outputTokens == b.outputTokens && a.costUSD == b.costUSD && a.redactions == b.redactions
+            && a.truncated == b.truncated && a.seconds == b.seconds && a.transcript == b.transcript
+            && a.budget?.used == b.budget?.used && a.budget?.limit == b.budget?.limit
+    }
+
     var text: String
     var profile: String
     var model: String
@@ -17,6 +24,8 @@ struct AgentAnswer: Equatable, Sendable {
     /// The model hit `max_tokens`; the answer is cut off and says so.
     var truncated: Bool
     var seconds: Double
+    /// `[ai.budget]` after this request: `(used today, daily limit)`.
+    var budget: (used: Double, limit: Double)?
     /// Everything the model said in this run, when tool calls split it
     /// into segments; `text` is then only the last segment. History
     /// carries this, the panel shows the segments in place.
@@ -67,6 +76,9 @@ struct AgentAnswer: Equatable, Sendable {
             parts.append("\(redactions) redaction\(redactions == 1 ? "" : "s")")
         }
         parts.append(String(format: "%.1fs", seconds))
+        if let budget {
+            parts.append(String(format: "$%.2f of $%.2f today", budget.used, budget.limit))
+        }
         if truncated {
             parts.append("cut off at max tokens")
         }
@@ -345,9 +357,10 @@ struct AgentAskReply: Decodable, Sendable {
     let costUSDEstimate: Double?
     let redactions: Int
     let stop: JSONValue?
+    var budget: AgentBudget?
 
     enum CodingKeys: String, CodingKey {
-        case text, profile, model, usage, redactions, stop
+        case text, profile, model, usage, redactions, stop, budget
         case costUSDEstimate = "cost_usd_estimate"
     }
 
@@ -356,7 +369,45 @@ struct AgentAskReply: Decodable, Sendable {
             text: text, profile: profile, model: model,
             inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
             costUSD: costUSDEstimate, redactions: redactions,
-            truncated: stop?.stringValue == "max_tokens", seconds: seconds
+            truncated: stop?.stringValue == "max_tokens", seconds: seconds,
+            budget: budget.map { ($0.dailyUsed, $0.dailyLimit) }
         )
+    }
+}
+
+/// `[ai.budget]` status as the daemon reports it after a request.
+struct AgentBudget: Decodable, Sendable {
+    let dailyUsed: Double
+    let dailyLimit: Double
+    let monthlyUsed: Double
+    let monthlyLimit: Double
+    let hardStop: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case dailyUsed = "daily_used"
+        case dailyLimit = "daily_limit"
+        case monthlyUsed = "monthly_used"
+        case monthlyLimit = "monthly_limit"
+        case hardStop = "hard_stop"
+    }
+
+    /// `nil` under 80 %, else the banner text (docs/06 §8).
+    var warning: String? {
+        let day = dailyLimit > 0 ? dailyUsed / dailyLimit : 0
+        let month = monthlyLimit > 0 ? monthlyUsed / monthlyLimit : 0
+        if day >= 1 || month >= 1 {
+            return String(
+                format: "AI budget reached: $%.2f of $%.2f today, $%.2f of $%.2f this month%@",
+                dailyUsed,
+                dailyLimit,
+                monthlyUsed,
+                monthlyLimit,
+                hardStop ? " — further cloud requests are refused" : ""
+            )
+        }
+        if day >= 0.8 || month >= 0.8 {
+            return String(format: "AI budget at %d%%: $%.2f of $%.2f today", Int((max(day, month) * 100).rounded()), dailyUsed, dailyLimit)
+        }
+        return nil
     }
 }

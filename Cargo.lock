@@ -1475,6 +1475,7 @@ name = "vt-store"
 version = "0.0.0"
 dependencies = [
  "rusqlite",
+ "serde",
  "serde_json",
  "thiserror",
  "vt-blocks",

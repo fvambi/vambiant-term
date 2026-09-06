@@ -22,9 +22,12 @@ pub const GENERIC_LABEL: &str =
     "generic adapter: state is a heuristic guess from terminal output; approvals cannot be routed";
 
 pub fn now() -> String {
-    let since_epoch = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    stamp_at(std::time::SystemTime::now())
+}
+
+/// RFC 3339 UTC with milliseconds for any instant.
+pub fn stamp_at(at: std::time::SystemTime) -> String {
+    let since_epoch = at.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
     let secs = since_epoch.as_secs();
     let millis = since_epoch.subsec_millis();
     // Civil-from-days (Howard Hinnant), UTC.
