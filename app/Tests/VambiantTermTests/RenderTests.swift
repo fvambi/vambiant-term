@@ -73,7 +73,9 @@ struct InstanceLayoutTests {
                 cursor_col: 2,
                 cursor_visible: true,
                 seq: 1,
-                disconnected: false
+                disconnected: false,
+                top: 0,
+                total: 2
             )
             return r.build(view, origin: .zero, focused: true)
         }

@@ -47,12 +47,45 @@ final class MetalGridView: NSView {
 
     private var blinkTimer: Timer?
     private var cursorOn = true
+    /// Command blocks of the attached session (the pane keeps it current).
+    var blocks = BlockList() {
+        didSet {
+            blockStatus.isHidden = blocks.degraded == nil
+            if let why = blocks.degraded {
+                blockStatus.stringValue = "≈ blocks stopped: \(why)"
+                blockStatus.toolTip = "Shell-integration marks arrived out of order, so the daemon stopped trusting them. "
+                    + "Blocks before this point are real; nothing after it is segmented."
+            }
+            lastSeq = .max
+            markDirty()
+        }
+    }
 
-    var viewer: SessionViewer? {
+    /// Sequence number of the selected block, if any.
+    var selectedBlock: Int64? {
         didSet {
             lastSeq = .max
             markDirty()
         }
+    }
+
+    /// Block actions (copy, rerun, explain) go to the pane, which has the daemon.
+    var onBlockAction: ((BlockAction, Block) -> Void)?
+    /// Precise trackpad deltas accumulate until they add up to a row.
+    var scrollRemainder: CGFloat = 0
+    let blockStatus = NSTextField(labelWithString: "")
+
+    var viewer: SessionViewer? {
+        didSet {
+            lastSeq = .max
+            selectedBlock = nil
+            markDirty()
+        }
+    }
+
+    /// Absolute row at the top of the grid, as last drawn.
+    var viewportTop: UInt64 {
+        viewer?.withGrid { $0.top } ?? 0
     }
 
     /// Shell actions resolved from the keymap.
@@ -85,6 +118,13 @@ final class MetalGridView: NSView {
         banner.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         banner.alignment = .center
         addSubview(banner)
+        blockStatus.isHidden = true
+        blockStatus.textColor = NSColor(white: 0.95, alpha: 1)
+        blockStatus.backgroundColor = NSColor(red: 0.55, green: 0.4, blue: 0.1, alpha: 0.95)
+        blockStatus.drawsBackground = true
+        blockStatus.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        blockStatus.lineBreakMode = .byTruncatingTail
+        addSubview(blockStatus)
     }
 
     @available(*, unavailable)
@@ -128,6 +168,7 @@ final class MetalGridView: NSView {
     override func layout() {
         super.layout()
         banner.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 22)
+        blockStatus.frame = CGRect(x: 0, y: bounds.height - 18, width: bounds.width, height: 18)
         updateBacking()
     }
 
@@ -258,9 +299,10 @@ final class MetalGridView: NSView {
         let origin = CGPoint(x: padding.width * scale, y: padding.height * scale)
         var summary: FrameSummary?
         let built: Bool = viewer.withGrid { view in
-            var ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn)
+            let decor = BlockDecor.decorations(for: blocks, top: view.top, rows: Int(view.rows), selected: selectedBlock)
+            var ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor)
             if !ok {
-                ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn)
+                ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor)
             }
             if onPresented != nil {
                 summary = FrameSummary(seq: view.seq, text: view.text())
@@ -344,13 +386,13 @@ final class MetalGridView: NSView {
         viewer.send(text: text)
     }
 
+    /// ⌘C copies the selected block's output. Text selection is not built
+    /// yet, so with no block selected there is nothing to copy.
     @objc func copy(_ sender: Any?) {
-        // Selection arrives in M5; until then copying is what the shell
-        // program itself puts on the clipboard.
-        NSSound.beep()
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
+        guard let block = selectedBlock.flatMap(blocks.command(seq:)) else {
+            NSSound.beep()
+            return
+        }
+        onBlockAction?(.copyOutput, block)
     }
 }

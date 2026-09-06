@@ -88,6 +88,12 @@ final class SessionViewer {
     func resize(cols: UInt16, rows: UInt16) -> Bool {
         vt_viewer_resize(raw, cols, rows)
     }
+
+    /// Moves the session's viewport (daemon state; every viewer follows).
+    @discardableResult
+    func scroll(_ to: VtScrollTo, n: Int64 = 0) -> Bool {
+        vt_viewer_scroll(raw, to, n)
+    }
 }
 
 extension VtGridView {

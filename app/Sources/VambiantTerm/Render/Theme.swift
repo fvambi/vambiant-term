@@ -38,6 +38,11 @@ struct RGBA: Equatable, Sendable {
         SIMD4(r, g, b, a)
     }
 
+    /// Linear blend towards `other` by `t` (0 = self, 1 = other).
+    func mixed(with other: RGBA, _ t: Float) -> RGBA {
+        RGBA(r: r + (other.r - r) * t, g: g + (other.g - g) * t, b: b + (other.b - b) * t, a: 1)
+    }
+
     func scaled(_ k: Float) -> RGBA {
         RGBA(r: r * k, g: g * k, b: b * k, a: a)
     }

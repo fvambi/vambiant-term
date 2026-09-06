@@ -126,10 +126,17 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 | Interrupt agent | `⌘.` | `<prefix> C-c` |
 | Search scrollback | `⌘F` | `<prefix> /` |
 | Jump to previous prompt | `⌘↑` | `<prefix> [` |
+| Jump to next prompt | `⌘↓` | `<prefix> ]` |
+| Select previous / next block | `⌘⇧↑` / `⌘⇧↓` | — |
+| Copy block command / output, re-run | Blocks menu, right-click; `⌘C` with a block selected copies its output | — |
+| Scroll back / forward a page | `⇧PgUp` / `⇧PgDn` | `<prefix> PgUp` / `<prefix> PgDn` |
+| Scroll to oldest line / live end | `⇧Home` / `⇧End` | — |
 
 Conflict rule: when both profiles are active, `⌘K` is the assistant and the palette is `⌘⇧P`. Every binding is remappable; `vterm keys` prints the resolved map and flags conflicts.
 
 > **As built (M4, 2026-09-05):** the table above binds `⌘⇧D` to both "split down" and "detach session", and `⌘⇧↩` to both "zoom pane" and "next pending approval". The shell resolves them as split-down and zoom; detach and next-pending are reachable through the tmux prefix (`<prefix> d`, `<prefix> A`) until the table is corrected. `⌘W` closes the focused pane (detaching its session, never killing it), and `<prefix> x` does the same. Bindings whose feature is not built yet (`⌘⇧A`, `⌘K`, `⌘F`…) beep and log "not available yet: …" rather than falling through to the terminal. `⌘,` opens Settings (`settings.open`), which this table did not list. The shell takes the whole table from the daemon's resolved keymap (`vterm keys`), so `keymap.toml` overrides apply to the GUI as well.
+
+> **As built (M5 blocks, 2026-09-06):** the viewport is daemon state (`session.scroll`), so wheel, ⇧PgUp/PgDn, ⌘↑/⌘↓ and every attached viewer move together, and typing snaps back to the live end. Block chrome is drawn from the daemon's block rows: a gutter stripe in the left padding (green exit 0, red otherwise, grey when the exit is unknown), a hairline above each command line, an `exit N` chip at the right end of the command line when that space is blank, and `≈` in the chip when the block is a guess (§4). Clicking the gutter or the command line selects the block (tinted); right-click opens the kebab menu with copy command / copy output / re-run; "explain" is listed but disabled until M-AI. Not built yet from §4: collapse, duration and cwd in the header, and "share as text". `block.rerun` has no default chord on purpose — it executes the command.
 
 ## 8. Notifications
 

@@ -55,10 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configModel.onChange = { [weak self] snapshot in self?.apply(snapshot) }
         configModel.reload()
         do {
-            events = try EventStream(socket: socket) { [weak self] method, _ in
-                if method == "config.changed" {
-                    self?.configModel.reload()
-                }
+            events = try EventStream(socket: socket) { [weak self] method, params in
+                self?.route(event: method, params: params)
             }
         } catch {
             NSLog("event stream unavailable: \(error); config changes made outside the app will not be picked up")
@@ -93,6 +91,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 + "世界 😀\\n'; ls -la | head -6\r"
             Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
                 MainActor.assumeIsolated { _ = pane.viewer?.send(text: demo) }
+            }
+            // A failing command too, so the shot shows both block chips, and
+            // the last block selected so the tint and gutter are visible.
+            Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
+                MainActor.assumeIsolated { _ = pane.viewer?.send(text: "grep -c vambiant /nonexistent\r") }
+            }
+            Timer.scheduledTimer(withTimeInterval: 3.3, repeats: false) { _ in
+                MainActor.assumeIsolated { pane.selectBlock(previous: true) }
             }
             Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { _ in
                 MainActor.assumeIsolated { pane.view.captureNext(to: shot) }
@@ -139,6 +145,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var allViews: [MetalGridView] {
         windows.flatMap { $0.container.panes.map(\.view) }
+    }
+
+    /// One daemon broadcast: config reloads here, session-scoped ones go
+    /// to every pane (each checks the session id).
+    private func route(event method: String, params: String) {
+        if method == "config.changed" {
+            configModel.reload()
+            return
+        }
+        guard method == "session.block" || method == "session.event",
+              let data = params.data(using: .utf8),
+              let json = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return }
+        for pane in windows.flatMap(\.container.panes) {
+            pane.handle(event: method, params: json)
+        }
     }
 
     /// Applies what the shell honours (docs/09 `applied: now`): fonts,
@@ -220,6 +242,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Paste", action: #selector(MetalGridView.paste(_:)), keyEquivalent: "v")
         edit.submenu = editMenu
         main.addItem(edit)
+
+        // Chords are not shown here: the keymap owns them and is remappable
+        // (`vterm keys`, Settings → Keys).
+        let blocks = NSMenuItem()
+        let blocksMenu = NSMenu(title: "Blocks")
+        blocksMenu.addItem(withTitle: "Previous Prompt", action: #selector(MetalGridView.previousPrompt(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Next Prompt", action: #selector(MetalGridView.nextPrompt(_:)), keyEquivalent: "")
+        blocksMenu.addItem(.separator())
+        blocksMenu.addItem(
+            withTitle: "Select Previous Block", action: #selector(MetalGridView.selectPreviousBlock(_:)), keyEquivalent: ""
+        )
+        blocksMenu.addItem(withTitle: "Select Next Block", action: #selector(MetalGridView.selectNextBlock(_:)), keyEquivalent: "")
+        blocksMenu.addItem(.separator())
+        blocksMenu.addItem(withTitle: "Copy Command", action: #selector(MetalGridView.copyCommand(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Copy Output", action: #selector(MetalGridView.copyOutput(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Re-run Command", action: #selector(MetalGridView.rerunCommand(_:)), keyEquivalent: "")
+        blocks.submenu = blocksMenu
+        main.addItem(blocks)
 
         let window = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")

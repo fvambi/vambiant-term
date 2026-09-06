@@ -15,30 +15,47 @@ enum ShellAction: Equatable, Sendable {
     case interruptAgent
     case sendPrefix
     case openSettings
+    case promptPrevious, promptNext
+    case blockSelectPrevious, blockSelectNext
+    case block(BlockAction)
+    case scroll(ScrollStep)
     case unavailable(String)
 
     enum Direction: Equatable, Sendable { case left, right, up, down }
+    enum ScrollStep: Equatable, Sendable { case pageUp, pageDown, top, bottom }
 
     /// From a `vt_config::keymap::ACTIONS` id.
     static func from(id: String, label: String, milestone: String) -> ShellAction {
-        switch id {
-        case "tab.new": return .newTab
-        case "window.new": return .newWindow
-        case "pane.split_right": return .splitRight
-        case "pane.split_down": return .splitDown
-        case "pane.focus_left": return .focus(.left)
-        case "pane.focus_right": return .focus(.right)
-        case "pane.focus_up": return .focus(.up)
-        case "pane.focus_down": return .focus(.down)
-        case "pane.zoom": return .zoomPane
-        case "pane.close": return .closePane
-        case "session.detach": return .detach
-        case "agent.interrupt": return .interruptAgent
-        case "prefix.send": return .sendPrefix
-        case "settings.open": return .openSettings
-        default: return .unavailable("\(label) (\(id), \(milestone))")
-        }
+        byId[id] ?? .unavailable("\(label) (\(id), \(milestone))")
     }
+
+    private static let byId: [String: ShellAction] = [
+        "tab.new": .newTab,
+        "window.new": .newWindow,
+        "pane.split_right": .splitRight,
+        "pane.split_down": .splitDown,
+        "pane.focus_left": .focus(.left),
+        "pane.focus_right": .focus(.right),
+        "pane.focus_up": .focus(.up),
+        "pane.focus_down": .focus(.down),
+        "pane.zoom": .zoomPane,
+        "pane.close": .closePane,
+        "session.detach": .detach,
+        "agent.interrupt": .interruptAgent,
+        "prefix.send": .sendPrefix,
+        "settings.open": .openSettings,
+        "prompt.previous": .promptPrevious,
+        "prompt.next": .promptNext,
+        "block.select_previous": .blockSelectPrevious,
+        "block.select_next": .blockSelectNext,
+        "block.copy_command": .block(.copyCommand),
+        "block.copy_output": .block(.copyOutput),
+        "block.rerun": .block(.rerun),
+        "scrollback.page_up": .scroll(.pageUp),
+        "scrollback.page_down": .scroll(.pageDown),
+        "scrollback.top": .scroll(.top),
+        "scrollback.bottom": .scroll(.bottom),
+    ]
 }
 
 struct KeyChord: Hashable, Sendable {
@@ -105,6 +122,14 @@ struct Keymap: Sendable {
             KeyChord("w", command: true): .closePane,
             KeyChord(".", command: true): .interruptAgent,
             KeyChord(",", command: true): .openSettings,
+            KeyChord("up", command: true): .promptPrevious,
+            KeyChord("down", command: true): .promptNext,
+            KeyChord("up", command: true, shift: true): .blockSelectPrevious,
+            KeyChord("down", command: true, shift: true): .blockSelectNext,
+            KeyChord("pageup", shift: true): .scroll(.pageUp),
+            KeyChord("pagedown", shift: true): .scroll(.pageDown),
+            KeyChord("home", shift: true): .scroll(.top),
+            KeyChord("end", shift: true): .scroll(.bottom),
             KeyChord("a", command: true, shift: true): .unavailable("Approval inbox (inbox.open, M5)"),
             KeyChord("p", command: true, shift: true): .unavailable("Command palette (palette.open, M5)"),
             KeyChord("k", command: true): .unavailable("⌘K assistant (ai.ask, M-AI)"),
@@ -123,6 +148,10 @@ struct Keymap: Sendable {
             KeyChord("c", control: true): .interruptAgent,
             KeyChord("b", control: true): .sendPrefix,
             KeyChord("a"): .unavailable("Approval inbox (inbox.open, M5)"),
+            KeyChord("["): .promptPrevious,
+            KeyChord("]"): .promptNext,
+            KeyChord("pageup"): .scroll(.pageUp),
+            KeyChord("pagedown"): .scroll(.pageDown),
         ]
     }
 
@@ -187,6 +216,10 @@ struct Keymap: Sendable {
         case 0x33: "backspace"
         case 0x30: "tab"
         case 0x31: "space"
+        case 0x74: "pageup"
+        case 0x79: "pagedown"
+        case 0x73: "home"
+        case 0x77: "end"
         default:
             // Command swallows the shifted character on some layouts, so
             // read the unshifted one and carry shift as a flag; symbols

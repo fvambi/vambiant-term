@@ -94,6 +94,22 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             pane.viewer?.send(bytes: [0x02])
         case .openSettings:
             (NSApp.delegate as? AppDelegate)?.showSettings(nil)
+        case .promptPrevious:
+            pane.jumpPrompt(previous: true)
+        case .promptNext:
+            pane.jumpPrompt(previous: false)
+        case .blockSelectPrevious:
+            pane.selectBlock(previous: true)
+        case .blockSelectNext:
+            pane.selectBlock(previous: false)
+        case let .block(blockAction):
+            if let block = pane.view.selectedBlock.flatMap(pane.blocks.command(seq:)) {
+                pane.perform(blockAction, on: block)
+            } else {
+                NSSound.beep()
+            }
+        case let .scroll(step):
+            pane.view.scroll(step)
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
             NSSound.beep()

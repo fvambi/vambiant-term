@@ -119,11 +119,20 @@ final class GridRenderer {
     /// Builds the instance lists for `view` with the cell grid starting at
     /// `origin` (device pixels). Returns false if the atlas was cleared
     /// mid-build and the caller should run it again.
-    func build(_ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true) -> Bool {
+    func build(
+        _ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true, decorations: [BlockDecoration] = []
+    ) -> Bool {
         let generation = atlas.generation
         bg.removeAll(keepingCapacity: true)
         glyphs.removeAll(keepingCapacity: true)
         guard let cells = view.cells else { return true }
+        // A selected block tints its default-background cells; cells that
+        // set their own colour keep it (the tint is chrome, not content).
+        var selectedRows = Set<Int>()
+        for d in decorations where d.selected {
+            selectedRows.formUnion(d.firstRow ... d.lastRow)
+        }
+        let tint = theme.background.mixed(with: theme.selection, 0.35)
         let cols = Int(view.cols)
         let rows = Int(view.rows)
         let cw = Float(cellSize.width)
@@ -157,6 +166,9 @@ final class GridRenderer {
                 if attrs & Attrs.dim != 0 {
                     fg = fg.scaled(0.6)
                 }
+                if selectedRows.contains(r), cell.bg.0 == 0, attrs & Attrs.inverse == 0 {
+                    bgc = tint
+                }
                 let isCursor = view.cursor_visible && Int(view.cursor_row) == r && Int(view.cursor_col) == c
                 let solidCursor = isCursor && focused && cursorOn && cursorStyle == .block
                 if solidCursor {
@@ -184,7 +196,53 @@ final class GridRenderer {
                 glyphs.append(CellInstance(origin: originPx, size: size, uv: g.uv, fg: fg.simd, bg: bgc.simd, flags: flags))
             }
         }
+        for d in decorations {
+            appendBlockChrome(d, cells: cells, cols: cols, origin: SIMD2(ox, oy), cell: SIMD2(cw, ch))
+        }
         return atlas.generation == generation
+    }
+
+    /// Gutter stripe in the left padding, a hairline above the header row,
+    /// and the exit chip at the right end of the header when that space is
+    /// blank (chrome never covers content).
+    private func appendBlockChrome(
+        _ d: BlockDecoration, cells: UnsafePointer<VtCell>, cols: Int, origin: SIMD2<Float>, cell: SIMD2<Float>
+    ) {
+        let colour: RGBA = switch d.status {
+        case .ok: theme.palette[2].scaled(0.8)
+        case .failed: theme.palette[1]
+        case .unknown: theme.foreground.scaled(0.5)
+        }
+        let s = Float(scale)
+        let stripeW = d.selected ? 4 * s : 2 * s
+        let stripeX = max(0, origin.x - stripeW - 2 * s)
+        let top = origin.y + Float(d.firstRow) * cell.y
+        let height = Float(d.lastRow - d.firstRow + 1) * cell.y
+        let stripe = (d.selected ? theme.selection : colour).simd
+        bg.append(CellInstance(origin: SIMD2(stripeX, top), size: SIMD2(stripeW, height), uv: .zero, fg: stripe, bg: stripe, flags: 0))
+        guard d.startsHere else { return }
+        let hair = theme.background.mixed(with: theme.foreground, 0.18).simd
+        let width = origin.x * 2 + Float(cols) * cell.x
+        bg.append(CellInstance(origin: SIMD2(0, top), size: SIMD2(width, max(1, s)), uv: .zero, fg: hair, bg: hair, flags: 0))
+        guard let chip = d.chip else { return }
+        let scalars = Array(chip.unicodeScalars)
+        let startCol = cols - scalars.count - 1
+        guard startCol > 0 else { return }
+        for c in (startCol - 1) ..< cols where cells[d.firstRow * cols + c].ch != 32 || cells[d.firstRow * cols + c].bg.0 != 0 {
+            return
+        }
+        let chipBg = theme.background.mixed(with: colour, 0.22).simd
+        let chipOrigin = SIMD2(origin.x + Float(startCol - 1) * cell.x, top)
+        bg.append(CellInstance(
+            origin: chipOrigin, size: SIMD2(Float(scalars.count + 1) * cell.x, cell.y), uv: .zero, fg: chipBg, bg: chipBg, flags: 0
+        ))
+        for (i, scalar) in scalars.enumerated() {
+            guard let g = atlas.glyph(for: GlyphKey(scalar: scalar.value, style: FontStyle(bold: true, italic: false), wide: false)) else {
+                continue
+            }
+            let o = SIMD2(origin.x + Float(startCol + i) * cell.x, top)
+            glyphs.append(CellInstance(origin: o, size: cell, uv: g.uv, fg: colour.simd, bg: chipBg, flags: CellInstance.hasGlyph))
+        }
     }
 
     /// A one-pixel frame in the cursor colour for unfocused panes.
