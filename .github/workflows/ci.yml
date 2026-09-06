@@ -19,6 +19,12 @@ jobs:
         with:
           submodules: recursive
       - uses: jdx/mise-action@v2
+        with:
+          # The first runs cached a toolchain whose rustfmt/clippy install
+          # had raced and failed; a new key leaves that cache behind.
+          cache_key_prefix: mise-v1
+      # Belt and braces: the components rust-toolchain.toml asks for.
+      - run: mise exec -- rustup component add rustfmt clippy
       - run: mise run ci-fast
   full:
     if: github.event_name == 'pull_request'
@@ -28,6 +34,12 @@ jobs:
         with:
           submodules: recursive
       - uses: jdx/mise-action@v2
+        with:
+          # The first runs cached a toolchain whose rustfmt/clippy install
+          # had raced and failed; a new key leaves that cache behind.
+          cache_key_prefix: mise-v1
+      # Belt and braces: the components rust-toolchain.toml asks for.
+      - run: mise exec -- rustup component add rustfmt clippy
       - run: mise run ci-full
   nightly:
     if: github.event_name == 'schedule'
@@ -37,4 +49,10 @@ jobs:
         with:
           submodules: recursive
       - uses: jdx/mise-action@v2
+        with:
+          # The first runs cached a toolchain whose rustfmt/clippy install
+          # had raced and failed; a new key leaves that cache behind.
+          cache_key_prefix: mise-v1
+      # Belt and braces: the components rust-toolchain.toml asks for.
+      - run: mise exec -- rustup component add rustfmt clippy
       - run: mise run ci-nightly
