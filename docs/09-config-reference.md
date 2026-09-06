@@ -291,7 +291,7 @@ Hard-coded, not configurable, applied after every rule:
 
 A policy file that tries to allow one of these is a validation error, reported at load, not silently ignored.
 
-## Per-repo policy
+> **As built (2026-09-06):** `vt-policy` parses exactly this schema plus `[egress]` from docs/05 §4.1 (`mode`, `allow_providers`, `max_context_bytes`, `never_include.paths/commands`). `unparseable`, `obfuscated` and `credential_read` refuse `"allow"` at load (`PolicyError::FloorViolation`); a rule's `command` regex that does not compile is a load error too. Rule `match` keys are `repo`, `tool` (string or list), `command` (regex), `in_worktree`, `outside_worktree`; `decide` is `allow | ask | deny`. Evaluation: classify → floor → first matching rule → `ask` when nothing matches; a `[safety]` class set to `block` turns a rule's `allow` into `deny`. The daemon does not load the file yet.
 
 `<repo>/.vambiant-term/policy.toml` uses the same schema and is **intersected** with the global one. It can narrow, never widen: a repo may set `egress_mode = "none"` when the global is `redacted`; it may not set `"full"`.
 

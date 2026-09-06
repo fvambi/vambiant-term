@@ -9,10 +9,14 @@
 //! workspace, per rule, with an audit log and one-key undo (docs/00 §7).
 //! Per-repo policy files can only *narrow* the global policy.
 
+mod checks;
 pub mod classify;
 pub mod floor;
+mod paths;
 pub mod rules;
 pub mod shell;
 pub mod workspace;
 
-pub use classify::SafetyClass;
+pub use classify::{Context, Finding, SafetyClass, Verdict, classify};
+pub use floor::FloorReason;
+pub use rules::{Decide, Decision, Outcome, Policy, PolicyError, ToolRequest, evaluate};
