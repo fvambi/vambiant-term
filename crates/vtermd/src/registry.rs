@@ -245,7 +245,8 @@ impl Registry {
         let dir = self.state_dir.join("shell-integration").join(&id.0);
         let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
         let user_zdotdir = std::env::var_os("ZDOTDIR").map_or(home, PathBuf::from);
-        let inj = vt_shell::inject(shell, &dir, &user_zdotdir, controls_argv);
+        let warp_mode = matches!(self.cfg().input.mode, vt_config::schema::InputMode::Warp);
+        let inj = vt_shell::inject(shell, &dir, &user_zdotdir, controls_argv, warp_mode);
         for (path, contents) in &inj.files {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);

@@ -77,8 +77,8 @@ macro_rules! f {
 #[allow(clippy::too_many_lines)]
 pub fn fields() -> Vec<Field> {
     use crate::schema::{
-        AgentFinished, CodexTransport, CursorStyle, Decorations, EgressMode, Inject, KeymapProfile,
-        Redaction, ResumeBy, TabBar, ThinStrokes,
+        AgentFinished, CodexTransport, CursorStyle, Decorations, EgressMode, Inject, InputMode,
+        KeymapProfile, Redaction, ResumeBy, TabBar, ThinStrokes,
     };
     let ms = Int {
         min: 0,
@@ -340,6 +340,12 @@ pub fn fields() -> Vec<Field> {
             "Carry integration through sudo.",
             Bool,
             Later { milestone: "M5" }
+        ),
+        f!(
+            "input.mode",
+            "warp: the app's editor at the bottom of the pane, the shell's prompt hidden; classic: the shell's own editor.",
+            e(InputMode::OPTIONS),
+            Later { milestone: "M5.5" }
         ),
         f!(
             "blocks.dividers",

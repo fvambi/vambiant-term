@@ -33,9 +33,9 @@ The supervisor is the differentiator. The terminal is the vehicle. The intellige
 
 - **Not cross-platform.** macOS only, native-first. Portability is preserved in the Rust core but never at the cost of a macOS-native affordance.
 - **Not a cloud product.** No account, no sync service, no telemetry egress. The only network traffic is to model providers you configure.
-- **Not an IDE.** No editor, no LSP, no file tree. Diffs are rendered for review, not edited.
-- **Not a Warp clone.** No blocks-as-a-social-feature, no shared workflows, no cloud agents.
-- **Not an agent.** Vambiant Term supervises agents; it does not implement one. The models it calls answer questions about *your terminal*, they do not autonomously edit your repo.
+- ~~**Not an IDE.** No editor, no LSP, no file tree.~~ *Amended 2026-09-06 (ADR-0011): a code review panel, file tree and basic editor are in scope; LSP is a later tier.*
+- ~~**Not a Warp clone.**~~ *Amended 2026-09-06 (ADR-0011): Vambiant Term looks like Warp and ships Warp's feature set. Cloud-backed Warp features (Drive, sharing, Remote Control, cloud agents, settings sync) ship as local file-based equivalents — the "not a cloud product" line above still holds.*
+- ~~**Not an agent.**~~ *Amended 2026-09-06 (ADR-0011): an Agent Mode over the provider layer is in scope, governed by `vt-policy` with every autonomous behaviour off by default (§7).*
 
 ## 5. Success criteria
 

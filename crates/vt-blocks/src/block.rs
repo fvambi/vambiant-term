@@ -11,6 +11,9 @@ pub struct Block {
     pub start_line: u64,
     /// Last scrollback line (inclusive), `None` while still open.
     pub end_line: Option<u64>,
+    /// Wall-clock time from the command's `C` to its `D`, when both were seen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// Kinds of block. Agent-event blocks are added in M5 from `vt-proto`.

@@ -44,6 +44,8 @@ struct Open {
     cmdline: Option<String>,
     /// `C` seen: the command is running, output belongs to it.
     executed: bool,
+    /// When `C` was seen, for the block's duration.
+    started: Option<std::time::Instant>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -76,6 +78,7 @@ impl Segmenter {
                     start: row,
                     cmdline: None,
                     executed: false,
+                    started: None,
                 });
                 closed
             }
@@ -89,6 +92,7 @@ impl Segmenter {
                     start: row,
                     cmdline: self.pending_cmdline.take(),
                     executed: false,
+                    started: None,
                 });
                 closed
             }
@@ -104,10 +108,12 @@ impl Segmenter {
                         start: row,
                         cmdline: self.pending_cmdline.take(),
                         executed: false,
+                        started: None,
                     });
                 }
                 if let Some(open) = self.open.as_mut() {
                     open.executed = true;
+                    open.started = Some(std::time::Instant::now());
                 }
                 Segmented::Pending
             }
@@ -120,6 +126,9 @@ impl Segmenter {
                     confidence: Confidence::Marked,
                     start_line: open.start,
                     end_line: Some(row),
+                    duration_ms: open
+                        .started
+                        .map(|t| u64::try_from(t.elapsed().as_millis()).unwrap_or(u64::MAX)),
                 }),
                 other => {
                     self.open = other;
@@ -175,6 +184,7 @@ impl Segmenter {
             confidence: Confidence::Heuristic,
             start_line: first,
             end_line: Some(last),
+            duration_ms: None,
         })
     }
 
@@ -191,6 +201,7 @@ impl Segmenter {
             confidence: Confidence::Marked,
             start_line: open.start,
             end_line: Some(end.max(open.start)),
+            duration_ms: None,
         }
     }
 
@@ -240,6 +251,7 @@ mod tests {
                 confidence: Confidence::Heuristic,
                 start_line: 4,
                 end_line: Some(6),
+                duration_ms: None,
             })
         );
         assert_eq!(seg.on_output(6, 6), Segmented::Pending, "no new row");
@@ -269,6 +281,7 @@ mod tests {
                 confidence: Confidence::Marked,
                 start_line: 10,
                 end_line: Some(10),
+                duration_ms: None,
             })
         );
         assert_eq!(
@@ -276,9 +289,16 @@ mod tests {
             Segmented::Pending
         );
         let done = seg.on_mark(&ShellMark::CommandFinished { exit: Some(0) }, 14);
+        let Segmented::Closed(block) = done else {
+            panic!("D closes the command: {done:?}");
+        };
+        assert!(block.duration_ms.is_some(), "C..D is timed");
         assert_eq!(
-            done,
-            Segmented::Closed(Block {
+            Block {
+                duration_ms: None,
+                ..block
+            },
+            Block {
                 kind: BlockKind::Command {
                     cmdline: Some("ls -la".into()),
                     exit: Some(0)
@@ -286,7 +306,8 @@ mod tests {
                 confidence: Confidence::Marked,
                 start_line: 10,
                 end_line: Some(14),
-            })
+                duration_ms: None,
+            }
         );
         assert!(!seg.is_corrupted());
     }
@@ -319,9 +340,15 @@ mod tests {
         seg.on_mark(&cmd("git status"), 5);
         seg.on_mark(&ShellMark::CommandExecuted, 5);
         let done = seg.on_mark(&ShellMark::CommandFinished { exit: Some(1) }, 8);
+        let Segmented::Closed(block) = done else {
+            panic!("{done:?}");
+        };
         assert_eq!(
-            done,
-            Segmented::Closed(Block {
+            Block {
+                duration_ms: None,
+                ..block
+            },
+            Block {
                 kind: BlockKind::Command {
                     cmdline: Some("git status".into()),
                     exit: Some(1)
@@ -329,7 +356,8 @@ mod tests {
                 confidence: Confidence::Marked,
                 start_line: 5,
                 end_line: Some(8),
-            })
+                duration_ms: None,
+            }
         );
     }
 }

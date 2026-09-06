@@ -108,6 +108,46 @@ impl Theme {
         }
     }
 
+    /// `warp-dark`: the default look (ADR-0011). Values are our own reading
+    /// of Warp's published screenshots — a warm near-black canvas, soft
+    /// grey text, muted ANSI hues — not a copy of any theme file.
+    #[must_use]
+    pub fn warp_dark() -> Self {
+        Self {
+            name: "warp-dark".into(),
+            background: h("#1b1d23"),
+            foreground: h("#dcdfe4"),
+            cursor: h("#8ab4f8"),
+            selection: h("#2c3140"),
+            normal: Ansi8 {
+                black: h("#23262e"),
+                red: h("#f07178"),
+                green: h("#8fd18a"),
+                yellow: h("#e6c07b"),
+                blue: h("#6fb3f2"),
+                magenta: h("#d08ff0"),
+                cyan: h("#6cd3de"),
+                white: h("#b4b9c4"),
+            },
+            bright: Ansi8 {
+                black: h("#5c6270"),
+                red: h("#ff8a92"),
+                green: h("#a3e39f"),
+                yellow: h("#f2d28c"),
+                blue: h("#8ac4ff"),
+                magenta: h("#e0a6ff"),
+                cyan: h("#86e5ee"),
+                white: h("#eceff4"),
+            },
+            ui: Ui {
+                accent: h("#8ab4f8"),
+                warning: h("#e6c07b"),
+                danger: h("#f07178"),
+                success: h("#8fd18a"),
+            },
+        }
+    }
+
     /// `vambiant-light`: the dark palette's hues on a paper background,
     /// chosen for ≥ 4.5:1 contrast of the foreground.
     #[must_use]
@@ -147,13 +187,17 @@ impl Theme {
         }
     }
 
-    /// Both built-ins, keyed by name.
+    /// Every built-in, keyed by name.
     #[must_use]
     pub fn builtins() -> BTreeMap<String, Self> {
-        [Self::vambiant_dark(), Self::vambiant_light()]
-            .into_iter()
-            .map(|t| (t.name.clone(), t))
-            .collect()
+        [
+            Self::warp_dark(),
+            Self::vambiant_dark(),
+            Self::vambiant_light(),
+        ]
+        .into_iter()
+        .map(|t| (t.name.clone(), t))
+        .collect()
     }
 
     /// Every colour, for contrast checks and previews.

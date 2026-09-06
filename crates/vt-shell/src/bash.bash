@@ -34,7 +34,12 @@ __vt_preexec() {
   __vt_cmd_active=1
 }
 # B goes in PS1, wrapped so its width is zero.
-PS1='\[\033]133;B\033\\\]'"$PS1"
+if [ "$VAMBIANT_INPUT" = warp ]; then
+  # Warp mode (ADR-0011): a blank row for the app's context line, then B.
+  PS1='\n\[\033]133;B\033\\\]'
+else
+  PS1='\[\033]133;B\033\\\]'"$PS1"
+fi
 case "$PROMPT_COMMAND" in
   *__vt_precmd*) ;;
   '') PROMPT_COMMAND=__vt_precmd ;;

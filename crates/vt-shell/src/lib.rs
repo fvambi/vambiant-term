@@ -84,12 +84,25 @@ pub struct Injection {
 ///
 /// `controls_argv` is true when the daemon spawns the shell binary directly
 /// (so it may add `--rcfile`); false for a `login`-launched shell.
+///
+/// `warp_mode` hides the shell's prompt (one blank row per prompt for the
+/// app's context line) so the app can draw its own and own the editor
+/// (ADR-0011). Carried as `VAMBIANT_INPUT=warp`.
 #[must_use]
-pub fn inject(shell: Shell, dir: &Path, user_zdotdir: &Path, controls_argv: bool) -> Injection {
+pub fn inject(
+    shell: Shell,
+    dir: &Path,
+    user_zdotdir: &Path,
+    controls_argv: bool,
+    warp_mode: bool,
+) -> Injection {
     let mut inj = Injection {
         env: vec![("VAMBIANT_TERM".into(), "1".into())],
         ..Default::default()
     };
+    if warp_mode {
+        inj.env.push(("VAMBIANT_INPUT".into(), "warp".into()));
+    }
     match shell {
         Shell::Zsh => {
             // zsh reads .zshrc from $ZDOTDIR; point it at our dir and chain
@@ -201,8 +214,15 @@ mod tests {
     #[test]
     fn zsh_injection_chains_the_users_config() {
         let dir = std::env::temp_dir().join("vt-shell-zsh");
-        let inj = inject(Shell::Zsh, &dir, Path::new("/home/u"), false);
+        let inj = inject(Shell::Zsh, &dir, Path::new("/home/u"), false, false);
         assert!(inj.limitation.is_none());
+        assert!(!inj.env.iter().any(|(k, _)| k == "VAMBIANT_INPUT"));
+        let warp = inject(Shell::Zsh, &dir, Path::new("/home/u"), false, true);
+        assert!(
+            warp.env
+                .iter()
+                .any(|(k, v)| k == "VAMBIANT_INPUT" && v == "warp")
+        );
         assert!(
             inj.env
                 .iter()
@@ -233,6 +253,14 @@ mod tests {
     }
 
     #[test]
+    fn every_snippet_has_a_warp_mode_prompt() {
+        for shell in [Shell::Zsh, Shell::Bash, Shell::Fish] {
+            let s = shell.snippet();
+            assert!(s.contains("VAMBIANT_INPUT"), "{shell:?} checks the mode");
+        }
+    }
+
+    #[test]
     fn every_snippet_reports_the_command_line() {
         for shell in [Shell::Zsh, Shell::Bash, Shell::Fish] {
             assert!(shell.snippet().contains("633;E;"), "{shell:?} emits 633;E");
@@ -242,7 +270,7 @@ mod tests {
     #[test]
     fn fish_injection_uses_the_vendor_conf_dir() {
         let dir = std::env::temp_dir().join("vt-shell-fish");
-        let inj = inject(Shell::Fish, &dir, Path::new("/home/u"), false);
+        let inj = inject(Shell::Fish, &dir, Path::new("/home/u"), false, false);
         assert!(
             inj.files
                 .iter()
@@ -258,7 +286,7 @@ mod tests {
     #[test]
     fn bash_needs_argv_control_and_says_so_otherwise() {
         let dir = std::env::temp_dir().join("vt-shell-bash");
-        let with = inject(Shell::Bash, &dir, Path::new("/home/u"), true);
+        let with = inject(Shell::Bash, &dir, Path::new("/home/u"), true, false);
         assert_eq!(
             with.args,
             vec![
@@ -267,7 +295,7 @@ mod tests {
             ]
         );
         assert!(with.limitation.is_none());
-        let without = inject(Shell::Bash, &dir, Path::new("/home/u"), false);
+        let without = inject(Shell::Bash, &dir, Path::new("/home/u"), false, false);
         assert!(without.args.is_empty());
         assert!(
             without

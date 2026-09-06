@@ -47,4 +47,11 @@ add-zsh-hook precmd __vt_precmd
 add-zsh-hook preexec __vt_preexec
 # Wrap the prompt so B is emitted just before the editable region. %{...%}
 # tells zsh the bytes are zero-width, so line editing counts columns right.
-PROMPT="%{$(__vt_mark_input)%}$PROMPT"
+if [[ "$VAMBIANT_INPUT" == warp ]]; then
+  # Warp mode (ADR-0011): the app draws the prompt and owns the editor.
+  # Leave one blank row per prompt for its context line, then the mark.
+  PROMPT=$'\n'"%{$(__vt_mark_input)%}"
+  RPROMPT=''
+else
+  PROMPT="%{$(__vt_mark_input)%}$PROMPT"
+fi

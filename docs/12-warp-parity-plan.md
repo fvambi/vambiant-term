@@ -2,26 +2,38 @@
 
 > Companion to `11-warp-feature-inventory.md`, which lists every Warp feature with its disposition. This document plans the work for every row marked `plan`, `new` or `adapt`, in build order, with the crate or file that owns each piece, the mechanism, the tests, and the docs that change. Estimates are engineer-weeks for one person and assume the M0–M5 foundations that exist on 2026-09-06.
 >
-> Status: **proposal**. Sections D1–D6 need the owner's decision because they touch `00-product-brief.md §4`; everything else is consistent with `01` and the ADRs and can start.
+> Status: **accepted direction** (ADR-0011, 2026-09-06): the owner decided the app must look like Warp and ship the same features. The decisions below are resolved accordingly; §L is the visual spec.
 
 ## 0. Principles that decide the shape
 
-1. **The shell owns the line editor.** Warp's editor is what lets it do multi-cursor, vim emulation and in-place highlighting, and it is also why Warp cannot render dim or italic, needs "Warpify" to survive `ssh`, and misattributes background output. We stay a VT terminal and *decorate* the input region we already locate through OSC 133 B→C. Everything in §B below is built that way.
+1. **The app owns the line editor (Warp mode).** A native editor pinned at the bottom of the pane submits commands to the shell; the injected integration makes the shell's own prompt invisible and prints one blank row per prompt that the app fills with Warp's context line (cwd, branch, duration). While a command runs, keystrokes pass straight to the PTY; alt-screen apps get the whole pane. `[input] mode = "classic"` restores the shell's editor. Warp mode is where syntax highlighting, autosuggestions, history search, vim keys and multi-line editing live, as native text-view features.
 2. **Blocks are data in the daemon, chrome in the app.** Bookmarks, find, filters and exports are RPCs over `vt-store`/`vt-core`; the app never re-parses output.
-3. **Local files replace Warp Drive.** Workflows, prompts, env sets and layouts are TOML/YAML under `~/.config/vambiant-term/` and `<repo>/.vambiant-term/`, versionable in git. Nothing syncs.
-4. **We supervise agents; we do not converse for them** unless D2 says otherwise. Composer, context attachment, review comments and prompt queues all end as bytes typed into the agent's PTY, which every CLI agent understands.
-5. **Warp's defaults are not ours where they conflict with `05`:** redaction stays on, auto-approve never crosses the floor, nothing leaves the machine.
+3. **Local files replace Warp Drive.** Workflows, notebooks, prompts, env sets, rules and layouts are files under `~/.config/vambiant-term/` and `<repo>/.vambiant-term/`, versionable in git. Nothing syncs; the UI labels these "local" where Warp would show cloud state.
+4. **Agent Mode is ours; CLI agents are supervised.** A first-party conversation view runs on the provider layer with `vt-policy` permissions; third-party CLI agents get the composer, notifications, review comments and context attachment as bytes typed into their PTY.
+5. **Warp's defaults are not ours where they conflict with `05`:** redaction stays on, auto-approve never crosses the floor, nothing leaves the machine, no telemetry.
 
-## D. Decisions for the owner
+## D. Decisions (resolved by ADR-0011)
 
-| # | Question | Recommendation | Consequence if accepted |
-|---|---|---|---|
-| D1 | Own the line editor (Warp mode) or decorate the shell's? | **Decorate.** Re-evaluate only after §B ships and is judged insufficient. | `01` gets B4/B5/B8/B9 rows; no ADR change |
-| D2 | First-party conversation view? Warp's Agent Mode is its centrepiece. | **Build an ACP client pane (B6.5) instead of an agent.** Any ACP agent (Gemini CLI, Claude via adapters, Zed's) renders natively; we still write no agent. | `00 §4` stays; B6.5 moves from C to S; new ADR-0011 |
-| D3 | Code Review panel? `00 §4` says "diffs are rendered for review, not edited". | **Yes, read-only with revert/discard.** No editor, no LSP. | `01` gets H2; `00 §4` wording unchanged |
-| D4 | Blocks/sessions sharing and Remote Control? | **No cloud.** Export to file/clipboard; D2.5 loopback API over Tailscale for remote steering. | none |
-| D5 | Voice input? | **On-device only** (`SFSpeechRecognizer`, `requiresOnDeviceRecognition = true`), C tier. | `01` gets a C row |
-| D6 | Fig-style completion specs (withfig/autocomplete, MIT)? | **Defer.** Shell completion is authoritative; a spec menu is a v2 experiment. | none |
+| # | Question | Decision |
+|---|---|---|
+| D1 | Line editor | **Warp mode by default**, classic mode kept |
+| D2 | Conversation view | **Agent Mode** on the provider layer, plus the ACP client for third-party agents |
+| D3 | Code panel | **Review panel, file tree, basic editor**; LSP later |
+| D4 | Sharing / Remote Control | **Local equivalents only**: export to file/clipboard, loopback API for remote steering |
+| D5 | Voice | **On-device** recognition only |
+| D6 | Completion specs | **Adopt** withfig/autocomplete (MIT) specs for the Warp-mode completion menu |
+
+## L. Look (from Warp's published screenshots, 2026-09-06)
+
+- **Canvas:** near-black warm grey background (≈ `#1b1d23`), light grey text (≈ `#dcdfe4`), 13 pt monospace, generous line height. Window: traffic lights, sidebar toggle, tab strip with the cwd as title, `+` new tab, avatar/settings at the right. Ships as theme `warp-dark` (our own values), default on, not following the OS.
+- **Block:** a thin divider above each block; row 1 is the **context line** in dim grey: tool version chip (`v20.15.1`), cwd, `git:(main)`, `(0.027s)` duration; row 2 the **command** in bold foreground; then output. Hover reveals four icons at the top right: bookmark, share/export, filter, kebab. A failed block gets a red left sidebar and a faint red wash. Selected blocks get the selection wash and a thicker sidebar.
+- **Input area (bottom):** context chips in rounded pills with icons (tool version, cwd, branch with `± n`), the editor with placeholder text, a hint line (`⌘↩ for new agent`). In Agent Mode the header reads `ESC for terminal` and the conversation shows `Thought for 1 second ›` rows, task ticks, embedded command blocks, and an approval card (`Reject ^C · Edit ⌘E · Run ↵`).
+- **Sidebar (vertical tabs):** search field, rows with an icon (terminal or agent brand with a status badge), title, cwd, branch, and a `+34 -9` diff pill; hover shows `⋮` and `✕`.
+- **Chips and pills:** small rounded rectangles on a slightly lighter surface, green for ok, red for errors, magenta for "in progress".
+
+## X. Explicitly not planned, with the reason (updated)
+
+Cloud: Warp Drive sync, teams, admin, SSO, billing, session sharing, Remote Control, permalinks, settings sync, cloud agents, Oz, Factories (`00 §4` "not a cloud product", `05`). Windows/Linux (`00 §4`). Telemetry (`05`). Everything else Warp documents is in scope.
 
 ## A. Blocks (M5, 2.5 weeks)
 
@@ -153,10 +165,6 @@ Adopt Warp's block chords where ours are free, keep ours where `06` already deci
 | 8 | M11 remote | F1, F2 | 2 | blocks inside `docker exec` and `ssh` sessions |
 
 Total ≈ 28 weeks on top of the existing plan's M6–M9, of which ≈ 12 are net-new scope (packages 2, 6, 8 and the H2/C6 halves of 4).
-
-## X. Explicitly not planned, with the reason
-
-Warp Drive cloud, teams, admin panel, SSO, billing, session sharing, Remote Control, block permalinks, settings sync, cloud agents/handoff/orchestration, Oz, Factories (`00 §4`: no cloud, no account); Warp Agent and Agent CLI, computer use, browser use, web search, memory (`00 §4`: not an agent); code editor, file tree, LSP, notebooks, markdown viewer (`00 §4`: not an IDE); Warp-native prompt chips, reverse input mode, alias expansion, vim/multi-cursor editor (§0.1); telemetry (`05`); app icons (taste, C at most); Windows/Linux (`00 §4`).
 
 ## Docs to amend when packages land
 

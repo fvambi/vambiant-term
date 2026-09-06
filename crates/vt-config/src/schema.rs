@@ -25,6 +25,7 @@ lower_enum!(Decorations { Native = "native", None = "none" });
 lower_enum!(TabBar { Native = "native", None = "none" });
 lower_enum!(CursorStyle { Block = "block", Bar = "bar", Underline = "underline" });
 lower_enum!(Inject { Auto = "auto", Manual = "manual", Off = "off" });
+lower_enum!(InputMode { Warp = "warp", Classic = "classic" });
 lower_enum!(KeymapProfile { Tmux = "tmux", Macos = "macos", Both = "both" });
 lower_enum!(ResumeBy { Id = "id" });
 lower_enum!(CodexTransport { AppServer = "app-server", Exec = "exec", HooksOnly = "hooks-only" });
@@ -62,9 +63,13 @@ section!(Font {
 });
 
 section!(ThemeRef {
-    name: String = "vambiant-dark".into(),
+    name: String = "warp-dark".into(),
     light: String = "vambiant-light".into(),
-    follow_system: bool = true,
+    follow_system: bool = false,
+});
+
+section!(Input {
+    mode: InputMode = InputMode::Warp,
 });
 
 section!(Padding {
@@ -231,6 +236,7 @@ section!(
         terminal: Terminal = Terminal::default(),
         shell_integration: ShellIntegration = ShellIntegration::default(),
         blocks: Blocks = Blocks::default(),
+        input: Input = Input::default(),
         mux: Mux = Mux::default(),
         agents: Agents = Agents::default(),
         notifications: Notifications = Notifications::default(),

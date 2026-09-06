@@ -78,6 +78,10 @@ warn_on_conflict = true                   # p10k/starship printing preexec hooks
 ssh_wrap         = false
 sudo_wrap        = false
 
+# ─── Input ─────────────────────────────────────────────────────
+[input]
+mode             = "warp"                 # warp | classic (ADR-0011; applies to new sessions)
+
 # ─── Blocks ────────────────────────────────────────────────────
 [blocks]
 dividers         = true                   # hairline above each command block

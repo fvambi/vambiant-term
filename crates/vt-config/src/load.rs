@@ -366,7 +366,7 @@ mod tests {
         let l = load(&paths);
         assert!(l.config_error.is_none() && l.keymap_error.is_none());
         assert_eq!(l.config, Config::default());
-        assert_eq!(l.themes.len(), 2);
+        assert_eq!(l.themes.len(), 3);
         assert!(l.theme_warnings.is_empty(), "{:?}", l.theme_warnings);
     }
 
