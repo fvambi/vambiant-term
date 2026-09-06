@@ -173,6 +173,7 @@ fn run(
         .readopted;
     let mut observer = Observer::new(registry, &id, info);
     let mut segmenter = Segmenter::default();
+    let mut password_prompted = false;
     let mut pending = DamageSet::Full;
     let mut last_flush = Instant::now()
         .checked_sub(FLUSH_INTERVAL)
@@ -229,6 +230,24 @@ fn run(
                         segment(registry, &id, &mut segmenter, mark, *row);
                     }
                     publish_event(registry, &id, info, &ev);
+                }
+                // A password prompt (docs/12 §E7): the cursor line asks for one
+                // and echo is off. Reported once per prompt, never guessed
+                // from the text alone.
+                if bytes.ends_with(b": ") || bytes.ends_with(b":") {
+                    let row = core.cursor_row_absolute();
+                    let line = core.export(row, row, vt_core::core::TextFormat::Plain);
+                    if !password_prompted && asks_for_password(&line) && pty.echo_off() {
+                        password_prompted = true;
+                        if let Some(server) = registry.server() {
+                            server.broadcast(
+                                notification::SESSION_EVENT,
+                                Some(serde_json::json!({ "id": id.0, "event": { "kind": "password_prompt", "line": line.trim() } })),
+                            );
+                        }
+                    }
+                } else if password_prompted && !pty.echo_off() {
+                    password_prompted = false;
                 }
                 // A chunk with no marks, a newline, and nothing typed lately,
                 // while the shell waits at its prompt: a background job.
@@ -377,6 +396,13 @@ fn merge_damage(pending: &mut DamageSet, new: DamageSet) {
 /// Persist a closed block and broadcast it. The store's sequence number is
 /// what `session.blocks` returns, so the live notification carries it too:
 /// a viewer can merge both without duplicates.
+/// `Password:`, `[sudo] password for me:`, `Enter passphrase for key:`.
+fn asks_for_password(line: &str) -> bool {
+    let l = line.trim_end().to_ascii_lowercase();
+    l.ends_with(':')
+        && (l.contains("password") || l.contains("passphrase") || l.contains("passcode"))
+}
+
 fn emit_block(registry: &Registry, id: &vt_proto::session::SessionId, block: &vt_blocks::Block) {
     let now = crate::registry::now();
     let seq = registry

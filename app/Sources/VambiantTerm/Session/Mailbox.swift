@@ -123,12 +123,14 @@ struct NotificationPolicy: Equatable, Sendable {
         case .budget:
             // An in-app banner (docs/06 §8): always a toast, never the desktop.
             return (toast: appActive, desktop: false)
+        case .passwordPrompt:
+            return (toast: appActive && !paneVisible, desktop: !appActive)
         }
     }
 }
 
 enum NoteSource: Equatable, Sendable {
-    case longCommand, approval, agentFinished, agentCrashed, agentMode, budget
+    case longCommand, approval, agentFinished, agentCrashed, agentMode, budget, passwordPrompt
 }
 
 extension Note {

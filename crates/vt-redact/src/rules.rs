@@ -87,7 +87,7 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         name: "assignment",
-        pattern: r#"(?i)\b(?:api[_\-]?key|secret[_\-]?key|secret|access[_\-]?token|auth[_\-]?token|token|password|passwd|pwd)\b\s*[=:]\s*['"]?([^\s'"]{8,})"#,
+        pattern: r#"(?i)\b(?:api[_\-]?key|secret[_\-]?key|secret|access[_\-]?token|auth[_\-]?token|token|password|passwd|pwd)\b['"]?\s*[=:]\s*['"]?([^\s'"]{8,})"#,
         value_group: Some(1),
     },
 ];

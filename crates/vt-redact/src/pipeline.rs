@@ -67,9 +67,10 @@ fn apply(
 ) -> Result<Redacted, RedactError> {
     let hits = rules.set.matches(text);
     if !hits.matched_any() {
+        let (out, replacements) = redact_entropy(text);
         return Ok(Redacted {
-            text: text.to_owned(),
-            replacements: 0,
+            text: out,
+            replacements,
         });
     }
     let mut out = text.to_owned();
@@ -101,10 +102,80 @@ fn apply(
             replacements += 1;
         }
     }
+    let (out, extra) = redact_entropy(&out);
     Ok(Redacted {
         text: out,
-        replacements,
+        replacements: replacements + extra,
     })
+}
+
+/// Layer 2 (docs/05 §3.3): unprefixed high-entropy values. A token of 32+
+/// characters drawn from three or more character classes with Shannon
+/// entropy of 3.8 bits per character or more is a credential shape no
+/// prefix rule knows (a bare AWS secret, a random API key). Hex digests
+/// (two classes) and paths (a `/` with no other symbol class) survive.
+pub fn looks_random(token: &str) -> bool {
+    let t = token.trim_matches(|c: char| ",.;)]}>'\"".contains(c));
+    if t.chars().count() < 32 || t.starts_with("http") || t.starts_with('/') || t.starts_with('~') {
+        return false;
+    }
+    let (mut upper, mut lower, mut digit, mut symbol) = (false, false, false, false);
+    for c in t.chars() {
+        match c {
+            'A'..='Z' => upper = true,
+            'a'..='z' => lower = true,
+            '0'..='9' => digit = true,
+            '+' | '/' | '=' | '-' | '_' | '.' => symbol = true,
+            _ => return false,
+        }
+    }
+    let classes = [upper, lower, digit, symbol].iter().filter(|b| **b).count();
+    if classes < 3 || t.matches('/').count() > 3 {
+        return false;
+    }
+    let mut counts = std::collections::HashMap::new();
+    for c in t.chars() {
+        *counts.entry(c).or_insert(0u32) += 1;
+    }
+    let n = f64::from(u32::try_from(t.chars().count()).unwrap_or(u32::MAX));
+    let entropy: f64 = counts
+        .values()
+        .map(|&k| {
+            let p = f64::from(k) / n;
+            -p * p.log2()
+        })
+        .sum();
+    entropy >= 3.8
+}
+
+/// Replaces every random-looking token with `[REDACTED:entropy]`.
+pub(crate) fn redact_entropy(text: &str) -> (String, usize) {
+    let mut out = String::with_capacity(text.len());
+    let mut replacements = 0;
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let mut first = true;
+        for word in line.split(' ') {
+            if !first {
+                out.push(' ');
+            }
+            first = false;
+            if looks_random(word) {
+                let trimmed = word.trim_matches(|c: char| ",.;)]}>'\"".contains(c));
+                let (lead, rest) = word.split_at(word.find(trimmed).unwrap_or(0));
+                let tail = &rest[trimmed.len()..];
+                out.push_str(lead);
+                out.push_str("[REDACTED:entropy]");
+                out.push_str(tail);
+                replacements += 1;
+            } else {
+                out.push_str(word);
+            }
+        }
+    }
+    (out, replacements)
 }
 
 #[cfg(test)]
@@ -113,6 +184,41 @@ mod tests {
 
     fn r(s: &str) -> Redacted {
         redact(s).unwrap()
+    }
+
+    #[test]
+    fn entropy_catches_bare_secrets_and_spares_hashes_and_paths() {
+        let key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        assert!(looks_random(key), "an AWS secret has no prefix");
+        let r = redact(&format!(
+            "export AWS_SECRET_ACCESS_KEY={key}\nsha 3b18e512dba79e4c8300dd08aeb37f8e728b8dad"
+        ))
+        .unwrap();
+        assert!(!r.text.contains(key), "{}", r.text);
+        assert!(
+            r.text.contains("3b18e512dba79e4c8300dd08aeb37f8e728b8dad"),
+            "a git hash survives: {}",
+            r.text
+        );
+        let r = redact("token: XyZ9aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4").unwrap();
+        assert!(r.text.contains("[REDACTED:"), "{}", r.text);
+        for clean in [
+            "/Users/me/Library/Application Support/Code/User/settings.json",
+            "https://example.com/a/very/long/path/that/is/not/a/secret/at/all",
+            "the quick brown fox jumps over the lazy dog again and again",
+            "0123456789abcdef0123456789abcdef0123456789abcdef",
+            "ThisIsAPerfectlyNormalCamelCaseIdentifierName",
+        ] {
+            assert!(!looks_random(clean), "{clean}");
+            assert_eq!(redact(clean).unwrap().replacements, 0, "{clean}");
+        }
+        let json = r#"{"secret_key": "hunter2hunter2", "debug": true}"#;
+        let r = redact(json).unwrap();
+        assert!(
+            !r.text.contains("hunter2hunter2") && r.text.contains("\"secret_key\""),
+            "{}",
+            r.text
+        );
     }
 
     #[test]

@@ -186,6 +186,16 @@ impl Pty {
         }
     }
 
+    /// Whether the line discipline has echo off: a password prompt is
+    /// being read (docs/12 §E7). Errors are `Ok(false)`: never a guess.
+    pub fn echo_off(&self) -> bool {
+        use std::os::fd::AsRawFd;
+        let mut term: libc::termios = unsafe { std::mem::zeroed() };
+        // SAFETY: the master fd is open for the life of `self` and `term` is a valid out-pointer.
+        let rc = unsafe { libc::tcgetattr(self.master.as_raw_fd(), &raw mut term) };
+        rc == 0 && term.c_lflag & libc::ECHO == 0
+    }
+
     /// Whether this PTY was adopted rather than spawned here.
     pub fn is_adopted(&self) -> bool {
         self.adopted

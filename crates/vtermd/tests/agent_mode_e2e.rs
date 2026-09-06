@@ -165,8 +165,25 @@ fn zsh_session(c: &mut Client, name: &str) -> String {
             .unwrap(),
     )
     .unwrap();
-    // zsh prints its first prompt (the A mark) before it can take a line.
-    thread::sleep(Duration::from_millis(1200));
+    // zsh prints its first prompt (the A mark) before it can take a line;
+    // how long that takes depends on the machine, so wait for it.
+    let start = Instant::now();
+    loop {
+        let v = c
+            .call(
+                method::SESSION_AT_PROMPT,
+                Some(serde_json::json!({ "id": info.id.0 })),
+            )
+            .unwrap();
+        if v["at_prompt"] == true {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(15),
+            "zsh never reached its prompt"
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
     info.id.0
 }
 

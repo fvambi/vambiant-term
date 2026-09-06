@@ -68,6 +68,8 @@ Two layers, both required:
 
 **Layer 2 — unprefixed high-entropy values.** A 40-char AWS secret key has no prefix; only entropy finds it. Use the ripsecrets approach: flag strings assigned to `token`/`secret`/`password`/`key`-ish identifiers where a randomness test says P(random) is below a threshold. Combine Shannon entropy with character-class scoring, and gate on the surrounding identifier so `DEBUG=true` survives and `API_KEY=hunter2hunter2hunter2` does not.
 
+> **As built (2026-09-06):** the `assignment` rule covers `NAME=value`, `name: value` and JSON `"name": "value"` for secret-ish identifiers (any value of 8+ characters). The entropy pass runs after the pattern rules on every payload: a token of 32+ characters from three or more character classes (upper, lower, digit, `+/=-_.`) with Shannon entropy ≥ 3.8 bits/char becomes `[REDACTED:entropy]`; hex digests (two classes), paths, URLs and prose survive. It is not gated on an identifier, on purpose: a bare secret pasted into output must not leave either. Tests pin both directions.
+
 ### 3.4 Terminal-specific hazards
 
 Beyond scanning output, redact:

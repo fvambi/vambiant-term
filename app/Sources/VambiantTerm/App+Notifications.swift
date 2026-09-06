@@ -25,6 +25,19 @@ extension AppDelegate {
                let note = Note.longCommand(block, session: session, thresholdMs: notificationPolicy.longCommandMs) {
                 deliver(note, source: .longCommand)
             }
+        case "session.event" where params[path: "event.kind"]?.stringValue == "password_prompt":
+            let line = params[path: "event.line"]?.stringValue ?? "password prompt"
+            deliver(
+                Note(
+                    id: "pw-\(session)-\(Int(Date().timeIntervalSince1970))",
+                    kind: .request,
+                    title: "Waiting for a password",
+                    body: line,
+                    session: session,
+                    at: Date()
+                ),
+                source: .passwordPrompt
+            )
         case "session.changed":
             let state = params[path: "state"]?.stringValue
             let pane = pane(for: session)

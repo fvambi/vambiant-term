@@ -83,6 +83,9 @@ pub mod method {
     pub const SESSION_GET: &str = "session.get";
     /// `{ id, name } -> SessionInfo`.
     pub const SESSION_RENAME: &str = "session.rename";
+    /// `{ id } -> { at_prompt }`: whether the shell is reading a command
+    /// line (between the `A` and `C` marks), as the segmenter sees it.
+    pub const SESSION_AT_PROMPT: &str = "session.at_prompt";
     /// `{ id, signal? } -> {}` — SIGHUP by default, then reap.
     pub const SESSION_KILL: &str = "session.kill";
     /// `{ id, cols, rows } -> {}`.

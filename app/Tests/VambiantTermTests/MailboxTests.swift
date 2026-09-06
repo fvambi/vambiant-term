@@ -48,6 +48,8 @@ struct MailboxTests {
         #expect(p.route(.error, source: .agentCrashed, appActive: true, paneVisible: true) == (true, false))
         #expect(p.route(.error, source: .budget, appActive: true, paneVisible: true) == (true, false), "a banner, even on the visible pane")
         #expect(p.route(.error, source: .budget, appActive: false, paneVisible: false) == (false, false))
+        #expect(p.route(.request, source: .passwordPrompt, appActive: false, paneVisible: false) == (false, true))
+        #expect(p.route(.request, source: .passwordPrompt, appActive: true, paneVisible: true) == (false, false))
     }
 
     @Test func longCommandsBecomeNotesAboveTheThreshold() throws {

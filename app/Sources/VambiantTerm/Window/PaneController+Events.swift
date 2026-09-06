@@ -26,6 +26,8 @@ extension PaneController {
             onChange?()
         case "session.event" where params[path: "event.kind"]?.stringValue == "bell":
             onBell?()
+        case "session.event" where params[path: "event.kind"]?.stringValue == "password_prompt":
+            container.input.setHint("🔒 password prompt — keys go to the program, nothing is echoed")
         case "session.event" where params[path: "event.kind"]?.stringValue == "blocks_degraded":
             blocks.degraded = params[path: "event.reason"]?.stringValue ?? "shell-integration marks are corrupted"
         case "session.event" where params[path: "event.kind"]?.stringValue == "prompt":

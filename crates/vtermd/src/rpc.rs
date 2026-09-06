@@ -132,6 +132,15 @@ impl Handler for Rpc {
                     .clone();
                 serde_json::to_value(info).map_err(|e| internal(&e))
             }
+            method::SESSION_AT_PROMPT => {
+                let h = self.session(req)?;
+                let (tx, rx) = std::sync::mpsc::channel();
+                h.cmd.send(SessionCmd::AtPrompt(tx)).map_err(|_| gone())?;
+                let at_prompt = rx
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .map_err(|_| gone())?;
+                Ok(serde_json::json!({ "at_prompt": at_prompt }))
+            }
             method::SESSION_RENAME => {
                 let h = self.session(req)?;
                 let name: String = Self::param(req, "name")?;

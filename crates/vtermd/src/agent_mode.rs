@@ -408,16 +408,27 @@ fn execute(
     session: &SessionId,
     command: &str,
 ) -> Result<(i32, String), String> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    handle
-        .cmd
-        .send(SessionCmd::AtPrompt(tx))
-        .map_err(|_| "the session is gone".to_owned())?;
-    let at_prompt = rx
-        .recv_timeout(Duration::from_secs(2))
-        .map_err(|_| "the session did not answer".to_owned())?;
-    if !at_prompt {
-        return Err("the session is busy: a command is still running, so nothing was typed".into());
+    // A prompt mid-redraw reads as "not at the prompt" for a moment; wait
+    // a little before calling the session busy.
+    let settled = Instant::now();
+    loop {
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle
+            .cmd
+            .send(SessionCmd::AtPrompt(tx))
+            .map_err(|_| "the session is gone".to_owned())?;
+        let at_prompt = rx
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| "the session did not answer".to_owned())?;
+        if at_prompt {
+            break;
+        }
+        if settled.elapsed() > Duration::from_secs(3) {
+            return Err(
+                "the session is busy: a command is still running, so nothing was typed".into(),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(100));
     }
     let last_seq = registry
         .store()
