@@ -16,6 +16,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: jdx/mise-action@v2
       - run: mise run ci-fast
   full:
@@ -23,6 +25,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: jdx/mise-action@v2
       - run: mise run ci-full
   nightly:
@@ -30,5 +34,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: jdx/mise-action@v2
       - run: mise run ci-nightly
