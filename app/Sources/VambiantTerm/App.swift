@@ -85,57 +85,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let shot = ProcessInfo.processInfo.environment["VAMBIANT_TERM_SCREENSHOT"],
            let pane = windows.first?.container.focused {
-            // Something worth looking at: attributes, colours, CJK, emoji.
-            let demo = "clear; printf '\\e[1mbold\\e[0m \\e[3mitalic\\e[0m \\e[4munderline\\e[0m "
-                + "\\e[31mred\\e[0m \\e[42m bg \\e[0m \\e[38;5;208m256\\e[0m \\e[38;2;122;162;247mrgb\\e[0m "
-                + "世界 😀\\n'; ls -la | head -6; seq 1 40\r"
-            Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
-                MainActor.assumeIsolated { _ = pane.viewer?.send(text: demo) }
-            }
-            // A failing command too, so the shot shows both block chips, and
-            // the last block selected so the tint and gutter are visible.
-            Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
-                MainActor.assumeIsolated { _ = pane.viewer?.send(text: "grep -c vambiant /nonexistent\r") }
-            }
-            // Select the last block, bookmark the first, extend the selection
-            // upwards: tint, tick and range are all in the shot.
-            Timer.scheduledTimer(withTimeInterval: 3.3, repeats: false) { _ in
-                MainActor.assumeIsolated {
-                    pane.selectBlock(previous: true)
-                    if let first = pane.blocks.commands.first {
-                        pane.perform(.bookmark, on: first)
-                    }
-                    pane.view.extendSelection(previous: true)
+            runScreenshotDiagnostic(pane: pane, shot: shot)
+        }
+    }
+
+    /// `VAMBIANT_TERM_SCREENSHOT=<png>`: drive one pane through attributes,
+    /// a failing command, block selection, a bookmark, a find and a scroll,
+    /// then write the frame and log the overlay state.
+    private func runScreenshotDiagnostic(pane: PaneController, shot: String) {
+        // Something worth looking at: attributes, colours, CJK, emoji.
+        let demo = "clear; printf '\\e[1mbold\\e[0m \\e[3mitalic\\e[0m \\e[4munderline\\e[0m "
+            + "\\e[31mred\\e[0m \\e[42m bg \\e[0m \\e[38;5;208m256\\e[0m \\e[38;2;122;162;247mrgb\\e[0m "
+            + "世界 😀\\n'; ls -la | head -6; seq 1 40\r"
+        Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+            MainActor.assumeIsolated { _ = pane.viewer?.send(text: demo) }
+        }
+        // A failing command too, so the shot shows both block chips, and
+        // the last block selected so the tint and gutter are visible.
+        Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
+            MainActor.assumeIsolated { _ = pane.viewer?.send(text: "grep -c vambiant /nonexistent\r") }
+        }
+        // Select the last block, bookmark the first, extend the selection
+        // upwards: tint, tick and range are all in the shot.
+        Timer.scheduledTimer(withTimeInterval: 3.3, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                pane.selectBlock(previous: true)
+                if let first = pane.blocks.commands.first {
+                    pane.perform(.bookmark, on: first)
                 }
+                pane.view.extendSelection(previous: true)
             }
-            // Scroll the first command line off the top and search, so the
-            // sticky header and the find highlights are in the shot too.
-            Timer.scheduledTimer(withTimeInterval: 3.4, repeats: false) { _ in
-                MainActor.assumeIsolated {
-                    pane.view.selectedBlock = nil
-                    _ = pane.viewer?.scroll(VtScrollTo_Lines, n: 2)
-                    pane.view.showFind()
-                    pane.view.findBar.field.stringValue = "fwartner"
-                    pane.runFind(FindState(query: "fwartner"))
-                }
+        }
+        // Scroll the first command line off the top and search, so the
+        // sticky header and the find highlights are in the shot too.
+        Timer.scheduledTimer(withTimeInterval: 3.4, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                pane.view.selectedBlock = nil
+                _ = pane.viewer?.scroll(VtScrollTo_Lines, n: 2)
+                pane.view.showFind()
+                pane.view.findBar.field.stringValue = "fwartner"
+                pane.runFind(FindState(query: "fwartner"))
             }
-            // Below the first command line, so its header is pinned.
-            Timer.scheduledTimer(withTimeInterval: 3.7, repeats: false) { _ in
-                MainActor.assumeIsolated { _ = pane.viewer?.scroll(VtScrollTo_Row, n: 10) }
-            }
-            Timer.scheduledTimer(withTimeInterval: 3.9, repeats: false) { _ in
-                MainActor.assumeIsolated {
-                    // The overlays are AppKit views the Metal capture cannot
-                    // see; log their state so a run still verifies them.
-                    let sticky = pane.view.stickyHeader.isHidden ? "hidden" : "block \(pane.view.stickyHeader.seq ?? -1)"
-                    let top = pane.view.viewportTop
-                    NSLog(
-                        "screenshot: find '%@' -> %@; sticky header %@ (top %llu, block at top %lld, chrome %d)",
-                        pane.view.findState.query, pane.view.findState.summary, sticky, top,
-                        pane.blocks.command(at: top)?.seq ?? -1, pane.view.renderer.blockChrome.stickyHeader ? 1 : 0
-                    )
-                    pane.view.captureNext(to: shot)
-                }
+        }
+        // Below the first command line, so its header is pinned.
+        Timer.scheduledTimer(withTimeInterval: 3.7, repeats: false) { _ in
+            MainActor.assumeIsolated { _ = pane.viewer?.scroll(VtScrollTo_Row, n: 10) }
+        }
+        Timer.scheduledTimer(withTimeInterval: 3.9, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                // The overlays are AppKit views the Metal capture cannot
+                // see; log their state so a run still verifies them.
+                let sticky = pane.view.stickyHeader.isHidden ? "hidden" : "block \(pane.view.stickyHeader.seq ?? -1)"
+                let top = pane.view.viewportTop
+                NSLog(
+                    "screenshot: find '%@' -> %@; sticky header %@ (top %llu, block at top %lld, chrome %d)",
+                    pane.view.findState.query, pane.view.findState.summary, sticky, top,
+                    pane.blocks.command(at: top)?.seq ?? -1, pane.view.renderer.blockChrome.stickyHeader ? 1 : 0
+                )
+                pane.view.captureNext(to: shot)
             }
         }
     }

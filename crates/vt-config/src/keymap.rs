@@ -224,7 +224,11 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
     ("scrollback.clear", "Clear the scrollback", "M5"),
     ("find.next", "Next find match", "M5"),
     ("find.previous", "Previous find match", "M5"),
-    ("block.sticky_toggle", "Toggle the sticky command header in this pane", "M5"),
+    (
+        "block.sticky_toggle",
+        "Toggle the sticky command header in this pane",
+        "M5",
+    ),
     (
         "block.copy_command",
         "Copy the selected block's command",
