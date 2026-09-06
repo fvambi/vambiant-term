@@ -10,6 +10,18 @@ extension MetalGridView {
     func installOverlays() {
         addSubview(findBar)
         addSubview(stickyHeader)
+        addSubview(actionsBar)
+        actionsBar.onAction = { [weak self] action in
+            guard let self, let seq = hoverBlock,
+                  let block = blocks.command(seq: seq) ?? blocks.chrome.first(where: { $0.seq == seq })
+            else { return }
+            selectedBlock = block.seq
+            if action == .menu {
+                openBlockMenu()
+            } else {
+                onBlockAction?(action, block)
+            }
+        }
         findBar.isHidden = true
         findBar.onStep = { [weak self] forward in self?.onFindStep?(forward) }
         findBar.onClose = { [weak self] in self?.hideFind() }
@@ -24,6 +36,35 @@ extension MetalGridView {
         stickyHeader.onClick = { [weak self] in
             guard let self, let seq = stickyHeader.seq, let block = blocks.command(seq: seq) else { return }
             viewer?.scroll(VtScrollTo_Row, n: Int64(block.start))
+        }
+    }
+
+    /// The hover toolbar follows the block under `point` (nil hides it),
+    /// anchored to the block's first visible row at the right edge, left of
+    /// the exit chip.
+    func updateHover(at point: CGPoint?) {
+        guard let point, let block = point.x < bounds.width ? block(at: point) : nil else {
+            if hoverBlock != nil {
+                hoverBlock = nil
+                actionsBar.isHidden = true
+            }
+            return
+        }
+        let scale = window?.backingScaleFactor ?? 2
+        let rowHeight = renderer.cellSize.height / scale
+        let top = viewportTop
+        let firstVisible = max(block.visualRows.lowerBound, top)
+        let y = padding.height + CGFloat(firstVisible - top) * rowHeight
+        let chipWidth = CGFloat(BlockDecor.chip(for: block).count + 2) * renderer.cellSize.width / scale
+        actionsBar.frame = CGRect(
+            x: bounds.width - padding.width - chipWidth - BlockActionsBar.size.width - 6,
+            y: y + (rowHeight - BlockActionsBar.size.height) / 2,
+            width: BlockActionsBar.size.width, height: BlockActionsBar.size.height
+        )
+        if hoverBlock != block.seq {
+            hoverBlock = block.seq
+            actionsBar.apply(theme: renderer.theme)
+            actionsBar.show(for: block)
         }
     }
 

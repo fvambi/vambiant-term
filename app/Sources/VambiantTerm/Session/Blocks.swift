@@ -244,5 +244,5 @@ struct BlockList: Equatable, Sendable {
 enum BlockAction: Equatable, Sendable {
     case copyCommand, copyOutput, copyBoth, exportHTML
     case reinput, reinputSudo, rerun
-    case bookmark, menu, explain
+    case bookmark, menu, filter, explain
 }

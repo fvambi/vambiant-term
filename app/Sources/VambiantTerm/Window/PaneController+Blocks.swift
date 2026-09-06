@@ -71,6 +71,8 @@ extension PaneController {
             }
         case .menu:
             view.openBlockMenu()
+        case .filter:
+            showFilter(for: block)
         case .rerun:
             // The user's own earlier command, on their explicit request; not
             // model output, so rule 5 (stage, never execute) does not apply.
@@ -83,6 +85,14 @@ extension PaneController {
             NSLog("not available yet: explain block (ai.explain_last_failure, M-AI)")
             NSSound.beep()
         }
+    }
+
+    /// Warp's per-block filter (12 §A11), as a panel over the output text:
+    /// the grid cannot hide rows without lying about what the shell drew.
+    func showFilter(for block: Block) {
+        let output = text(of: block.outputRows)
+        let panel = BlockFilterPanel(title: block.cmdline ?? "block \(block.seq)", lines: output.components(separatedBy: "\n"))
+        panel.present(from: container.window)
     }
 
     /// Text of absolute rows through the daemon; empty when there are none

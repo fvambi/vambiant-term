@@ -154,6 +154,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Typed text in the editor: history ghost text and token colours.
                 pane.container.input.editor.string = "grep -c"
                 pane.container.input.editor.didChangeText()
+                // Hover the second block so its action bar is in the shot.
+                if let hovered = pane.blocks.commands.first, hovered.start >= pane.view.viewportTop {
+                    let scale = pane.view.window?.backingScaleFactor ?? 2
+                    let row = CGFloat(hovered.start - pane.view.viewportTop)
+                    pane.view.updateHover(at: CGPoint(
+                        x: 40, y: pane.view.padding.height + (row + 0.5) * pane.view.renderer.cellSize.height / scale
+                    ))
+                }
+                NSLog("screenshot: hover block %lld, bar hidden %d", pane.view.hoverBlock ?? -1, pane.view.actionsBar.isHidden ? 1 : 0)
                 pane.view.captureNext(to: shot)
                 // The whole window (chrome, chips, editor) through AppKit's
                 // display cache; the Metal grid inside may come out blank.

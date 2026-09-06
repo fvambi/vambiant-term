@@ -192,3 +192,21 @@ struct BlockKeymapTests {
         #expect(k.resolve(KeyChord("[")) == .action(.promptPrevious))
     }
 }
+
+struct BlockFilterTests {
+    let lines = ["error: one", "ok", "Error: two", "ok again", "fine"]
+
+    @Test func plainRegexInvertAndCase() {
+        #expect(BlockFilter(query: "error").apply(to: lines) == [0, 2])
+        #expect(BlockFilter(query: "error", caseSensitive: true).apply(to: lines) == [0])
+        #expect(BlockFilter(query: "^ok", regex: true).apply(to: lines) == [1, 3])
+        #expect(BlockFilter(query: "ok", invert: true).apply(to: lines) == [0, 2, 4])
+        #expect(BlockFilter(query: "(", regex: true).apply(to: lines).isEmpty, "bad regex shows nothing, not everything")
+        #expect(BlockFilter().apply(to: lines) == [0, 1, 2, 3, 4])
+    }
+
+    @Test func contextLinesSurroundMatches() {
+        #expect(BlockFilter(query: "two", context: 1).apply(to: lines) == [1, 2, 3])
+        #expect(BlockFilter(query: "fine", context: 9).apply(to: lines) == [0, 1, 2, 3, 4])
+    }
+}

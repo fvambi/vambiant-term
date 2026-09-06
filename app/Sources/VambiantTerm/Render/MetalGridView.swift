@@ -88,6 +88,10 @@ final class MetalGridView: NSView {
     let blockStatus = NSTextField(labelWithString: "")
     let findBar = FindBar()
     let stickyHeader = StickyHeaderView()
+    let actionsBar = BlockActionsBar()
+    /// The block under the mouse, whose hover toolbar is showing.
+    var hoverBlock: Int64?
+    private var tracking: NSTrackingArea?
     var findState = FindState()
     /// Per-pane override of `[blocks] sticky_header`.
     var stickyHeaderEnabled = true
@@ -192,6 +196,26 @@ final class MetalGridView: NSView {
         link.add(to: .main, forMode: .common)
         displayLink = link
         updateBacking()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking {
+            removeTrackingArea(tracking)
+        }
+        let area = NSTrackingArea(
+            rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self
+        )
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateHover(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        updateHover(at: nil)
     }
 
     override func viewDidChangeBackingProperties() {
