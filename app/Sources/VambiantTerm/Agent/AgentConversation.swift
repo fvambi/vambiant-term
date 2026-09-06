@@ -17,6 +17,10 @@ struct AgentAnswer: Equatable, Sendable {
     /// The model hit `max_tokens`; the answer is cut off and says so.
     var truncated: Bool
     var seconds: Double
+    /// Everything the model said in this run, when tool calls split it
+    /// into segments; `text` is then only the last segment. History
+    /// carries this, the panel shows the segments in place.
+    var transcript: String?
 
     /// Commands the answer proposes: every line of a fenced `sh`/`bash`/
     /// `zsh`/`shell`/untagged block, and `$ `-prefixed lines in prose.
@@ -74,8 +78,50 @@ struct AgentAnswer: Equatable, Sendable {
     }
 }
 
+/// One `run_command` the model asked for (docs/06 §6, Warp's embedded
+/// command block): it runs only after the inbox decides.
+struct AgentToolCall: Equatable, Sendable {
+    enum Status: Equatable, Sendable {
+        case waiting, running
+        case done(exit: Int)
+        case denied(reason: String)
+        case failed(message: String)
+    }
+
+    let id: String
+    var command: String
+    var why: String?
+    var verdictClass: String?
+    var floor: Bool
+    /// `allow`/`ask`/`deny` from the policy engine, `applied` when a rule decided.
+    var decision: String?
+    var applied: Bool
+    var status: Status = .waiting
+    var output: String?
+
+    var statusLine: String {
+        switch status {
+        case .waiting: applied ? "decided by policy" : "waiting for your approval — the card above decides"
+        case .running: "running…"
+        case let .done(exit): exit == 0 ? "exit 0" : "exit \(exit)"
+        case let .denied(reason): "denied: \(reason)"
+        case let .failed(message): "not run: \(message)"
+        }
+    }
+
+    /// `destructive · never auto`, nil when benign or unknown.
+    var label: String? {
+        guard let verdictClass, verdictClass != "benign" else { return nil }
+        return floor ? "\(verdictClass) · never auto" : verdictClass
+    }
+}
+
 enum AgentTurn: Equatable, Sendable {
     case user(String)
+    /// A finished text segment of a run that continued with a tool call.
+    case text(String)
+    /// A command the model asked to run.
+    case tool(AgentToolCall)
     /// A request in flight; `since` drives the "Thinking for Ns" row.
     case thinking(profile: String, since: Date)
     /// Deltas arriving; `partial` is the text so far.
@@ -132,8 +178,62 @@ struct AgentConversation: Equatable, Sendable {
         turns[turns.count - 1] = .streaming(partial: partial + delta, since: since)
     }
 
+    /// The model asked to run a command: the text streamed so far becomes
+    /// a segment, the call goes in, and a thinking row follows for the
+    /// model's next words.
+    mutating func toolRequest(_ call: AgentToolCall) {
+        guard isThinking, let since else { return }
+        if case let .streaming(partial, _) = turns[turns.count - 1], !partial.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            turns[turns.count - 1] = .text(partial)
+        } else {
+            turns.removeLast()
+        }
+        turns.append(.tool(call))
+        turns.append(.thinking(profile: "agent", since: since))
+    }
+
+    /// The command ran, was denied, or could not run.
+    mutating func toolResult(id: String, status: AgentToolCall.Status, command: String?, output: String?) {
+        guard let i = turns.lastIndex(where: {
+            if case let .tool(c) = $0 {
+                c.id == id
+            } else {
+                false
+            }
+        }),
+            case var .tool(call) = turns[i] else { return }
+        call.status = status
+        if let command {
+            call.command = command
+        }
+        call.output = output
+        turns[i] = .tool(call)
+    }
+
+    /// True when the request in flight already ran a tool: the final
+    /// answer then shows only its last segment, the rest is in place.
+    private var hasToolTurnsInFlight: Bool {
+        for turn in turns.reversed() {
+            switch turn {
+            case .user: return false
+            case .tool: return true
+            default: continue
+            }
+        }
+        return false
+    }
+
     mutating func answer(_ answer: AgentAnswer) {
-        replaceThinking(with: .answer(answer))
+        var shown = answer
+        if hasToolTurnsInFlight {
+            shown.transcript = answer.text
+            if case let .streaming(partial, _) = turns.last {
+                shown.text = partial
+            } else {
+                shown.text = ""
+            }
+        }
+        replaceThinking(with: .answer(shown))
     }
 
     mutating func fail(_ message: String) {
@@ -162,9 +262,11 @@ struct AgentConversation: Equatable, Sendable {
             case let .answer(answer):
                 if let question = pending {
                     out.append(AgentHistoryTurn(role: "user", text: question))
-                    out.append(AgentHistoryTurn(role: "assistant", text: answer.text))
+                    out.append(AgentHistoryTurn(role: "assistant", text: answer.transcript ?? answer.text))
                 }
                 pending = nil
+            case .text, .tool:
+                break
             case .thinking, .streaming, .failure:
                 pending = nil
             }
@@ -206,6 +308,8 @@ struct AgentAskParams: Encodable, Sendable {
     let session: String?
     let history: [AgentHistoryTurn]
     var stream = true
+    /// The tool loop: the model may ask to run commands through the inbox.
+    var agent = false
 }
 
 /// The `{ request }` reply of a streaming `ai.ask`.

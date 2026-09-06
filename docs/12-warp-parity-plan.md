@@ -126,7 +126,7 @@ Owner: `vt-policy` (shell parser), `vt-store`, `vtermd`, new `vt-workflows`; app
 | G14 voice | C tier, on-device only, push-to-talk `[agents] voice_key` | manual | `05` |
 | G15 routers | C3.6 gains `[[routes]] when = "complexity:easy" \| "match: <regex on prompt>"` → model; complexity classifier is local (length/keywords) not a model call | provider tests | `04` |
 | G16 active AI | M6 rows C1.1/C1.6/C1.7 | — | — |
-| D2 Agent Mode | **First slice built 2026-09-06** (docs/06 §6 as-built): conversation panel, `⌘↩`/`⌘K`/`⌥E` → `ai.ask` with history, streamed answers, cost/token meters, staged commands. Next: tool loop under `vt-policy` with the approval card, thinking rows, task ticks | Swift model tests; `ai_e2e` history | `06 §6`, `07` |
+| D2 Agent Mode | **First slice built 2026-09-06** (docs/06 §6 as-built): conversation panel, `⌘↩`/`⌘K`/`⌥E` → `ai.ask` with history, streamed answers, cost/token meters, staged commands, **the tool loop through the inbox with the approval card and embedded command blocks**. Next: thinking rows, task ticks, `⌥⌘E` payload view under `vt-policy` with the approval card, thinking rows, task ticks | Swift model tests; `ai_e2e` history | `06 §6`, `07` |
 | D2 ACP pane | If accepted: `vt-acp` client (JSON-RPC over stdio per the ACP spec), conversation pane rendering ACP `session/update` events with the same block renderers as G11 | fixture replays | ADR-0011 |
 
 ## H. Code review panel (M7, 2 weeks, needs D3)

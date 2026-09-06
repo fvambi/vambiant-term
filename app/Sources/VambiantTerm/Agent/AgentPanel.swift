@@ -175,6 +175,11 @@ final class AgentPanel: NSView {
             case let .streaming(partial, _):
                 out.append(body(partial + "▍", theme: theme, font: font))
                 out.append(NSAttributedString(string: "\n", attributes: [.font: small]))
+            case let .text(segment):
+                out.append(body(segment, theme: theme, font: font))
+                out.append(NSAttributedString(string: "\n", attributes: [.font: small]))
+            case let .tool(call):
+                out.append(toolBlock(call, theme: theme, font: font, small: small))
             case let .answer(answer):
                 out.append(body(answer.text, theme: theme, font: font))
                 out.append(NSAttributedString(string: "\n\(answer.footer)\n\n", attributes: [
@@ -186,6 +191,39 @@ final class AgentPanel: NSView {
                 ]))
             }
         }
+        return out
+    }
+
+    /// `▶ command · class` with its status, then up to twelve output lines.
+    private static func toolBlock(_ call: AgentToolCall, theme: Theme, font: NSFont, small: NSFont) -> NSAttributedString {
+        let out = NSMutableAttributedString()
+        let accent = theme.palette[call.label == nil ? 4 : 3].nsColor
+        var head = "▶ \(call.command)"
+        if let label = call.label {
+            head += "  · \(label)"
+        }
+        out.append(NSAttributedString(string: head + "\n", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .semibold), .foregroundColor: accent,
+        ]))
+        if let why = call.why, !why.isEmpty {
+            out.append(NSAttributedString(
+                string: "  \(why)\n",
+                attributes: [.font: small, .foregroundColor: theme.foreground.nsColor.withAlphaComponent(0.7)]
+            ))
+        }
+        out.append(NSAttributedString(string: "  \(call.statusLine)\n", attributes: [
+            .font: small, .foregroundColor: theme.foreground.nsColor.withAlphaComponent(0.55),
+        ]))
+        if let output = call.output, !output.isEmpty {
+            let lines = output.split(separator: "\n", omittingEmptySubsequences: false)
+            let shown = lines.prefix(12)
+                .joined(separator: "\n") + (lines.count > 12 ? "\n… \(lines.count - 12) more lines in the session" : "")
+            out.append(NSAttributedString(string: shown + "\n", attributes: [
+                .font: font, .foregroundColor: theme.foreground.nsColor,
+                .backgroundColor: theme.background.mixed(with: theme.foreground, 0.12).nsColor,
+            ]))
+        }
+        out.append(NSAttributedString(string: "\n", attributes: [.font: small]))
         return out
     }
 

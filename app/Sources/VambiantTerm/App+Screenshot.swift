@@ -114,6 +114,23 @@ extension AppDelegate {
 
     /// The Agent Mode panel mid-answer, then the safety confirm sheet.
     private func scheduleAgentCaptures(pane: PaneController, shot: String) {
+        Timer.scheduledTimer(withTimeInterval: 8.5, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                pane.showAgent()
+                let tools = pane.agentPanel.conversation.turns.compactMap { turn -> String? in
+                    if case let .tool(call) = turn {
+                        return "\(call.command) → \(call.statusLine)"
+                    }
+                    return nil
+                }
+                NSLog(
+                    "screenshot: agent done: %@; tools: %@",
+                    AgentPanel.title(for: pane.agentPanel.conversation),
+                    tools.joined(separator: "; ")
+                )
+                Self.captureAppKit(pane.container.window?.contentView, to: shot + ".agent-done.png")
+            }
+        }
         Timer.scheduledTimer(withTimeInterval: 5.5, repeats: false) { _ in
             MainActor.assumeIsolated {
                 NSLog(
@@ -122,6 +139,10 @@ extension AppDelegate {
                     AgentPanel.title(for: pane.agentPanel.conversation)
                 )
                 Self.captureAppKit(pane.container.window?.contentView, to: shot + ".agent.png")
+                // Allow the agent's command through the card, as a user would.
+                if let item = pane.approvals.first {
+                    pane.decide(item, .allow(updatedCommand: nil))
+                }
                 // The safety confirm: a destructive line from the editor.
                 pane.hideAgent()
                 pane.submit("rm -rf /")

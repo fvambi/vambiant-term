@@ -352,7 +352,7 @@ final class PaneController {
             if let seq = params[path: "seq"]?.doubleValue, let on = params[path: "bookmarked"]?.boolValue {
                 blocks.setBookmark(seq: Int64(seq), on: on)
             }
-        case "ai.chunk", "ai.done", "ai.error":
+        case "ai.chunk", "ai.done", "ai.error", "ai.tool_request", "ai.tool_result":
             handleAgent(event: method, params: params)
         default:
             break

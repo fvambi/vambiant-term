@@ -107,3 +107,62 @@ struct AgentTests {
         #expect(ShellAction.from(id: "ai.explain_last_failure", label: "", milestone: "") == .explainLastFailure)
     }
 }
+
+struct AgentToolTests {
+    private func call(_ id: String, _ command: String) -> AgentToolCall {
+        AgentToolCall(id: id, command: command, why: "to see", verdictClass: "destructive", floor: true, decision: "ask", applied: false)
+    }
+
+    @Test func toolCallsSplitTheStreamedTextAndKeepTheirPlace() {
+        var c = AgentConversation()
+        c.ask("clean up", profile: "route agent")
+        c.request = "r"
+        c.append(delta: "Let me check. ")
+        c.toolRequest(call("t1", "rm -rf ./dist"))
+        #expect(c.turns.count == 4, "\(c.turns)")
+        #expect(c.turns[1] == .text("Let me check. "))
+        if case let .tool(t) = c.turns[2] {
+            #expect(t.statusLine.contains("waiting for your approval"))
+            #expect(t.label == "destructive · never auto")
+        } else {
+            Issue.record("expected the tool turn")
+        }
+        #expect(c.isThinking)
+        c.toolResult(id: "t1", status: .done(exit: 0), command: "rm -rf ./dist", output: "")
+        c.append(delta: "Done.")
+        c.answer(AgentAnswer(
+            text: "Let me check. \n\nDone.", profile: "p", model: "m", inputTokens: 1, outputTokens: 1, costUSD: nil,
+            redactions: 0, truncated: false, seconds: 1
+        ))
+        if case let .answer(a) = c.turns.last {
+            #expect(a.text == "Done.", "only the last segment is shown; the rest is in place")
+            #expect(a.transcript == "Let me check. \n\nDone.")
+        } else {
+            Issue.record("expected the answer")
+        }
+        #expect(c.history.last?.text == "Let me check. \n\nDone.", "history carries the whole run")
+        if case let .tool(t) = c.turns[2] {
+            #expect(t.statusLine == "exit 0")
+        }
+    }
+
+    @Test func deniedAndFailedCallsSayWhy() {
+        var c = AgentConversation()
+        c.ask("x", profile: "route agent")
+        c.toolRequest(call("t1", "sudo rm -rf /"))
+        c.toolResult(id: "t1", status: .denied(reason: "not today"), command: nil, output: nil)
+        c.toolResult(id: "nope", status: .done(exit: 0), command: nil, output: nil)
+        if case let .tool(t) = c.turns[1] {
+            #expect(t.statusLine == "denied: not today")
+        } else {
+            Issue.record("expected the tool turn at 1, got \(c.turns)")
+        }
+        var busy = call("t2", "sleep 1")
+        busy.status = .failed(message: "the session is busy")
+        #expect(busy.statusLine == "not run: the session is busy")
+        var auto = call("t3", "ls")
+        auto.applied = true
+        auto.verdictClass = "benign"
+        #expect(auto.statusLine == "decided by policy" && auto.label == nil)
+    }
+}

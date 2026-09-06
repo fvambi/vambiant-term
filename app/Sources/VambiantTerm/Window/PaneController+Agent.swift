@@ -27,7 +27,7 @@ extension PaneController {
         }
         container.input.editor.string = ""
         container.input.editor.didChangeText()
-        ask(prompt, feature: "ask")
+        ask(prompt, feature: "agent")
     }
 
     /// `ai.explain_last_failure`: the daemon's context already carries the
@@ -50,7 +50,8 @@ extension PaneController {
         }
         showAgent()
         let params = AgentAskParams(
-            prompt: prompt, feature: feature, session: session?.id, history: agentPanel.conversation.history
+            prompt: prompt, feature: feature, session: session?.id, history: agentPanel.conversation.history,
+            agent: feature == "agent"
         )
         let daemon = self.daemon
         // The same shape as `runFind`: the blocking call off the main
@@ -88,6 +89,25 @@ extension PaneController {
             }
         case "ai.error":
             agentPanel.conversation.fail(params[path: "message"]?.stringValue ?? "request failed")
+        case "ai.tool_request":
+            guard let id = params[path: "tool_use"]?.stringValue else { return }
+            agentPanel.conversation.toolRequest(AgentToolCall(
+                id: id, command: params[path: "command"]?.stringValue ?? "", why: params[path: "why"]?.stringValue,
+                verdictClass: params[path: "verdict.class"]?.stringValue, floor: params[path: "floor"] != nil,
+                decision: params[path: "decision"]?.stringValue, applied: params[path: "applied"]?.boolValue ?? false
+            ))
+        case "ai.tool_result":
+            guard let id = params[path: "tool_use"]?.stringValue else { return }
+            let status: AgentToolCall.Status = if params[path: "denied"]?.boolValue == true {
+                .denied(reason: params[path: "reason"]?.stringValue ?? "")
+            } else if let message = params[path: "error"]?.stringValue {
+                .failed(message: message)
+            } else {
+                .done(exit: Int(params[path: "exit"]?.doubleValue ?? -1))
+            }
+            agentPanel.conversation.toolResult(
+                id: id, status: status, command: params[path: "command"]?.stringValue, output: params[path: "output"]?.stringValue
+            )
         default:
             break
         }
