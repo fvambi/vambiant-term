@@ -115,7 +115,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 
 **Exit:** an agent session reads as a structured timeline, not a wall of text.
 
-> **M5 status 2026-09-06:** the block engine and shell integration are built and tested (`vt-core` OSC scanner, `vt-blocks` segmenter, `vt-store` persistence, daemon `session.block`/`session.blocks`, `vterm blocks`, `vt-shell` snippets + injection wired into the daemon), and the app renders command blocks Warp-style over a daemon-owned scrollback viewport (see the item above). Still to build for the exit criterion: block collapse and header details, agent-event rendering in the app timeline, the cost/context meters, the sidebar tree, and the inbox sheet.
+> **M5 status 2026-09-06:** the block engine and shell integration are built and tested (`vt-core` OSC scanner, `vt-blocks` segmenter, `vt-store` persistence, daemon `session.block`/`session.blocks`, `vterm blocks`, `vt-shell` snippets + injection wired into the daemon), and the app renders command blocks Warp-style over a daemon-owned scrollback viewport (see the item above). Still to build for the exit criterion: block collapse and header details, agent-event rendering in the app timeline, the cost/context meters, the sidebar tree, and the inbox sheet. A full Warp feature analysis and the parity plan that extends M5–M9 with two new packages (M5.5 input/shell parity, M10 agent composer) live in `11-warp-feature-inventory.md` and `12-warp-parity-plan.md` (2026-09-06, proposal pending the owner's decisions D1–D6).
 
 ## M-AI (parallel from M1) — Provider layer (3 weeks of effort, spread)
 
