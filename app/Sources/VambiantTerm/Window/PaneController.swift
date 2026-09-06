@@ -49,6 +49,7 @@ final class PaneController {
         container.input.editor.onKeyEquivalent = { [weak self] event in
             self?.view.performKeyEquivalent(with: event) ?? false
         }
+        container.input.editor.historyProvider = { [weak self] prefix in self?.history(prefix: prefix) ?? [] }
         container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
     }
 
@@ -109,6 +110,16 @@ final class PaneController {
         case .unknown:
             break
         }
+    }
+
+    /// `history.search`: distinct command lines newest first. Synchronous
+    /// over the local socket; the limit keeps it a millisecond.
+    func history(prefix: String) -> [String] {
+        struct Params: Encodable {
+            let prefix: String
+            let limit: Int
+        }
+        return (try? daemon.call("history.search", params: Params(prefix: prefix, limit: 50))) ?? []
     }
 
     private func refreshChips() {

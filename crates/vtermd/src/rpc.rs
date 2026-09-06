@@ -304,6 +304,17 @@ impl Handler for Rpc {
                     })?;
                 Ok(serde_json::json!(find_rows(&h, &re, from, to, limit)))
             }
+            method::HISTORY_SEARCH => {
+                let prefix: String = Self::param(req, "prefix").unwrap_or_default();
+                let limit: usize = Self::param(req, "limit").unwrap_or(200);
+                let items = self
+                    .store
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .history(&prefix, limit.min(2000))
+                    .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+                Ok(serde_json::json!(items))
+            }
             method::SESSION_BLOCK_BOOKMARK => {
                 let sid = self.session_id_for(req)?;
                 let seq: i64 = Self::param(req, "seq")?;

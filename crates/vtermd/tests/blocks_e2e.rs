@@ -269,6 +269,19 @@ fn injected_zsh_integration_produces_blocks() {
         );
         std::thread::sleep(Duration::from_millis(100));
     }
+    let hist = c
+        .call(
+            method::HISTORY_SEARCH,
+            Some(serde_json::json!({ "prefix": "false" })),
+        )
+        .unwrap();
+    assert!(
+        hist.as_array()
+            .unwrap()
+            .iter()
+            .any(|h| h.as_str().is_some_and(|s| s.starts_with("false; print"))),
+        "history has the zsh command: {hist}"
+    );
     let histfile = std::fs::read_to_string(&hist_probe).unwrap_or_default();
     let ours = daemon.dir.join("state").join("shell-integration");
     assert!(

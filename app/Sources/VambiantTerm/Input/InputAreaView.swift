@@ -105,6 +105,14 @@ final class InputAreaView: NSView {
         layer?.backgroundColor = theme.background.mixed(with: theme.foreground, 0.04).nsColor.cgColor
         editor.font = font
         editor.textColor = theme.foreground.nsColor
+        editor.tokenColours = [
+            .command: theme.foreground.nsColor,
+            .flag: theme.palette[6].nsColor,
+            .string: theme.palette[3].nsColor,
+            .variable: theme.palette[5].nsColor,
+            .op: theme.foreground.scaled(0.6).nsColor,
+            .comment: theme.foreground.scaled(0.5).nsColor,
+        ]
         editor.insertionPointColor = theme.cursor.nsColor
         hint.textColor = theme.foreground.nsColor.withAlphaComponent(0.5)
         editorHeight.constant = CGFloat(editor.lineCount) * font.boundingRectForFont.height + 8

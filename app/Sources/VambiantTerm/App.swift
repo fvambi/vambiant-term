@@ -151,6 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     pane.view.findState.query, pane.view.findState.summary, sticky, top,
                     pane.blocks.command(at: top)?.seq ?? -1, pane.view.renderer.blockChrome.stickyHeader ? 1 : 0
                 )
+                // Typed text in the editor: history ghost text and token colours.
+                pane.container.input.editor.string = "grep -c"
+                pane.container.input.editor.didChangeText()
                 pane.view.captureNext(to: shot)
                 // The whole window (chrome, chips, editor) through AppKit's
                 // display cache; the Metal grid inside may come out blank.

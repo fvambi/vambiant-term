@@ -79,6 +79,42 @@ impl Store {
         Ok(n == 1)
     }
 
+    /// Distinct command lines across every session, most recent first, that
+    /// start with `prefix` (empty = all). This is the terminal's history:
+    /// richer than the shell's because each entry has an exit and a cwd.
+    pub fn history(&self, prefix: &str, limit: usize) -> Result<Vec<String>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT cmdline FROM blocks \
+                 WHERE kind='command' AND cmdline IS NOT NULL AND cmdline <> '' \
+                 AND substr(cmdline, 1, ?1) = ?2 \
+                 GROUP BY cmdline ORDER BY MAX(seq) DESC LIMIT ?3",
+            )
+            .map_err(|source| StoreError::Query {
+                what: "prepare history",
+                source,
+            })?;
+        let rows = stmt
+            .query_map(
+                params![
+                    i64::try_from(prefix.chars().count()).unwrap_or(i64::MAX),
+                    prefix,
+                    i64::try_from(limit).unwrap_or(i64::MAX)
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|source| StoreError::Query {
+                what: "query history",
+                source,
+            })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|source| StoreError::Query {
+                what: "read history",
+                source,
+            })
+    }
+
     /// Blocks for a session after `after_seq`, oldest first, at most `limit`.
     pub fn blocks(
         &self,
@@ -253,5 +289,20 @@ mod tests {
             !store.set_block_bookmark(9_999, true).unwrap(),
             "unknown seq"
         );
+
+        // History: distinct, most recent first, prefix-filtered, prompts skipped.
+        let c = Block {
+            kind: BlockKind::Command {
+                cmdline: Some("git status".into()),
+                exit: Some(0),
+            },
+            ..b.clone()
+        };
+        store.append_block(&sid, "t3", &c).unwrap();
+        store.append_block(&sid, "t4", &b).unwrap(); // `ls` again: newest
+        assert_eq!(store.history("", 10).unwrap(), vec!["ls", "git status"]);
+        assert_eq!(store.history("gi", 10).unwrap(), vec!["git status"]);
+        assert_eq!(store.history("l", 1).unwrap(), vec!["ls"]);
+        assert!(store.history("zzz", 10).unwrap().is_empty());
     }
 }

@@ -112,6 +112,9 @@ pub mod method {
     /// `{id, query, regex?, case_sensitive?, from?, to?, limit?}` →
     /// `[{row, col, len}]` over absolute rows, oldest first.
     pub const SESSION_FIND: &str = "session.find";
+    /// `{prefix?, limit?}` → `[cmdline]`: distinct command lines across all
+    /// sessions, most recent first (the Warp-mode editor's history).
+    pub const HISTORY_SEARCH: &str = "history.search";
     /// `{id, seq, on}` → `{seq, bookmarked}`; broadcasts
     /// `session.block_changed`.
     pub const SESSION_BLOCK_BOOKMARK: &str = "session.block.bookmark";
