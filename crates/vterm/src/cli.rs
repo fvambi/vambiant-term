@@ -166,6 +166,12 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Themes: import from Warp, Ghostty, Alacritty, iTerm2 or base16.
+    Theme {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: ThemeCmd,
+    },
     /// The egress log: what left the machine, redacted (docs/05 §4.2).
     Egress {
         /// What to do.
@@ -248,6 +254,21 @@ pub enum DaemonCmd {
 }
 
 /// `vterm inbox …`.
+#[derive(Subcommand, Debug)]
+pub enum ThemeCmd {
+    /// Import a theme file into `themes/<name>.toml`.
+    Import {
+        /// The file (`.yaml` from ~/.warp/themes, a Ghostty config, `.toml`, `.itermcolors`, base16 `.yaml`).
+        file: String,
+        /// Name for the theme; defaults to the file name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Force a format: warp | ghostty | alacritty | iterm2 | base16.
+        #[arg(long)]
+        format: Option<String>,
+    },
+}
+
 #[derive(Subcommand, Debug)]
 pub enum EgressCmd {
     /// Recent requests, newest first.

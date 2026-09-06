@@ -176,7 +176,7 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 ## M9 — Polish, packaging, docs (3 weeks)
 
 - [ ] Config hot reload with an error overlay; JSON Schema.
-- [ ] Theme import (Ghostty/iTerm2/Alacritty/base16).
+- [x] Theme import (Ghostty/iTerm2/Alacritty/base16). *(2026-09-06, plus Warp YAML: `vt-config::theme_import`, `config.theme.import`, `vterm theme import`, Settings → Import….)*
 - [ ] Session restore across reboot; layouts.
 - [ ] Onboarding sheet.
 - [ ] Accessibility pass.

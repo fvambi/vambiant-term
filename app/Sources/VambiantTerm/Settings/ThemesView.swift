@@ -95,6 +95,7 @@ struct ThemesView: View {
                             copyName = ""
                         }
                         .disabled(copyName.trimmingCharacters(in: .whitespaces).isEmpty || Self.builtins.contains(copyName))
+                        Button("Import…") { importTheme() }
                     }
                     Text(model.snapshot?.paths.themes ?? "").font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
@@ -102,6 +103,21 @@ struct ThemesView: View {
             .formStyle(.grouped)
         } else {
             Text("Select a theme").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// A theme file from Warp (`~/.warp/themes`), Ghostty, Alacritty,
+    /// iTerm2 or base16, through the daemon's importer.
+    private func importTheme() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".warp/themes")
+        panel.message = "A Warp .yaml, Ghostty config, Alacritty .toml, iTerm2 .itermcolors or base16 .yaml"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if let name = model.importTheme(path: url.path) {
+            selected = name
+            draft = model.snapshot?.themes[name]
         }
     }
 

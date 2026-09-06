@@ -59,6 +59,28 @@ final class ConfigModel {
         perform { try daemon.invoke("config.theme.save", params: ThemeParams(theme: theme)) }
     }
 
+    /// Imports a theme file (Warp, Ghostty, Alacritty, iTerm2, base16);
+    /// returns the saved name.
+    @discardableResult
+    func importTheme(path: String) -> String? {
+        struct Params: Encodable {
+            let path: String
+        }
+        struct Reply: Decodable {
+            let name: String
+            let warnings: [String]
+        }
+        var imported: String?
+        perform {
+            let reply: Reply = try daemon.call("config.theme.import", params: Params(path: path))
+            imported = reply.name
+            if !reply.warnings.isEmpty {
+                lastError = "imported \(reply.name) with warnings: " + reply.warnings.joined(separator: "; ")
+            }
+        }
+        return imported
+    }
+
     func revealConfig() {
         guard let p = snapshot?.paths.config else { return }
         if !FileManager.default.fileExists(atPath: p) {

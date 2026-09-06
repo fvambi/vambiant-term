@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use clap::Parser;
 
-use cli::{Cli, Command, ConfigCmd, DaemonCmd, EgressCmd, InboxCmd};
+use cli::{Cli, Command, ConfigCmd, DaemonCmd, EgressCmd, InboxCmd, ThemeCmd};
 
 fn socket(cli: &Cli) -> PathBuf {
     cli.socket
@@ -190,6 +190,7 @@ fn main() {
         }
         Command::Inbox { cmd } => inbox(&cli, cmd),
         Command::Egress { cmd } => egress(&cli, cmd),
+        Command::Theme { cmd } => theme(&cli, cmd),
         Command::Events {
             session,
             after,
@@ -399,6 +400,38 @@ fn classify(cli: &Cli, command: &str, session: Option<&str>, cwd: Option<&str>, 
     if let Some(floor) = v.get("floor") {
         let reason = floor.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
         println!("  never auto-approved: {reason}");
+    }
+}
+
+fn theme(cli: &Cli, cmd: &ThemeCmd) {
+    let mut c = client(cli);
+    match cmd {
+        ThemeCmd::Import { file, name, format } => {
+            let path =
+                std::fs::canonicalize(file).unwrap_or_else(|_| std::path::PathBuf::from(file));
+            let mut params = serde_json::json!({ "path": path.display().to_string() });
+            if let Some(n) = name {
+                params["name"] = serde_json::Value::String(n.clone());
+            }
+            if let Some(f) = format {
+                params["format"] = serde_json::Value::String(f.clone());
+            }
+            let v = c
+                .call(vt_proto::session::method::CONFIG_THEME_IMPORT, Some(params))
+                .unwrap_or_else(|e| fail(e));
+            println!(
+                "imported `{}` → {}",
+                v["name"].as_str().unwrap_or("?"),
+                v["path"].as_str().unwrap_or("?")
+            );
+            for w in v["warnings"].as_array().into_iter().flatten() {
+                println!("  warning: {}", w.as_str().unwrap_or(""));
+            }
+            println!(
+                "use it: vterm config set theme.name {}",
+                v["name"].as_str().unwrap_or("?")
+            );
+        }
     }
 }
 

@@ -351,3 +351,5 @@ success  = "#98c379"
 ```
 
 Imported themes are contrast-checked; a failure produces a warning, not a rejection.
+
+> **As built (2026-09-06):** `vterm theme import <file> [--name] [--format warp|ghostty|alacritty|iterm2|base16]`, `config.theme.import`, and Settings → Themes → Import… (opens in `~/.warp/themes`). Warp YAML (`accent` becomes the cursor and UI accent; selection is a background/foreground blend since Warp has none), Ghostty (`palette = N=…`, `cursor-color`, `selection-background`), Alacritty TOML, iTerm2 `.itermcolors`, base16 YAML (the standard shell mapping). The first-run scan and Alacritty's legacy YAML are not built.

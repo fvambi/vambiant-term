@@ -142,6 +142,9 @@ pub mod method {
     pub const CONFIG_KEYMAP_SET: &str = "config.keymap.set";
     /// `{ theme }` → path written under `themes/`.
     pub const CONFIG_THEME_SAVE: &str = "config.theme.save";
+    /// `{ path? | text?, filename?, name?, format? } -> { path, name, warnings }`:
+    /// imports a Warp/Ghostty/Alacritty/iTerm2/base16 theme into `themes/`.
+    pub const CONFIG_THEME_IMPORT: &str = "config.theme.import";
     /// Re-read the files now → same shape as `config.get`.
     pub const CONFIG_RELOAD: &str = "config.reload";
 }

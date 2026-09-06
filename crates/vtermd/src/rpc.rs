@@ -483,6 +483,57 @@ impl Handler for Rpc {
                     .map_err(|e| RpcError::new(RpcError::INVALID_PARAMS, e.to_string()))?;
                 serde_json::to_value(resolved).map_err(|e| internal(&e))
             }
+            method::CONFIG_THEME_IMPORT => {
+                let config = self
+                    .registry
+                    .config()
+                    .ok_or_else(|| RpcError::new(RpcError::INTERNAL, "config not loaded"))?;
+                let path: Option<String> = Self::param(req, "path").ok();
+                let text: Option<String> = Self::param(req, "text").ok();
+                let name: String = Self::param(req, "name").unwrap_or_default();
+                let format: Option<String> = Self::param(req, "format").ok();
+                let (text, filename) = match (text, &path) {
+                    (Some(t), _) => (
+                        t,
+                        Self::param::<String>(req, "filename").unwrap_or_default(),
+                    ),
+                    (None, Some(p)) => (
+                        std::fs::read_to_string(p).map_err(|e| {
+                            RpcError::new(RpcError::INVALID_PARAMS, format!("cannot read {p}: {e}"))
+                        })?,
+                        p.clone(),
+                    ),
+                    (None, None) => {
+                        return Err(RpcError::new(
+                            RpcError::INVALID_PARAMS,
+                            "give `path` or `text`",
+                        ));
+                    }
+                };
+                let format = match format.as_deref() {
+                    None => None,
+                    Some("warp") => Some(vt_config::theme_import::Format::WarpYaml),
+                    Some("ghostty") => Some(vt_config::theme_import::Format::Ghostty),
+                    Some("alacritty") => Some(vt_config::theme_import::Format::Alacritty),
+                    Some("iterm2") => Some(vt_config::theme_import::Format::Iterm2),
+                    Some("base16") => Some(vt_config::theme_import::Format::Base16),
+                    Some(other) => {
+                        return Err(RpcError::new(
+                            RpcError::INVALID_PARAMS,
+                            format!(
+                                "unknown format `{other}` (warp|ghostty|alacritty|iterm2|base16)"
+                            ),
+                        ));
+                    }
+                };
+                let theme = vt_config::theme_import::import(&text, &filename, &name, format)
+                    .map_err(|e| RpcError::new(RpcError::INVALID_PARAMS, e.to_string()))?;
+                let problems = theme.warnings();
+                let saved = config
+                    .save_theme(&theme)
+                    .map_err(|e| RpcError::new(RpcError::INVALID_PARAMS, e.to_string()))?;
+                Ok(serde_json::json!({ "path": saved, "name": theme.name, "warnings": problems }))
+            }
             method::CONFIG_THEME_SAVE => {
                 let config = self
                     .registry
