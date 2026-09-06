@@ -10,6 +10,8 @@ final class PaneView: NSView {
     let input = InputAreaView()
     /// The approval card for this session's waiting agent, above the rest.
     let approval = ApprovalCard()
+    /// What a supervised agent is doing (12 §G11), above the card.
+    let activity = AgentActivityView()
     let agent = AgentPanel()
     /// Share of the pane the conversation takes while open.
     static let agentShare: CGFloat = 0.45
@@ -24,6 +26,7 @@ final class PaneView: NSView {
         self.grid = grid
         super.init(frame: .zero)
         addSubview(grid)
+        addSubview(activity)
         addSubview(approval)
         addSubview(agent)
         addSubview(input)
@@ -52,6 +55,12 @@ final class PaneView: NSView {
         approval.frame = CGRect(
             x: 8, y: bounds.height - inputHeight - agentHeight - cardHeight, width: bounds.width - 16, height: cardHeight - 6
         )
-        grid.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - inputHeight - agentHeight - cardHeight)
+        let activityHeight = activity.isHidden ? 0 : AgentActivityView.height
+        activity.frame = CGRect(
+            x: 0, y: bounds.height - inputHeight - agentHeight - cardHeight - activityHeight, width: bounds.width, height: activityHeight
+        )
+        grid.frame = CGRect(
+            x: 0, y: 0, width: bounds.width, height: bounds.height - inputHeight - agentHeight - cardHeight - activityHeight
+        )
     }
 }

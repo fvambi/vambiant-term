@@ -65,6 +65,14 @@ final class PaneController {
     var onSyncInput: ((SyncInput) -> Void)?
     /// The session's name as last reported; the record's is the fallback.
     var sessionName: String?
+    /// The supervised agent's activity, from `agent.event` (12 §G11).
+    var activity = AgentActivity() {
+        didSet {
+            container.activity.show(activity)
+            container.needsLayout = true
+        }
+    }
+
     /// Pending approvals for this session, oldest first (`inbox.changed`).
     var approvals: [InboxItem] = [] {
         didSet {
@@ -98,6 +106,7 @@ final class PaneController {
         wireInbox()
         wireLinks()
         wireAppActions()
+        container.activity.onOpenLog = { [weak self] in self?.showActivityLog() }
     }
 
     // MARK: Warp-mode input
@@ -112,6 +121,7 @@ final class PaneController {
         container.input.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
         container.agent.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
         container.approval.apply(theme: view.renderer.theme)
+        container.activity.apply(theme: view.renderer.theme)
         refreshChips()
     }
 

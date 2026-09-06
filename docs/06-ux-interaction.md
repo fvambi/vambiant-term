@@ -77,6 +77,7 @@ A block is one command (from OSC 133) or one agent event. Rendering:
 - **Collapsed by default** when output exceeds N lines; the header stays visible.
 - Header: exit code chip, duration, cwd if it differs from the pane's, and a kebab menu (copy command / copy output / rerun / explain / share as text).
 - **Thinking blocks collapsed**, tool calls collapsed with a one-line summary, diffs expanded.
+  > **As built (agent activity, 2026-09-06):** for a supervised agent's session the pane shows a strip above its input area: the tool call in flight (`⚙ Bash · cargo test`), else thinking, else the last result (`✔ Edit · …/src/main.rs · 1.2s`), with `TodoWrite`'s progress on the second line; clicking it opens the event log. Events are not blocks in the grid yet.
 - Failed blocks get a subtle left border and an `⌥E explain` affordance in the gutter — not a popup, not a banner.
 - Selection is semantic: clicking a block's header selects the whole block; `⌘⇧↑` selects the previous block.
   > **As built (links, 2026-09-06):** the URL or file path under the pointer is underlined with a pointing hand; `⌘`-click opens a URL in the browser and a file in `[editor] program` (`code -g path:line:col`, `zed path:line`, `idea --line N`, `vim +N`, else the bare path), or in the default app when no editor is set. `path:line:col` forms are read; relative paths resolve against the pane's cwd; a missing file says so in the hint line.

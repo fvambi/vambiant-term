@@ -63,6 +63,19 @@ extension PaneController {
         }
     }
 
+    /// The agent's event log (12 §G11), newest last.
+    func showActivityLog() {
+        guard let window = container.window else { return }
+        let sheet = (NSApp.delegate as? AppDelegate)?.payloadSheet ?? TextSheet()
+        let files = activity.files.isEmpty ? "" : "files: " + activity.files.joined(separator: ", ")
+        sheet.show(
+            title: "Agent activity — \(title)",
+            header: [activity.headline, activity.taskLine, files].compactMap(\.self).filter { !$0.isEmpty }.joined(separator: "  ·  "),
+            body: activity.log.joined(separator: "\n"),
+            over: window
+        )
+    }
+
     func openHistorySearch() {
         guard let controller = windowController else { return }
         (NSApp.delegate as? AppDelegate)?.showPalette(for: controller, pane: self, query: "h:")

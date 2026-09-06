@@ -42,6 +42,10 @@ extension PaneController {
             }
         case "ai.chunk", "ai.done", "ai.error", "ai.tool_request", "ai.tool_result":
             handleAgent(event: method, params: params)
+        case "agent.event":
+            if let event = params[path: "event"] {
+                activity.apply(event)
+            }
         default:
             break
         }
