@@ -3,6 +3,7 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:   # runs `full` on demand
   schedule:
     - cron: "17 3 * * *"   # nightly
 env:
@@ -27,7 +28,7 @@ jobs:
       - run: mise exec -- rustup component add rustfmt clippy
       - run: mise run ci-fast
   full:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
