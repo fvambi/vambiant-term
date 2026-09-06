@@ -9,6 +9,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     let daemon: DaemonClient
     let renderer: GridRenderer
     private(set) var container: SplitContainer!
+    private let sidebar = SidebarView()
+    private let split = NSSplitView()
+    private var diffRefresh: Date = .distantPast
     static let tabbingIdentifier = "com.vambiant.term.main"
 
     init(daemon: DaemonClient, renderer: GridRenderer) {
@@ -37,11 +40,24 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         let first = makePane()
         container = SplitContainer(initial: first)
-        container.onFocusChange = { [weak self] pane in self?.window?.title = pane.title }
-        window.contentView = container
+        container.onFocusChange = { [weak self] _ in self?.refreshSidebar() }
+        split.isVertical = true
+        split.dividerStyle = .thin
+        split.autoresizingMask = [.width, .height]
+        split.addArrangedSubview(sidebar)
+        split.addArrangedSubview(container)
+        split.setHoldingPriority(.defaultLow + 1, forSubviewAt: 0)
+        sidebar.widthAnchor.constraint(equalToConstant: SidebarView.width).isActive = true
+        sidebar.isHidden = true
+        sidebar.onSelect = { [weak self] id in
+            guard let self, let pane = container.panes.first(where: { ObjectIdentifier($0) == id }) else { return }
+            container.focus(pane)
+        }
+        window.contentView = split
         window.center()
-        container.layoutSubtreeIfNeeded()
+        split.layoutSubtreeIfNeeded()
         first.focus()
+        applyTheme()
         // The view has a size now, so the session can be created at it.
         first.start(cwd: NSHomeDirectory(), cols: max(first.view.cols, 80), rows: max(first.view.rows, 24))
         window.title = first.title
@@ -66,6 +82,45 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     func applyTheme() {
         window?.appearance = Self.appearance(for: renderer.theme)
         window?.backgroundColor = renderer.theme.background.nsColor
+        sidebar.apply(theme: renderer.theme)
+    }
+
+    @objc func toggleSidebar(_ sender: Any?) {
+        sidebar.isHidden.toggle()
+        split.adjustSubviews()
+        refreshSidebar()
+    }
+
+    /// The window title is the focused pane's cwd (Warp's tab title) and
+    /// the sidebar lists every pane with its metadata. Diff totals are
+    /// probed at most every three seconds per refresh, off the main thread.
+    func refreshSidebar() {
+        let focused = container.focused
+        window?.title = focused?.displayTitle ?? "Vambiant Term"
+        guard !sidebar.isHidden else { return }
+        let sessions = container.panes.map { p in
+            SidebarSession(
+                id: ObjectIdentifier(p), name: p.title, cwd: p.cwd, branch: p.branch,
+                lastCommand: p.blocks.commands.last?.cmdline, state: p.sessionState, agent: p.agentKind,
+                diff: p.diffStats, focused: p === focused
+            )
+        }
+        sidebar.update(rows: SidebarModel.rows(for: sessions, repoRoot: GitProbe.repoRoot(for:)))
+        guard Date().timeIntervalSince(diffRefresh) > 3 else { return }
+        diffRefresh = Date()
+        for pane in container.panes {
+            guard let cwd = pane.cwd else { continue }
+            GitProbe.diffStats(for: cwd) { [weak self, weak pane] stats in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let pane, pane.diffStats?.added != stats?.added || pane.diffStats?.removed != stats?.removed
+                        else { return }
+                        pane.diffStats = stats
+                        self?.refreshSidebar()
+                    }
+                }
+            }
+        }
     }
 
     private func makePane() -> PaneController {
@@ -78,6 +133,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         pane.view.onDisconnected = { [weak self] in
             self?.window?.title = "\(self?.window?.title ?? "") — daemon connection lost"
         }
+        pane.onChange = { [weak self] in self?.refreshSidebar() }
         return pane
     }
 
@@ -116,7 +172,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             pane.view.scroll(step)
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
-             .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle:
+             .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -142,6 +198,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .findNext: pane.findStep(forward: true)
         case .findPrevious: pane.findStep(forward: false)
         case .stickyHeaderToggle: pane.view.toggleStickyHeader(nil)
+        case .sidebarToggle: toggleSidebar(nil)
         case let .block(blockAction):
             if let block = pane.view.selectedBlock.flatMap(pane.blocks.command(seq:)) {
                 pane.perform(blockAction, on: block)

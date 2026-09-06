@@ -73,3 +73,53 @@ struct BlockHeaderTests {
         #expect(classic.allSatisfy { $0.header == nil })
     }
 }
+
+struct SidebarModelTests {
+    private func session(_ n: Int, cwd: String?, cmd: String? = nil, state: String? = nil) -> SidebarSession {
+        SidebarSession(
+            id: ObjectIdentifier(NSNumber(value: n)), name: "s\(n)", cwd: cwd, branch: nil, lastCommand: cmd,
+            state: state, agent: nil, diff: nil, focused: false
+        )
+    }
+
+    @Test func groupsByRepoWithScratchLast() {
+        let s = [
+            session(1, cwd: "/tmp/other"),
+            session(2, cwd: "/r/app/src", cmd: "cargo test"),
+            session(3, cwd: "/r/app"),
+            session(4, cwd: "/r/web"),
+        ]
+        let rows = SidebarModel.rows(for: s) { cwd in
+            cwd.hasPrefix("/r/app") ? "/r/app" : cwd.hasPrefix("/r/web") ? "/r/web" : nil
+        }
+        #expect(rows.count == 7)
+        #expect(rows[0] == .repo(name: "app", path: "/r/app"))
+        #expect(rows[3] == .repo(name: "web", path: "/r/web"))
+        #expect(rows[5] == .repo(name: "scratch", path: nil))
+        if case let .session(x) = rows[1] {
+            #expect(x.title == "cargo test", "the last command is the title")
+        }
+    }
+
+    @Test func filterKeepsMatchingSessionsWithTheirRepo() {
+        let sessions = [session(1, cwd: "/r/app", cmd: "npm test"), session(2, cwd: "/r/app", cmd: "vim")]
+        let rows = SidebarModel.rows(for: sessions) { _ in "/r/app" }
+        let f = SidebarModel.filter(rows, query: "NPM")
+        #expect(f.count == 2)
+        #expect(SidebarModel.filter(rows, query: "zzz").isEmpty)
+        #expect(SidebarModel.filter(rows, query: "  ") == rows)
+    }
+
+    @Test func glyphsAndDiffText() {
+        var s = session(1, cwd: nil, state: "awaiting_input")
+        #expect(s.stateGlyph == "✋" && s.stateLabel == "waiting for you")
+        #expect(session(2, cwd: nil, state: "tool_running").stateGlyph == "⚙")
+        #expect(session(3, cwd: nil).stateGlyph == "○")
+        s = SidebarSession(
+            id: s.id, name: s.name, cwd: nil, branch: nil, lastCommand: nil, state: nil, agent: nil, diff: (34, 9), focused: false
+        )
+        #expect(s.diffText == "+34 -9")
+        #expect(GitProbe.diffStats(numstat: "3\t1\ta.rs\n-\t-\tbin.png\n10\t2\tb.rs\n") == (13, 3))
+        #expect(GitProbe.diffStats(numstat: "") == (0, 0))
+    }
+}

@@ -24,6 +24,13 @@ final class PaneController {
     private(set) var phase: PromptPhase = .unknown
     private(set) var cwd: String?
     private(set) var branch: String?
+    /// Daemon session state and agent kind, from `session.changed`.
+    private(set) var sessionState: String?
+    private(set) var agentKind: String?
+    /// Diff totals for the sidebar, refreshed by the window.
+    var diffStats: (added: Int, removed: Int)?
+    /// Anything the sidebar or title shows changed.
+    var onChange: (() -> Void)?
     private(set) var session: SessionInfo?
     private(set) var viewer: SessionViewer?
     private(set) var lastError: String?
@@ -131,6 +138,15 @@ final class PaneController {
         cwd = path
         branch = GitProbe.branch(for: path)
         refreshChips()
+        onChange?()
+    }
+
+    /// Warp's tab title: the cwd, else the session name.
+    var displayTitle: String {
+        if let cwd {
+            return GitProbe.abbreviated(cwd)
+        }
+        return title
     }
 
     // MARK: Find
@@ -229,10 +245,12 @@ final class PaneController {
             if view.cols > 0, (view.cols, view.rows) != (info.cols, info.rows) {
                 v.resize(cols: view.cols, rows: view.rows)
             }
+            sessionState = info.state
             if let cwd = info.cwd {
                 setCwd(cwd)
             }
             loadBlocks()
+            onChange?()
         } catch {
             lastError = "cannot attach to \(info.id): \(error)"
             NSLog("%@", lastError!)
@@ -296,7 +314,12 @@ final class PaneController {
             if var block = Block.parse(item: params) {
                 block.cwd = cwd
                 blocks.append(block)
+                onChange?()
             }
+        case "session.changed":
+            sessionState = params[path: "state"]?.stringValue
+            agentKind = params[path: "agent"]?.stringValue
+            onChange?()
         case "session.event" where params[path: "event.kind"]?.stringValue == "blocks_degraded":
             blocks.degraded = params[path: "event.reason"]?.stringValue ?? "shell-integration marks are corrupted"
         case "session.event" where params[path: "event.kind"]?.stringValue == "prompt":

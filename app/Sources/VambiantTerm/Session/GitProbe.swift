@@ -51,6 +51,60 @@ enum GitProbe {
         return nil
     }
 
+    /// The main repository root for `cwd`: the directory holding `.git`,
+    /// or for a worktree the main repository the worktree belongs to
+    /// (`<gitdir>/commondir`). Nil outside a repository.
+    static func repoRoot(for cwd: String) -> String? {
+        guard let gitDir = gitDirectory(startingAt: cwd) else { return nil }
+        let common = gitDir + "/commondir"
+        if let rel = try? String(contentsOfFile: common, encoding: .utf8) {
+            let target = rel.trimmingCharacters(in: .whitespacesAndNewlines)
+            let base = URL(fileURLWithPath: gitDir)
+            let main = target.hasPrefix("/") ? URL(fileURLWithPath: target) : base.appendingPathComponent(target)
+            return main.standardizedFileURL.deletingLastPathComponent().path
+        }
+        return URL(fileURLWithPath: gitDir).deletingLastPathComponent().path
+    }
+
+    /// Lines added and removed from `git diff --numstat` output.
+    static func diffStats(numstat: String) -> (added: Int, removed: Int) {
+        var added = 0
+        var removed = 0
+        for line in numstat.split(separator: "\n") {
+            let cols = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+            guard cols.count >= 2 else { continue }
+            added += Int(cols[0]) ?? 0 // "-" for binary files → 0
+            removed += Int(cols[1]) ?? 0
+        }
+        return (added, removed)
+    }
+
+    /// Runs `git diff --numstat` in `cwd` off the main thread and reports
+    /// the totals; nil when git is unavailable or `cwd` is not a repo.
+    static func diffStats(for cwd: String, completion: @escaping @Sendable ((added: Int, removed: Int)?) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            p.arguments = ["git", "-C", cwd, "diff", "--numstat"]
+            let out = Pipe()
+            p.standardOutput = out
+            p.standardError = FileHandle.nullDevice
+            do {
+                try p.run()
+            } catch {
+                completion(nil)
+                return
+            }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0 else {
+                completion(nil)
+                return
+            }
+            completion(diffStats(numstat: String(bytes: data, encoding: .utf8) ?? ""))
+        }
+    }
+
     /// `~/code/app` for a path under the home directory.
     static func abbreviated(_ path: String) -> String {
         let home = NSHomeDirectory()

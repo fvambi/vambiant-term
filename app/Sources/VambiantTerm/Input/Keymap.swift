@@ -24,6 +24,7 @@ enum ShellAction: Equatable, Sendable {
     case clearScrollback
     case findOpen, findNext, findPrevious
     case stickyHeaderToggle
+    case sidebarToggle
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -74,6 +75,7 @@ enum ShellAction: Equatable, Sendable {
         "find.next": .findNext,
         "find.previous": .findPrevious,
         "block.sticky_toggle": .stickyHeaderToggle,
+        "sidebar.toggle": .sidebarToggle,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),
@@ -165,6 +167,7 @@ struct Keymap: Sendable {
             KeyChord("f", command: true): .findOpen,
             KeyChord("g", command: true): .findNext,
             KeyChord("g", command: true, shift: true): .findPrevious,
+            KeyChord("\\", command: true): .sidebarToggle,
             KeyChord("pageup", shift: true): .scroll(.pageUp),
             KeyChord("pagedown", shift: true): .scroll(.pageDown),
             KeyChord("home", shift: true): .scroll(.top),

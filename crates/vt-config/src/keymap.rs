@@ -229,6 +229,7 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
         "Toggle the sticky command header in this pane",
         "M5",
     ),
+    ("sidebar.toggle", "Show or hide the sidebar", "M5"),
     (
         "block.copy_command",
         "Copy the selected block's command",
@@ -292,6 +293,7 @@ pub const MACOS: &[(&str, &str)] = &[
     ("shift+home", "scrollback.top"),
     ("shift+end", "scrollback.bottom"),
     ("cmd+,", "settings.open"),
+    ("cmd+\\", "sidebar.toggle"),
 ];
 
 /// docs/06 §7, tmux column (keys after the prefix).

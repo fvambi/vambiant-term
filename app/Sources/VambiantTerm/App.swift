@@ -163,6 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ))
                 }
                 NSLog("screenshot: hover block %lld, bar hidden %d", pane.view.hoverBlock ?? -1, pane.view.actionsBar.isHidden ? 1 : 0)
+                // The sidebar, so the window shot shows Warp's vertical tabs.
+                (self.windows.first)?.toggleSidebar(nil)
                 pane.view.captureNext(to: shot)
                 // The whole window (chrome, chips, editor) through AppKit's
                 // display cache; the Metal grid inside may come out blank.
@@ -235,9 +237,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configModel.reload()
             return
         }
-        guard method == "session.block" || method == "session.event",
-              let data = params.data(using: .utf8),
-              let json = try? JSONDecoder().decode(JSONValue.self, from: data)
+        guard method == "session.block" || method == "session.event" || method == "session.changed"
+            || method == "session.block_changed",
+            let data = params.data(using: .utf8),
+            let json = try? JSONDecoder().decode(JSONValue.self, from: data)
         else { return }
         for pane in windows.flatMap(\.container.panes) {
             pane.handle(event: method, params: json)
@@ -357,6 +360,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         blocks.submenu = blocksMenu
         main.addItem(blocks)
+
+        let view = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(TerminalWindowController.toggleSidebar(_:)), keyEquivalent: "")
+        view.submenu = viewMenu
+        main.addItem(view)
 
         let window = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
