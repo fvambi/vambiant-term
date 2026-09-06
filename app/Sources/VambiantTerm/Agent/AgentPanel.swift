@@ -35,6 +35,8 @@ final class AgentPanel: NSView {
         super.init(frame: frame)
         wantsLayer = true
         title.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hint.font = NSFont.systemFont(ofSize: 11)
         close.isBordered = false
         close.font = NSFont.systemFont(ofSize: 11)
@@ -60,6 +62,7 @@ final class AgentPanel: NSView {
         }
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: hint.leadingAnchor, constant: -10),
             title.centerYAnchor.constraint(equalTo: topAnchor, constant: Self.headerHeight / 2),
             close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             close.centerYAnchor.constraint(equalTo: title.centerYAnchor),

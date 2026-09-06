@@ -127,6 +127,7 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 | Detach session | `⌘⇧D` | `<prefix> d` |
 | Session list | `⌘K` then `>sessions` | `<prefix> s` |
 | **Approval inbox** | `⌘⇧A` | `<prefix> a` |
+| Notifications mailbox | `⌘⇧M` | `<prefix> m` |
 | Next pending approval | `⌘⇧↩` | `<prefix> A` |
 | Command palette | `⌘⇧P` | `<prefix> :` |
 | ⌘K assistant | `⌘K` | `<prefix> k` |
@@ -171,6 +172,8 @@ Off by default except for `awaiting_input`, which is the entire point.
 | Watchdog: agent idle mid-task | off | In-app badge |
 
 Respects Focus modes. Notifications are coalesced per session — three approvals in ten seconds is one notification saying "3 approvals".
+
+> **As built (2026-09-06):** every event becomes a note in the app's **mailbox** (`⌘⇧M`, `<prefix> m`, Agent → Notifications…: All / Unread / Errors, `j`/`k`/`↑`/`↓`, `↩` opens the session, `⎋` closes, mark all read; capped at 200, coalesced per session and kind within `coalesce_window_ms` — "3 approvals waiting"). Where a note goes follows this table: a finished command over `long_command_ms` toasts when its pane is not the focused one of the key window and goes to Notification Center when the app is not frontmost; an agent that stopped follows `agent_finished`; a crash always shows; a new approval toasts when its pane is off screen (the daemon posts the Notification Center entry for approvals itself, so `vterm`-only users get it too — the app does not post a second one); Agent Mode's end goes to Notification Center only when the app is in the background. Toasts: at most two, top right, six seconds, hover pauses, click focuses the session. Notification Center entries are plain (no Allow/Deny buttons yet) and only from the bundled app. Budget and watchdog rows are not built.
 
 ## 9. Onboarding
 

@@ -29,6 +29,8 @@ final class ApprovalCard: NSView {
         verdict.font = NSFont.systemFont(ofSize: 11)
         verdict.maximumNumberOfLines = 2
         why.font = NSFont.systemFont(ofSize: 10)
+        why.lineBreakMode = .byTruncatingTail
+        why.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         for (button, action) in [(allow, #selector(allowAction(_:))), (deny, #selector(denyAction(_:))), (
             more,
             #selector(moreAction(_:))
@@ -53,6 +55,7 @@ final class ApprovalCard: NSView {
             verdict.trailingAnchor.constraint(equalTo: body.trailingAnchor),
             verdict.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 3),
             why.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            why.trailingAnchor.constraint(lessThanOrEqualTo: allow.leadingAnchor, constant: -8),
             why.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
             more.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             more.centerYAnchor.constraint(equalTo: why.centerYAnchor),

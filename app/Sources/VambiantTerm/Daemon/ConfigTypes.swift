@@ -205,6 +205,21 @@ struct ShellEditor: Decodable, Equatable, Sendable {
     var program: String
 }
 
+struct ShellNotifications: Decodable, Equatable, Sendable {
+    var awaitingInput: Bool
+    var agentFinished: String
+    var agentCrashed: Bool
+    var longCommandMs: Int
+    var coalesceWindowMs: Int
+    enum CodingKeys: String, CodingKey {
+        case awaitingInput = "awaiting_input"
+        case agentFinished = "agent_finished"
+        case agentCrashed = "agent_crashed"
+        case longCommandMs = "long_command_ms"
+        case coalesceWindowMs = "coalesce_window_ms"
+    }
+}
+
 struct ShellConfig: Decodable, Equatable, Sendable {
     var font: ShellFont
     var theme: ShellThemeRef
@@ -217,6 +232,7 @@ struct ShellConfig: Decodable, Equatable, Sendable {
     var terminal: ShellTerminal?
     /// Absent on daemons older than `[editor]`.
     var editor: ShellEditor?
+    var notifications: ShellNotifications?
 }
 
 struct SetParams: Encodable {

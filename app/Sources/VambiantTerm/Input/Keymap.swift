@@ -28,6 +28,7 @@ enum ShellAction: Equatable, Sendable {
     case paletteOpen
     case askAgent, explainLastFailure
     case inboxOpen, inboxNext
+    case mailboxOpen
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -84,6 +85,7 @@ enum ShellAction: Equatable, Sendable {
         "ai.explain_last_failure": .explainLastFailure,
         "inbox.open": .inboxOpen,
         "inbox.next_pending": .inboxNext,
+        "mailbox.open": .mailboxOpen,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),
@@ -181,6 +183,7 @@ struct Keymap: Sendable {
             KeyChord("home", shift: true): .scroll(.top),
             KeyChord("end", shift: true): .scroll(.bottom),
             KeyChord("a", command: true, shift: true): .inboxOpen,
+            KeyChord("m", command: true, shift: true): .mailboxOpen,
             KeyChord("p", command: true, shift: true): .paletteOpen,
             KeyChord("k", command: true): .askAgent,
         ]

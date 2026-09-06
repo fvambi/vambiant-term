@@ -1434,8 +1434,11 @@ dependencies = [
 name = "vt-policy"
 version = "0.0.0"
 dependencies = [
+ "regex",
  "serde",
+ "serde_json",
  "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -1528,6 +1531,7 @@ dependencies = [
  "vt-core",
  "vt-ffi",
  "vt-ipc",
+ "vt-policy",
  "vt-proto",
  "vt-pty",
  "vt-redact",

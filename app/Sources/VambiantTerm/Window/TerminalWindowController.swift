@@ -10,6 +10,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     let renderer: GridRenderer
     private(set) var container: SplitContainer!
     private let sidebar = SidebarView()
+    /// Toasts over everything (docs/06 §8), top right.
+    let toasts = ToastStack()
     private let split = NSSplitView()
     private var diffRefresh: Date = .distantPast
     static let tabbingIdentifier = "com.vambiant.term.main"
@@ -42,6 +44,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         container = SplitContainer(initial: first)
         container.onFocusChange = { [weak self] _ in self?.refreshSidebar() }
         split.isVertical = true
+        split.arrangesAllSubviews = false // the toast layer is an overlay, not a column
         split.dividerStyle = .thin
         split.autoresizingMask = [.width, .height]
         split.addArrangedSubview(sidebar)
@@ -54,6 +57,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             container.focus(pane)
         }
         window.contentView = split
+        toasts.frame = split.bounds
+        toasts.autoresizingMask = [.width, .height]
+        split.addSubview(toasts, positioned: .above, relativeTo: nil)
+        toasts.onOpen = { note in (NSApp.delegate as? AppDelegate)?.open(note: note) }
         window.center()
         split.layoutSubtreeIfNeeded()
         first.focus()
@@ -83,6 +90,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         window?.appearance = Self.appearance(for: renderer.theme)
         window?.backgroundColor = renderer.theme.background.nsColor
         sidebar.apply(theme: renderer.theme)
+    }
+
+    @objc func showMailboxAction(_ sender: Any?) {
+        guard let window else { return }
+        (NSApp.delegate as? AppDelegate)?.showMailbox(for: window)
     }
 
     @objc func showInboxAction(_ sender: Any?) {
@@ -190,7 +202,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
              .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
-             .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext:
+             .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext, .mailboxOpen:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -204,6 +216,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .askAgent: pane.askFromEditor()
         case .explainLastFailure: pane.explainLastFailure()
         case .inboxOpen, .inboxNext: showInboxAction(nil)
+        case .mailboxOpen: showMailboxAction(nil)
         default: return false
         }
         return true

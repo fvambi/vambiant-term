@@ -177,13 +177,19 @@ extension AppDelegate {
     /// permission request; the approval card and the inbox sheet follow.
     private func scheduleInboxCaptures(script: String, shot: String) {
         guard let controller = windows.first else { return }
+        let first = controller.container.panes.first
         let agentPane = controller.openAgentPane(argv: ["/bin/sh", script], agent: "claude")
         NSLog("screenshot: fake agent pane %@", agentPane?.session?.id ?? agentPane?.lastError ?? "not created")
+        // A command in the now-unfocused first pane: with a low
+        // long_command_ms in the diagnostic config it toasts.
+        first?.send("sleep 0.4; echo notify-me")
         Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
             MainActor.assumeIsolated {
                 let cards = controller.container.panes.compactMap { p in p.container.approval.isHidden ? nil : p }
                 let labels = cards.map { Self.labels(in: $0.container.approval).joined(separator: " | ") }
                 NSLog("screenshot: inbox %d pending, cards %d: %@", self.inbox.count, cards.count, labels.joined(separator: " || "))
+                let frames = controller.container.panes.map { NSStringFromRect($0.container.frame) }
+                NSLog("screenshot: pane frames %@ in %@", frames.joined(separator: " "), NSStringFromRect(controller.container.bounds))
                 Self.captureAppKit(controller.window?.contentView, to: shot + ".inbox-card.png")
                 if let window = controller.window {
                     self.showInbox(for: window)

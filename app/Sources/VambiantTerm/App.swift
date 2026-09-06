@@ -24,13 +24,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var configModel: ConfigModel!
     private var settings: SettingsWindowController?
     private var events: EventStream?
-    private var shellConfig: ShellConfig?
     private(set) var keymap = Keymap()
     private var appearanceObservation: NSKeyValueObservation?
     lazy var palette = CommandPalette()
     /// Every pending approval, from `inbox.list` then `inbox.changed`.
     private(set) var inbox = InboxList()
     lazy var inboxSheet = InboxSheet()
+    /// Every notification shown or sent (docs/06 §8).
+    var mailbox = Mailbox()
+    lazy var mailboxSheet = MailboxSheet()
+    let notifier = DesktopNotifier()
+    var shellConfig: ShellConfig?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let abi = vt_ffi_abi_version()
@@ -168,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let data = params.data(using: .utf8),
             let json = try? JSONDecoder().decode(JSONValue.self, from: data)
         else { return }
+        notify(for: method, params: json)
         for pane in windows.flatMap(\.container.panes) {
             pane.handle(event: method, params: json)
         }
@@ -181,7 +186,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func apply(inbox items: [InboxItem]) {
+        let known = Set(inbox.items.map(\.id))
+        let fresh = items.filter { !known.contains($0.id) }
         inbox.replace(with: items)
+        if !known.isEmpty || !fresh.isEmpty {
+            notify(newApprovals: fresh)
+        }
         for pane in windows.flatMap(\.container.panes) {
             let mine = pane.session.map { inbox.pending(for: $0.id) } ?? []
             if mine != pane.approvals {
@@ -339,6 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         agentMenu.addItem(.separator())
         agentMenu.addItem(withTitle: "Approvals…", action: #selector(TerminalWindowController.showInboxAction(_:)), keyEquivalent: "")
+        agentMenu.addItem(withTitle: "Notifications…", action: #selector(TerminalWindowController.showMailboxAction(_:)), keyEquivalent: "")
         agent.submenu = agentMenu
         return agent
     }
