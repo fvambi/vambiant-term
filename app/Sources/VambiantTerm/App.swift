@@ -363,6 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let shellMenu = NSMenu(title: "Shell")
         shellMenu.addItem(withTitle: "New Window", action: #selector(newWindowAction(_:)), keyEquivalent: "n")
         shellMenu.addItem(withTitle: "New Tab", action: #selector(newTabAction(_:)), keyEquivalent: "t")
+        shellMenu.addItem(withTitle: "Rename Tab…", action: #selector(TerminalWindowController.renameTabAction(_:)), keyEquivalent: "")
         shellMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         shell.submenu = shellMenu
         main.addItem(shell)

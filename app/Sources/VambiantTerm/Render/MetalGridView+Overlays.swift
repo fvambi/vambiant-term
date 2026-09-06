@@ -145,6 +145,17 @@ extension MetalGridView {
         onAction?(.showLastPayload)
     }
 
+    /// `[terminal] bell = "flash"`: the pane goes light for a blink.
+    func flash() {
+        let overlay = NSView(frame: bounds)
+        overlay.wantsLayer = true
+        overlay.layer?.backgroundColor = renderer.theme.foreground.nsColor.withAlphaComponent(0.25).cgColor
+        addSubview(overlay)
+        Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { _ in
+            MainActor.assumeIsolated { overlay.removeFromSuperview() }
+        }
+    }
+
     @objc func toggleStickyHeader(_ sender: Any?) {
         stickyHeaderEnabled.toggle()
         lastSeqReset()

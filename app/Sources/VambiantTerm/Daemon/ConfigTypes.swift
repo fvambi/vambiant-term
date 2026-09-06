@@ -181,8 +181,11 @@ struct ShellMux: Decodable, Equatable, Sendable {
 
 struct ShellTerminal: Decodable, Equatable, Sendable {
     var copyOnSelect: Bool
+    /// `none | sound | flash`; absent on daemons older than the key.
+    var bell: String?
     enum CodingKeys: String, CodingKey {
         case copyOnSelect = "copy_on_select"
+        case bell
     }
 }
 

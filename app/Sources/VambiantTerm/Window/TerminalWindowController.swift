@@ -100,6 +100,40 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         sidebar.apply(theme: renderer.theme)
     }
 
+    /// Input sync (12 §B11): what one synced pane typed goes to the others.
+    private func fanOut(_ input: SyncInput, from origin: PaneController) {
+        for pane in container.panes where pane !== origin && pane.synced {
+            switch input {
+            case let .text(text): pane.viewer?.send(text: text)
+            case let .key(key): pane.viewer?.send(key: key)
+            }
+        }
+    }
+
+    /// `tab.rename`: the session's name, through the daemon.
+    func renameTab(_ pane: PaneController) {
+        let alert = NSAlert()
+        alert.messageText = "Rename tab"
+        alert.informativeText = "The session's name, as `vterm ls` shows it."
+        let field = NSTextField(string: pane.title)
+        field.frame = CGRect(x: 0, y: 0, width: 260, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+        if !name.isEmpty {
+            pane.rename(to: name)
+        }
+    }
+
+    @objc func renameTabAction(_ sender: Any?) {
+        if let pane = container.focused {
+            renameTab(pane)
+        }
+    }
+
     @objc func showMailboxAction(_ sender: Any?) {
         guard let window else { return }
         (NSApp.delegate as? AppDelegate)?.showMailbox(for: window)
@@ -139,7 +173,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             SidebarSession(
                 id: ObjectIdentifier(p), name: p.title, cwd: p.cwd, branch: p.branch,
                 lastCommand: p.blocks.commands.last?.cmdline, state: p.sessionState, agent: p.agentKind,
-                diff: p.diffStats, focused: p === focused, pending: p.approvals.count
+                diff: p.diffStats, focused: p === focused, pending: p.approvals.count, synced: p.synced
             )
         }
         sidebar.update(rows: SidebarModel.rows(for: sessions, repoRoot: GitProbe.repoRoot(for:)))
@@ -171,6 +205,22 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             self?.window?.title = "\(self?.window?.title ?? "") — daemon connection lost"
         }
         pane.onChange = { [weak self] in self?.refreshSidebar() }
+        pane.onSyncInput = { [weak self, weak pane] input in
+            guard let self, let pane else { return }
+            fanOut(input, from: pane)
+        }
+        pane.view.onKeySent = { [weak self, weak pane] key in
+            guard let self, let pane, pane.synced else { return }
+            fanOut(.key(key), from: pane)
+        }
+        pane.onBell = { [weak pane] in
+            guard let pane else { return }
+            switch (NSApp.delegate as? AppDelegate)?.shellConfig?.terminal?.bell ?? "sound" {
+            case "none": break
+            case "flash": pane.view.flash()
+            default: NSSound.beep()
+            }
+        }
         return pane
     }
 
@@ -211,7 +261,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
              .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
              .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext, .mailboxOpen, .historySearch,
-             .showLastPayload, .reopenTab:
+             .showLastPayload, .reopenTab, .tabRename, .paneSyncToggle:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -227,6 +277,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .inboxOpen, .inboxNext: showInboxAction(nil)
         case .mailboxOpen: showMailboxAction(nil)
         case .reopenTab: (NSApp.delegate as? AppDelegate)?.reopenClosedTab(from: window)
+        case .tabRename: renameTab(pane)
+        case .paneSyncToggle:
+            pane.synced.toggle()
+            refreshSidebar()
         case .historySearch: pane.openHistorySearch()
         case .showLastPayload: pane.showLastPayload()
         default: return false

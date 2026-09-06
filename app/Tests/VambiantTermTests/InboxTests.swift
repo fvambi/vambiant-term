@@ -19,6 +19,14 @@ struct SessionRestoreTests {
         #expect(SessionRestore.reopenCandidate(all, attached: ["b"])?.id == "a")
         #expect(SessionRestore.reopenCandidate(all, attached: ["a", "b"]) == nil)
         #expect(ShellAction.from(id: "tab.reopen", label: "", milestone: "") == .reopenTab)
+        #expect(ShellAction.from(id: "pane.sync_toggle", label: "", milestone: "") == .paneSyncToggle)
+        #expect(ShellAction.from(id: "tab.rename", label: "", milestone: "") == .tabRename)
+        var row = SidebarSession(
+            id: ObjectIdentifier(NSNumber(value: 1)), name: "n", cwd: "/x/y", branch: nil, lastCommand: "make", state: nil, agent: nil,
+            diff: nil, focused: false
+        )
+        row.synced = true
+        #expect(row.title == "⇄ make")
     }
 }
 

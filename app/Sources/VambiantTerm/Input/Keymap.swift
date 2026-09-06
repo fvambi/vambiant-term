@@ -30,7 +30,7 @@ enum ShellAction: Equatable, Sendable {
     case inboxOpen, inboxNext
     case mailboxOpen
     case historySearch, showLastPayload
-    case reopenTab
+    case reopenTab, tabRename, paneSyncToggle
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -91,6 +91,8 @@ enum ShellAction: Equatable, Sendable {
         "history.search": .historySearch,
         "ai.show_last_payload": .showLastPayload,
         "tab.reopen": .reopenTab,
+        "tab.rename": .tabRename,
+        "pane.sync_toggle": .paneSyncToggle,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),
@@ -191,6 +193,7 @@ struct Keymap: Sendable {
             KeyChord("m", command: true, shift: true): .mailboxOpen,
             KeyChord("e", command: true, option: true): .showLastPayload,
             KeyChord("t", command: true, shift: true): .reopenTab,
+            KeyChord("i", command: true, option: true): .paneSyncToggle,
             KeyChord("p", command: true, shift: true): .paletteOpen,
             KeyChord("k", command: true): .askAgent,
         ]

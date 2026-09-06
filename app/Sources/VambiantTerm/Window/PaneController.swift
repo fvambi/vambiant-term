@@ -15,6 +15,12 @@ enum PromptPhase: Equatable, Sendable {
     case running
 }
 
+/// What a synced pane forwards (12 §B11).
+enum SyncInput: Sendable {
+    case text(String)
+    case key(VtKeyEvent)
+}
+
 @MainActor
 final class PaneController {
     let daemon: DaemonClient
@@ -25,8 +31,8 @@ final class PaneController {
     private(set) var cwd: String?
     private(set) var branch: String?
     /// Daemon session state and agent kind, from `session.changed`.
-    private(set) var sessionState: String?
-    private(set) var agentKind: String?
+    var sessionState: String?
+    var agentKind: String?
     /// Diff totals for the sidebar, refreshed by the window.
     var diffStats: (added: Int, removed: Int)?
     /// Anything the sidebar or title shows changed.
@@ -45,6 +51,20 @@ final class PaneController {
     var editorProgram: String?
     /// When `path.executables` was last fetched for the editor's underline.
     var knownCommandsFetchedAt: Date?
+    /// BEL from the session (`[terminal] bell`); the window decides sound or flash.
+    var onBell: (() -> Void)?
+    /// Input sync (12 §B11): typed text and keys also go to every other synced pane.
+    var synced = false {
+        didSet {
+            container.input.setHint(synced ? "⇄ input synced with other synced panes  ·  ⌘⌥I stops" : "⌘↩ for new agent  ·  ⇧↩ newline")
+            onChange?()
+        }
+    }
+
+    /// A line or key this pane sent, for the window to fan out when synced.
+    var onSyncInput: ((SyncInput) -> Void)?
+    /// The session's name as last reported; the record's is the fallback.
+    var sessionName: String?
     /// Pending approvals for this session, oldest first (`inbox.changed`).
     var approvals: [InboxItem] = [] {
         didSet {
@@ -120,6 +140,9 @@ final class PaneController {
     func send(_ line: String) {
         guard let viewer else { return }
         viewer.send(text: line + "\r")
+        if synced {
+            onSyncInput?(.text(line + "\r"))
+        }
         if !line.isEmpty {
             phase = .running
             container.input.setHint("running — keys go to the command  ·  ⌃C interrupts")
@@ -127,7 +150,7 @@ final class PaneController {
         }
     }
 
-    private func setPhase(_ new: PromptPhase) {
+    func setPhase(_ new: PromptPhase) {
         guard new != phase else { return }
         phase = new
         switch new {
@@ -164,7 +187,7 @@ final class PaneController {
         view.lastSeqReset()
     }
 
-    private func setCwd(_ path: String) {
+    func setCwd(_ path: String) {
         cwd = path
         branch = GitProbe.branch(for: path)
         refreshChips()
@@ -314,7 +337,7 @@ final class PaneController {
 
     var title: String {
         if let session {
-            return session.name
+            return sessionName ?? session.name
         }
         return lastError ?? "starting…"
     }
@@ -334,44 +357,6 @@ final class PaneController {
             blocks = list
         } catch {
             NSLog("blocks for %@ unavailable: %@", session.id, "\(error)")
-        }
-    }
-
-    /// Daemon broadcasts; only this pane's session is acted on.
-    func handle(event method: String, params: JSONValue) {
-        guard let session, params[path: "id"]?.stringValue == session.id else { return }
-        switch method {
-        case "session.block":
-            if var block = Block.parse(item: params) {
-                block.cwd = cwd
-                blocks.append(block)
-                onChange?()
-                if block.failed {
-                    suggestCorrection()
-                }
-            }
-        case "session.changed":
-            sessionState = params[path: "state"]?.stringValue
-            agentKind = params[path: "agent"]?.stringValue
-            onChange?()
-        case "session.event" where params[path: "event.kind"]?.stringValue == "blocks_degraded":
-            blocks.degraded = params[path: "event.reason"]?.stringValue ?? "shell-integration marks are corrupted"
-        case "session.event" where params[path: "event.kind"]?.stringValue == "prompt":
-            setPhase(.prompt)
-        case "session.event" where params[path: "event.kind"]?.stringValue == "command_started":
-            setPhase(.running)
-        case "session.event" where params[path: "event.kind"]?.stringValue == "pwd":
-            if let path = params[path: "event.path"]?.stringValue {
-                setCwd(path)
-            }
-        case "session.block_changed":
-            if let seq = params[path: "seq"]?.doubleValue, let on = params[path: "bookmarked"]?.boolValue {
-                blocks.setBookmark(seq: Int64(seq), on: on)
-            }
-        case "ai.chunk", "ai.done", "ai.error", "ai.tool_request", "ai.tool_result":
-            handleAgent(event: method, params: params)
-        default:
-            break
         }
     }
 

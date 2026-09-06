@@ -134,6 +134,8 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 | Notifications mailbox | `⌘⇧M` | `<prefix> m` |
 | Command history search (Warp-mode editor) | `⌃R` | — |
 | Reopen the last closed tab (reattach) | `⌘⇧T` | — |
+| Toggle input sync for this pane | `⌘⌥I` | — |
+| Rename tab | `tab.rename` (unbound; Shell menu) | — |
 | Show last payload sent | `⌥⌘E` | — |
 | Next pending approval | `⌘⇧↩` | `<prefix> A` |
 | Command palette | `⌘⇧P` | `<prefix> :` |

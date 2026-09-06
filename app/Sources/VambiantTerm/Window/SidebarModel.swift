@@ -19,22 +19,26 @@ struct SidebarSession: Equatable, Sendable, Identifiable {
     let focused: Bool
     /// Approvals waiting in this session (the tab badge, 12 §G3).
     var pending = 0
+    /// Input sync is on for this pane (12 §C3 indicator).
+    var synced = false
 
     static func == (a: SidebarSession, b: SidebarSession) -> Bool {
         a.id == b.id && a.name == b.name && a.cwd == b.cwd && a.branch == b.branch && a.lastCommand == b.lastCommand
             && a.state == b.state && a.agent == b.agent && a.diff?.added == b.diff?.added
-            && a.diff?.removed == b.diff?.removed && a.focused == b.focused && a.pending == b.pending
+            && a.diff?.removed == b.diff?.removed && a.focused == b.focused && a.pending == b.pending && a.synced == b.synced
     }
 
-    /// Warp's primary line: the last command, else the cwd, else the name.
+    /// Warp's primary line: the last command, else the cwd, else the name;
+    /// `⇄` in front while input sync is on.
     var title: String {
-        if let lastCommand, !lastCommand.isEmpty {
-            return lastCommand
+        let base: String = if let lastCommand, !lastCommand.isEmpty {
+            lastCommand
+        } else if let cwd {
+            GitProbe.abbreviated(cwd)
+        } else {
+            name
         }
-        if let cwd {
-            return GitProbe.abbreviated(cwd)
-        }
-        return name
+        return synced ? "⇄ \(base)" : base
     }
 
     /// docs/06 §2 state glyphs: shapes, never colour alone. A pending

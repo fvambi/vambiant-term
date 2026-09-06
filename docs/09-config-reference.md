@@ -63,6 +63,7 @@ term             = "vambiant-term"        # falls back to xterm-256color
 kitty_keyboard   = true
 confirm_close_with_running_process = true
 copy_on_select   = false                  # mouse selection → clipboard on release
+bell             = "sound"                # none | sound | flash
 
 [terminal.osc]
 clipboard_write  = true

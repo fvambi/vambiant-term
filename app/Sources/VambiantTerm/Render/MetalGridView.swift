@@ -115,6 +115,8 @@ final class MetalGridView: NSView {
 
     /// ⌘-click on a link; the pane resolves paths against its cwd.
     var onOpenLink: ((Link) -> Void)?
+    /// A key the grid sent to its session, for input sync.
+    var onKeySent: ((VtKeyEvent) -> Void)?
     /// Rows of text for a selection, from the pane (the daemon knows the scrollback).
     var textProvider: ((ClosedRange<UInt64>) -> [String])?
     /// Per-pane override of `[blocks] sticky_header`.
@@ -464,9 +466,11 @@ final class MetalGridView: NSView {
             onAction?(action)
         case .passthrough:
             guard let viewer else { return }
-            if !viewer.send(key: KeyTranslator.event(from: event)) {
+            let key = KeyTranslator.event(from: event)
+            if !viewer.send(key: key) {
                 markDirty()
             }
+            onKeySent?(key)
         }
     }
 

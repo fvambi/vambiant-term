@@ -77,8 +77,8 @@ macro_rules! f {
 #[allow(clippy::too_many_lines)]
 pub fn fields() -> Vec<Field> {
     use crate::schema::{
-        AgentFinished, CodexTransport, CursorStyle, Decorations, EgressMode, Inject, InputMode,
-        KeymapProfile, Redaction, ResumeBy, TabBar, ThinStrokes,
+        AgentFinished, Bell, CodexTransport, CursorStyle, Decorations, EgressMode, Inject,
+        InputMode, KeymapProfile, Redaction, ResumeBy, TabBar, ThinStrokes,
     };
     let ms = Int {
         min: 0,
@@ -255,6 +255,12 @@ pub fn fields() -> Vec<Field> {
             "terminal.shell",
             "Program to run; empty means your login shell.",
             Text,
+            Now
+        ),
+        f!(
+            "terminal.bell",
+            "What BEL does: none, the alert sound, or a flash of the pane.",
+            e(Bell::OPTIONS),
             Now
         ),
         f!(

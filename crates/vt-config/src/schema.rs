@@ -26,6 +26,7 @@ lower_enum!(TabBar { Native = "native", None = "none" });
 lower_enum!(CursorStyle { Block = "block", Bar = "bar", Underline = "underline" });
 lower_enum!(Inject { Auto = "auto", Manual = "manual", Off = "off" });
 lower_enum!(InputMode { Warp = "warp", Classic = "classic" });
+lower_enum!(Bell { None = "none", Sound = "sound", Flash = "flash" });
 lower_enum!(KeymapProfile { Tmux = "tmux", Macos = "macos", Both = "both" });
 lower_enum!(ResumeBy { Id = "id" });
 lower_enum!(CodexTransport { AppServer = "app-server", Exec = "exec", HooksOnly = "hooks-only" });
@@ -112,6 +113,7 @@ section!(Terminal {
     kitty_keyboard: bool = true,
     confirm_close_with_running_process: bool = true,
     copy_on_select: bool = false,
+    bell: Bell = Bell::Sound,
     osc: Osc = Osc::default(),
 });
 
