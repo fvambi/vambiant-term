@@ -141,6 +141,10 @@ extension MetalGridView {
         onAction?(.explainLastFailure)
     }
 
+    @objc func showPayloadAction(_ sender: Any?) {
+        onAction?(.showLastPayload)
+    }
+
     @objc func toggleStickyHeader(_ sender: Any?) {
         stickyHeaderEnabled.toggle()
         lastSeqReset()

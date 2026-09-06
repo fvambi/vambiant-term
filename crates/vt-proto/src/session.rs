@@ -122,6 +122,12 @@ pub mod method {
     /// `{ command, session?, cwd? } -> { verdict, floor?, decision }`:
     /// the safety classification of a command line (docs/05 §5).
     pub const POLICY_CLASSIFY: &str = "policy.classify";
+    /// `{ session? } -> { at, feature, profile, model, redactions, request }`:
+    /// the last redacted request sent on the session's behalf (⌥⌘E).
+    pub const AI_PAYLOAD_LAST: &str = "ai.payload.last";
+    /// `{ limit?, payload? } -> [ { at, provider, model, purpose, bytes_sent, redactions, payload? } ]`
+    /// newest first, from the egress log (docs/05 §4.2).
+    pub const EGRESS_TAIL: &str = "egress.tail";
     /// `{prefix?, limit?}` → `[cmdline]`: distinct command lines across all
     /// sessions, most recent first (the Warp-mode editor's history).
     pub const HISTORY_SEARCH: &str = "history.search";

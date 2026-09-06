@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Every notification shown or sent (docs/06 §8).
     var mailbox = Mailbox()
     lazy var mailboxSheet = MailboxSheet()
+    lazy var payloadSheet = TextSheet()
     let notifier = DesktopNotifier()
     var shellConfig: ShellConfig?
 
@@ -272,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌘⇧P: actions with their chords, every session, the daemon's
     /// history and the repo's files (Warp's `actions:` `sessions:`
     /// `history:` `files:` scopes). Files arrive asynchronously.
-    func showPalette(for controller: TerminalWindowController, pane: PaneController) {
+    func showPalette(for controller: TerminalWindowController, pane: PaneController, query: String = "") {
         var items: [PaletteItem] = []
         let bindings = configModel.snapshot?.keymap.bindings ?? []
         for a in configModel.snapshot?.actions ?? [] {
@@ -293,7 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             items.append(PaletteItem(kind: .history(command: h), title: h, detail: "history"))
         }
         palette.onPick = { [weak self] item in self?.perform(item, controller: controller, pane: pane) }
-        palette.present(items: items, theme: renderer.theme, over: controller.window)
+        palette.present(items: items, theme: renderer.theme, over: controller.window, query: query)
         if let cwd = pane.cwd {
             let snapshot = items
             GitProbe.files(in: cwd) { [weak self] files in
@@ -350,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         agentMenu.addItem(.separator())
         agentMenu.addItem(withTitle: "Approvals…", action: #selector(TerminalWindowController.showInboxAction(_:)), keyEquivalent: "")
         agentMenu.addItem(withTitle: "Notifications…", action: #selector(TerminalWindowController.showMailboxAction(_:)), keyEquivalent: "")
+        agentMenu.addItem(withTitle: "Show Last Payload Sent…", action: #selector(MetalGridView.showPayloadAction(_:)), keyEquivalent: "")
         agent.submenu = agentMenu
         return agent
     }

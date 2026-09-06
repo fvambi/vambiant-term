@@ -14,6 +14,8 @@ final class InputEditorView: NSTextView {
     var onAgent: ((String) -> Void)?
     /// ⎋ with nothing to cancel in the editor: the pane decides.
     var onEscape: (() -> Void)?
+    /// ⌃R: Warp's command search (the palette's history scope).
+    var onHistorySearch: (() -> Void)?
     /// ⌘ chords are offered to the pane before the text view sees them.
     var onKeyEquivalent: ((NSEvent) -> Bool)?
     /// History newest-first for a prefix (the pane asks the daemon).
@@ -65,6 +67,9 @@ final class InputEditorView: NSTextView {
                 return
             case "f" where caretAtEnd && ghost != nil:
                 acceptGhost(wordOnly: false)
+                return
+            case "r":
+                onHistorySearch?()
                 return
             default:
                 break

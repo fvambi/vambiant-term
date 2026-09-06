@@ -105,6 +105,8 @@ struct AgentTests {
     @Test func keymapKnowsTheAgentActions() {
         #expect(ShellAction.from(id: "ai.ask", label: "", milestone: "") == .askAgent)
         #expect(ShellAction.from(id: "ai.explain_last_failure", label: "", milestone: "") == .explainLastFailure)
+        #expect(ShellAction.from(id: "ai.show_last_payload", label: "", milestone: "") == .showLastPayload)
+        #expect(ShellAction.from(id: "history.search", label: "", milestone: "") == .historySearch)
     }
 }
 

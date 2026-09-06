@@ -137,6 +137,18 @@ extension AppDelegate {
                     tools.joined(separator: "; ")
                 )
                 Self.captureAppKit(pane.container.window?.contentView, to: shot + ".agent-done.png")
+                // ⌥⌘E: the last payload, exactly as it left.
+                pane.showLastPayload()
+                let payload = self.payloadSheet.body
+                NSLog(
+                    "screenshot: payload sheet %d bytes, redacted %d, secret %d",
+                    payload.utf8.count,
+                    payload.contains("[REDACTED") ? 1 : 0,
+                    payload.contains("AKIA") ? 1 : 0
+                )
+                if let sheet = pane.container.window?.attachedSheet {
+                    pane.container.window?.endSheet(sheet)
+                }
             }
         }
         Timer.scheduledTimer(withTimeInterval: 5.5, repeats: false) { _ in

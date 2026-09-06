@@ -61,14 +61,14 @@ final class CommandPalette: NSPanel, NSSearchFieldDelegate, NSTableViewDataSourc
         ])
     }
 
-    func present(items: [PaletteItem], theme: Theme, over window: NSWindow?) {
+    func present(items: [PaletteItem], theme: Theme, over window: NSWindow?, query: String = "") {
         self.items = items
         self.theme = theme
         appearance = window?.appearance
         let surface = theme.background.mixed(with: theme.foreground, 0.06).nsColor
         backgroundColor = surface
         contentView?.layer?.backgroundColor = surface.cgColor
-        field.stringValue = ""
+        field.stringValue = query
         changed()
         if let w = window {
             let f = w.frame

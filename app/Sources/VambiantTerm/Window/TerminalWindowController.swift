@@ -202,7 +202,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
              .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
-             .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext, .mailboxOpen:
+             .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext, .mailboxOpen, .historySearch,
+             .showLastPayload:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -217,6 +218,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .explainLastFailure: pane.explainLastFailure()
         case .inboxOpen, .inboxNext: showInboxAction(nil)
         case .mailboxOpen: showMailboxAction(nil)
+        case .historySearch: pane.openHistorySearch()
+        case .showLastPayload: pane.showLastPayload()
         default: return false
         }
         return true

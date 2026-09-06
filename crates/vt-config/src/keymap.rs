@@ -167,6 +167,11 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
     ("inbox.open", "Approval inbox", "M5"),
     ("inbox.next_pending", "Next pending approval", "M5"),
     ("mailbox.open", "Notifications", "M5"),
+    (
+        "history.search",
+        "Search command history (⌃R in the editor)",
+        "M5.5",
+    ),
     ("palette.open", "Command palette", "M5"),
     ("ai.ask", "⌘K assistant", "M-AI"),
     ("ai.explain_last_failure", "Explain last failure", "M-AI"),

@@ -190,6 +190,27 @@ fn ask_routes_redacts_and_answers() {
         "{sent}"
     );
 
+    // ⌥⌘E / `vterm egress last`: the payload on record is the redacted one.
+    let last = c.call(method::AI_PAYLOAD_LAST, None).unwrap();
+    let text = last.to_string();
+    assert!(!text.contains("AKIAIOSFODNN7EXAMPLE"), "{text}");
+    assert!(text.contains("[REDACTED:aws-access-key-id]"), "{text}");
+    assert_eq!(last["profile"], "mock");
+    assert_eq!(last["request"]["model"], "test-model");
+    let tail = c
+        .call(
+            method::EGRESS_TAIL,
+            Some(serde_json::json!({ "limit": 5, "payload": true })),
+        )
+        .unwrap();
+    let rec = &tail[0];
+    assert_eq!(rec["purpose"], "ask");
+    let payload = rec["payload"].as_str().unwrap();
+    assert!(
+        payload.contains("[REDACTED:aws-access-key-id]")
+            && !payload.contains("AKIAIOSFODNN7EXAMPLE")
+    );
+
     // A route to "none" refuses by name, and `ai.doctor` reports the file.
     let err = c
         .call(

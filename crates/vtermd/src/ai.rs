@@ -220,6 +220,18 @@ pub(crate) fn prepare(
         stop: vec![],
     };
     let bytes_sent = u64::try_from(serde_json::to_vec(&req).map_or(0, |v| v.len())).unwrap_or(0);
+    // ⌥⌘E and `vterm egress last` show exactly this: the redacted request.
+    registry.set_last_payload(
+        session.unwrap_or("global"),
+        serde_json::json!({
+            "at": now(),
+            "feature": feature,
+            "profile": profile.name,
+            "model": profile.model,
+            "redactions": redactions,
+            "request": serde_json::to_value(&req).unwrap_or_default(),
+        }),
+    );
     Ok(Prepared {
         profile: profile.name.clone(),
         model: profile.model.clone(),
@@ -256,7 +268,8 @@ pub(crate) fn finish(
             purpose: p.feature.clone(),
             bytes_sent: p.bytes_sent,
             redactions: p.redactions,
-            payload: None,
+            // The redacted request itself (docs/05 §4.2), pruned with the log.
+            payload: serde_json::to_string(&p.req).ok(),
         });
     }
     serde_json::json!({

@@ -113,6 +113,8 @@ Every outbound request records: timestamp, feature, provider, host, model, byte 
 
 First use of a cloud provider in a workspace shows the exact payload for confirmation, once. After that it is one keystroke away (`⌥⌘E` shows the last payload sent).
 
+> **As built (2026-09-06):** every request records time, purpose, provider, model, bytes, redaction count and the redacted request body (pruned with `egress_log_days`). `vterm egress tail` lists them, `vterm egress last [--session]` and `⌥⌘E` in the app show the last body for a session. Host, token count, per-rule hit counts, the payload hash, `egress stats` and the first-use confirmation are not built.
+
 ## 5. The safety classifier
 
 Applies identically to human-typed commands and agent-issued ones. That symmetry is the whole argument for it living in the terminal rather than in each agent.

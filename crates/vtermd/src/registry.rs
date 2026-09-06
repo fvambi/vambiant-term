@@ -67,6 +67,9 @@ pub struct Registry {
     agents: OnceLock<Arc<crate::agents::Agents>>,
     config: OnceLock<Arc<crate::config::ConfigState>>,
     counter: Mutex<u64>,
+    /// The last redacted request per session (`ai.payload.last`, ⌥⌘E):
+    /// exactly what left the machine, kept in memory only.
+    last_payload: Mutex<HashMap<String, serde_json::Value>>,
 }
 
 impl Registry {
@@ -81,7 +84,25 @@ impl Registry {
             agents: OnceLock::new(),
             config: OnceLock::new(),
             counter: Mutex::new(0),
+            last_payload: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Remembers what was sent on a session's behalf (`global` without one).
+    pub fn set_last_payload(&self, key: &str, payload: serde_json::Value) {
+        self.last_payload
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key.to_owned(), payload);
+    }
+
+    /// The last payload sent for `key`, if any.
+    pub fn last_payload(&self, key: &str) -> Option<serde_json::Value> {
+        self.last_payload
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(key)
+            .cloned()
     }
 
     /// Wire the agent layer (hook receiver, inbox).

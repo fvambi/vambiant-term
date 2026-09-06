@@ -75,6 +75,7 @@ final class PaneController {
         wireAgent()
         wireInbox()
         wireLinks()
+        wireAppActions()
     }
 
     // MARK: Warp-mode input

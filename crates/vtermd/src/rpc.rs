@@ -329,6 +329,50 @@ impl Handler for Rpc {
                 )
             }
             method::AI_DOCTOR => crate::ai::doctor(&self.registry),
+            method::AI_PAYLOAD_LAST => {
+                let session: Option<String> = Self::param(req, "session").ok();
+                let key = session
+                    .as_deref()
+                    .and_then(|s| self.registry.find(s))
+                    .map(|h| {
+                        h.info
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .id
+                            .0
+                            .clone()
+                    })
+                    .or(session)
+                    .unwrap_or_else(|| "global".into());
+                self.registry.last_payload(&key).ok_or_else(|| {
+                    RpcError::new(
+                        RpcError::INVALID_PARAMS,
+                        format!("nothing has been sent for `{key}` since the daemon started"),
+                    )
+                })
+            }
+            method::EGRESS_TAIL => {
+                let limit: usize = Self::param(req, "limit").unwrap_or(20);
+                let with_payload: bool = Self::param(req, "payload").unwrap_or(false);
+                let records = self
+                    .store
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .recent_egress(limit)
+                    .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+                Ok(serde_json::Value::Array(
+                    records
+                        .into_iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "at": r.at, "provider": r.provider, "model": r.model, "purpose": r.purpose,
+                                "bytes_sent": r.bytes_sent, "redactions": r.redactions,
+                                "payload": if with_payload { r.payload } else { None },
+                            })
+                        })
+                        .collect(),
+                ))
+            }
             method::POLICY_CLASSIFY => {
                 let command: String = Self::param(req, "command")?;
                 let session: Option<String> = Self::param(req, "session").ok();

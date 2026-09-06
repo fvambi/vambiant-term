@@ -166,6 +166,12 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// The egress log: what left the machine, redacted (docs/05 §4.2).
+    Egress {
+        /// What to do.
+        #[command(subcommand)]
+        cmd: EgressCmd,
+    },
     /// Provider layer: keys, health, models.
     Ai {
         /// What to do.
@@ -242,6 +248,25 @@ pub enum DaemonCmd {
 }
 
 /// `vterm inbox …`.
+#[derive(Subcommand, Debug)]
+pub enum EgressCmd {
+    /// Recent requests, newest first.
+    Tail {
+        /// How many.
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Machine-readable output, payloads included.
+        #[arg(long)]
+        json: bool,
+    },
+    /// The last request sent on a session's behalf, exactly as it left.
+    Last {
+        /// Session id or name; omitted means requests made without a session.
+        #[arg(long)]
+        session: Option<String>,
+    },
+}
+
 #[derive(Subcommand, Debug)]
 pub enum InboxCmd {
     /// Pending approvals.

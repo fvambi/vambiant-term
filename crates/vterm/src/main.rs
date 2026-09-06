@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use clap::Parser;
 
-use cli::{Cli, Command, ConfigCmd, DaemonCmd, InboxCmd};
+use cli::{Cli, Command, ConfigCmd, DaemonCmd, EgressCmd, InboxCmd};
 
 fn socket(cli: &Cli) -> PathBuf {
     cli.socket
@@ -189,6 +189,7 @@ fn main() {
             }
         }
         Command::Inbox { cmd } => inbox(&cli, cmd),
+        Command::Egress { cmd } => egress(&cli, cmd),
         Command::Events {
             session,
             after,
@@ -398,6 +399,52 @@ fn classify(cli: &Cli, command: &str, session: Option<&str>, cwd: Option<&str>, 
     if let Some(floor) = v.get("floor") {
         let reason = floor.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
         println!("  never auto-approved: {reason}");
+    }
+}
+
+fn egress(cli: &Cli, cmd: &EgressCmd) {
+    let mut c = client(cli);
+    match cmd {
+        EgressCmd::Tail { limit, json } => {
+            let v = c
+                .call(
+                    vt_proto::session::method::EGRESS_TAIL,
+                    Some(serde_json::json!({ "limit": limit, "payload": json })),
+                )
+                .unwrap_or_else(|e| fail(e));
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+                return;
+            }
+            let rows = v.as_array().cloned().unwrap_or_default();
+            if rows.is_empty() {
+                println!("nothing has left the machine yet");
+            }
+            for r in rows {
+                let s = |k: &str| r.get(k).and_then(|x| x.as_str()).unwrap_or("?").to_owned();
+                let n = |k: &str| r.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0);
+                println!(
+                    "{}  {:<8} {:<14} {:<22} {:>7} B  {} redaction{}",
+                    s("at"),
+                    s("purpose"),
+                    s("provider"),
+                    s("model"),
+                    n("bytes_sent"),
+                    n("redactions"),
+                    if n("redactions") == 1 { "" } else { "s" }
+                );
+            }
+        }
+        EgressCmd::Last { session } => {
+            let mut params = serde_json::json!({});
+            if let Some(s) = session {
+                params["session"] = serde_json::Value::String(s.clone());
+            }
+            let v = c
+                .call(vt_proto::session::method::AI_PAYLOAD_LAST, Some(params))
+                .unwrap_or_else(|e| fail(e));
+            println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        }
     }
 }
 
