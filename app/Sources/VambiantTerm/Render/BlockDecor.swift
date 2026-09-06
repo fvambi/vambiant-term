@@ -20,11 +20,24 @@ struct BlockDecoration: Equatable, Sendable {
     let startsHere: Bool
     /// Exit chip text for the header row; nil when the header is off-screen.
     let chip: String?
+    /// The block is bookmarked (tick in the right gutter on its header row).
+    var bookmarked: Bool = false
+}
+
+/// What the renderer draws around blocks, from `[blocks]` in config.
+struct BlockChrome: Equatable, Sendable {
+    var dividers = true
+    var failedTint = true
+    var stickyHeader = true
 }
 
 enum BlockDecor {
     /// Decorations for the viewport whose top row is absolute `top`.
     static func decorations(for list: BlockList, top: UInt64, rows: Int, selected: Int64?) -> [BlockDecoration] {
+        decorations(for: list, top: top, rows: rows, selected: selected.map { [$0] } ?? [])
+    }
+
+    static func decorations(for list: BlockList, top: UInt64, rows: Int, selected: Set<Int64>) -> [BlockDecoration] {
         guard rows > 0 else { return [] }
         let bottom = top + UInt64(rows) - 1
         var out: [BlockDecoration] = []
@@ -38,10 +51,11 @@ enum BlockDecor {
                 firstRow: Int(max(span.lowerBound, top) - top),
                 lastRow: Int(min(span.upperBound, bottom) - top),
                 status: status(of: b),
-                selected: b.seq == selected,
+                selected: selected.contains(b.seq),
                 heuristic: b.heuristic,
                 startsHere: startsHere,
-                chip: startsHere ? chip(for: b) : nil
+                chip: startsHere ? chip(for: b) : nil,
+                bookmarked: b.bookmarked
             ))
         }
         return out

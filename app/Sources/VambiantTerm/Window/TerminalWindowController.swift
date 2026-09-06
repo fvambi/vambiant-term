@@ -67,6 +67,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func perform(_ action: ShellAction, on pane: PaneController) {
+        if performBlockAction(action, on: pane) {
+            return
+        }
         switch action {
         case .newTab:
             (NSApp.delegate as? AppDelegate)?.newWindow(tabbedWith: window)
@@ -94,26 +97,42 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             pane.viewer?.send(bytes: [0x02])
         case .openSettings:
             (NSApp.delegate as? AppDelegate)?.showSettings(nil)
-        case .promptPrevious:
-            pane.jumpPrompt(previous: true)
-        case .promptNext:
-            pane.jumpPrompt(previous: false)
-        case .blockSelectPrevious:
-            pane.selectBlock(previous: true)
-        case .blockSelectNext:
-            pane.selectBlock(previous: false)
+        case let .scroll(step):
+            pane.view.scroll(step)
+        case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
+             .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
+             .clearScrollback, .block:
+            break // handled above
+        case let .unavailable(what):
+            NSLog("not available yet: %@", what)
+            NSSound.beep()
+        }
+    }
+
+    /// Block and scrollback actions (docs/06 §4). Returns false for the rest.
+    private func performBlockAction(_ action: ShellAction, on pane: PaneController) -> Bool {
+        switch action {
+        case .promptPrevious: pane.jumpPrompt(previous: true)
+        case .promptNext: pane.jumpPrompt(previous: false)
+        case .blockSelectPrevious: pane.selectBlock(previous: true)
+        case .blockSelectNext: pane.selectBlock(previous: false)
+        case .blockExtendPrevious: pane.view.extendSelection(previous: true)
+        case .blockExtendNext: pane.view.extendSelection(previous: false)
+        case .blockTop: pane.scrollSelectedBlock(toTop: true)
+        case .blockBottom: pane.scrollSelectedBlock(toTop: false)
+        case .blockBookmarkPrevious: pane.jumpBookmark(previous: true)
+        case .blockBookmarkNext: pane.jumpBookmark(previous: false)
+        case .clearScrollback: pane.clearScrollback()
         case let .block(blockAction):
             if let block = pane.view.selectedBlock.flatMap(pane.blocks.command(seq:)) {
                 pane.perform(blockAction, on: block)
             } else {
                 NSSound.beep()
             }
-        case let .scroll(step):
-            pane.view.scroll(step)
-        case let .unavailable(what):
-            NSLog("not available yet: %@", what)
-            NSSound.beep()
+        default:
+            return false
         }
+        return true
     }
 
     /// ⌘T through the responder chain (NSWindow calls this on its delegate

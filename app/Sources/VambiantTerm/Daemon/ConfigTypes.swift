@@ -179,12 +179,24 @@ struct ShellMux: Decodable, Equatable, Sendable {
     }
 }
 
+struct ShellBlocks: Decodable, Equatable, Sendable {
+    var dividers: Bool
+    var failedTint: Bool
+    var stickyHeader: Bool
+    enum CodingKeys: String, CodingKey {
+        case dividers
+        case failedTint = "failed_tint"
+        case stickyHeader = "sticky_header"
+    }
+}
+
 struct ShellConfig: Decodable, Equatable, Sendable {
     var font: ShellFont
     var theme: ShellThemeRef
     var window: ShellWindow
     var cursor: ShellCursor
     var mux: ShellMux
+    var blocks: ShellBlocks
 }
 
 struct SetParams: Encodable {

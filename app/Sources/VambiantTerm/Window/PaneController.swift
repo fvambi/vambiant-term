@@ -101,6 +101,13 @@ final class PaneController {
         let id: String
         let from: UInt64
         let to: UInt64
+        var format: String = "plain"
+    }
+
+    private struct BookmarkParams: Encodable {
+        let id: String
+        let seq: Int64
+        let on: Bool
     }
 
     private struct TextReply: Decodable {
@@ -131,8 +138,49 @@ final class PaneController {
             }
         case "session.event" where params[path: "event.kind"]?.stringValue == "blocks_degraded":
             blocks.degraded = params[path: "event.reason"]?.stringValue ?? "shell-integration marks are corrupted"
+        case "session.block_changed":
+            if let seq = params[path: "seq"]?.doubleValue, let on = params[path: "bookmarked"]?.boolValue {
+                blocks.setBookmark(seq: Int64(seq), on: on)
+            }
         default:
             break
+        }
+    }
+
+    /// ⌥↑ / ⌥↓: the nearest bookmark above or below, selected and shown.
+    func jumpBookmark(previous: Bool) {
+        let top = view.viewportTop
+        let target = previous ? blocks.previousBookmark(before: top) : blocks.nextBookmark(after: top)
+        guard let target else {
+            NSSound.beep()
+            return
+        }
+        view.selectedBlock = target.seq
+        viewer?.scroll(VtScrollTo_Row, n: Int64(target.start))
+    }
+
+    /// ⌘⇧↑ / ⌘⇧↓: the top or bottom of the selected block at the top of the grid.
+    func scrollSelectedBlock(toTop: Bool) {
+        guard let block = view.selectedBlock.flatMap(blocks.command(seq:)) else {
+            NSSound.beep()
+            return
+        }
+        let rows = UInt64(max(1, view.viewportRows))
+        let target = toTop ? block.start : block.visualRows.upperBound.saturating(minus: rows - 1)
+        viewer?.scroll(VtScrollTo_Row, n: Int64(target))
+    }
+
+    /// ⌘⇧K: drop the scrollback. Blocks older than the cut no longer map,
+    /// so the list is reloaded from the daemon afterwards.
+    func clearScrollback() {
+        guard let session else { return }
+        do {
+            try daemon.invoke("session.clear", params: IdParams(id: session.id))
+            view.selectedBlock = nil
+            loadBlocks()
+        } catch {
+            NSLog("clear scrollback for %@ failed: %@", session.id, "\(error)")
+            NSSound.beep()
         }
     }
 
@@ -161,29 +209,50 @@ final class PaneController {
         }
     }
 
+    /// Actions on the selection; `block` is the one the menu was opened on
+    /// and the fallback when nothing else is selected.
     func perform(_ action: BlockAction, on block: Block) {
+        let targets = view.selectedBlocks.count > 1 ? blocks.ordered(view.selectedBlocks) : [block]
         switch action {
         case .copyCommand:
-            guard let cmd = block.cmdline else {
+            let cmds = targets.compactMap(\.cmdline)
+            guard !cmds.isEmpty else {
                 NSLog("block %lld has no command line (the shell did not send 633;E)", block.seq)
                 NSSound.beep()
                 return
             }
-            setPasteboard(cmd)
+            setPasteboard(cmds.joined(separator: "\n"))
         case .copyOutput:
-            guard let session, let rows = block.outputRows else {
-                setPasteboard("")
+            setPasteboard(targets.map { text(of: $0.outputRows) }.joined(separator: "\n"))
+        case .copyBoth:
+            // The command line as a prompt would show it, then the output.
+            setPasteboard(targets.map { "$ \($0.cmdline ?? "")\n\(text(of: $0.outputRows))" }.joined(separator: "\n\n"))
+        case .exportHTML:
+            let html = targets.map { text(of: $0.visualRows, format: "html") }.joined(separator: "\n")
+            let plain = targets.map { text(of: $0.visualRows) }.joined(separator: "\n")
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(html, forType: .html)
+            pb.setString(plain, forType: .string)
+        case .reinput, .reinputSudo:
+            guard let cmd = block.cmdline else {
+                NSSound.beep()
                 return
             }
+            // Into the prompt, no newline: the user edits or confirms.
+            viewer?.send(text: action == .reinputSudo ? "sudo \(cmd)" : cmd)
+        case .bookmark:
+            guard let session else { return }
+            let on = !block.bookmarked
             do {
-                let reply: TextReply = try daemon.call(
-                    "session.text", params: TextParams(id: session.id, from: rows.lowerBound, to: rows.upperBound)
-                )
-                setPasteboard(reply.text)
+                try daemon.invoke("session.block.bookmark", params: BookmarkParams(id: session.id, seq: block.seq, on: on))
+                blocks.setBookmark(seq: block.seq, on: on)
             } catch {
-                NSLog("copy output for block %lld failed: %@", block.seq, "\(error)")
+                NSLog("bookmark for block %lld failed: %@", block.seq, "\(error)")
                 NSSound.beep()
             }
+        case .menu:
+            view.openBlockMenu()
         case .rerun:
             // The user's own earlier command, on their explicit request; not
             // model output, so rule 5 (stage, never execute) does not apply.
@@ -198,10 +267,32 @@ final class PaneController {
         }
     }
 
+    /// Text of absolute rows through the daemon; empty when there are none
+    /// or the daemon refuses (logged, never guessed).
+    private func text(of rows: ClosedRange<UInt64>?, format: String = "plain") -> String {
+        guard let session, let rows else { return "" }
+        do {
+            let reply: TextReply = try daemon.call(
+                "session.text",
+                params: TextParams(id: session.id, from: rows.lowerBound, to: rows.upperBound, format: format)
+            )
+            return reply.text
+        } catch {
+            NSLog("text for rows %llu-%llu failed: %@", rows.lowerBound, rows.upperBound, "\(error)")
+            return ""
+        }
+    }
+
     private func setPasteboard(_ text: String) {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
+    }
+}
+
+private extension UInt64 {
+    func saturating(minus n: UInt64) -> UInt64 {
+        self > n ? self - n : 0
     }
 }
 

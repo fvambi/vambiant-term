@@ -17,7 +17,11 @@ enum ShellAction: Equatable, Sendable {
     case openSettings
     case promptPrevious, promptNext
     case blockSelectPrevious, blockSelectNext
+    case blockExtendPrevious, blockExtendNext
+    case blockTop, blockBottom
+    case blockBookmarkPrevious, blockBookmarkNext
     case block(BlockAction)
+    case clearScrollback
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -48,9 +52,22 @@ enum ShellAction: Equatable, Sendable {
         "prompt.next": .promptNext,
         "block.select_previous": .blockSelectPrevious,
         "block.select_next": .blockSelectNext,
+        "block.extend_previous": .blockExtendPrevious,
+        "block.extend_next": .blockExtendNext,
+        "block.top": .blockTop,
+        "block.bottom": .blockBottom,
+        "block.bookmark": .block(.bookmark),
+        "block.bookmark_previous": .blockBookmarkPrevious,
+        "block.bookmark_next": .blockBookmarkNext,
         "block.copy_command": .block(.copyCommand),
         "block.copy_output": .block(.copyOutput),
+        "block.copy_both": .block(.copyBoth),
+        "block.reinput": .block(.reinput),
+        "block.reinput_sudo": .block(.reinputSudo),
+        "block.export": .block(.exportHTML),
+        "block.menu": .block(.menu),
         "block.rerun": .block(.rerun),
+        "scrollback.clear": .clearScrollback,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),
@@ -124,8 +141,21 @@ struct Keymap: Sendable {
             KeyChord(",", command: true): .openSettings,
             KeyChord("up", command: true): .promptPrevious,
             KeyChord("down", command: true): .promptNext,
-            KeyChord("up", command: true, shift: true): .blockSelectPrevious,
-            KeyChord("down", command: true, shift: true): .blockSelectNext,
+            KeyChord("up", command: true, control: true): .blockSelectPrevious,
+            KeyChord("down", command: true, control: true): .blockSelectNext,
+            KeyChord("up", command: true, shift: true, control: true): .blockExtendPrevious,
+            KeyChord("down", command: true, shift: true, control: true): .blockExtendNext,
+            KeyChord("up", command: true, shift: true): .blockTop,
+            KeyChord("down", command: true, shift: true): .blockBottom,
+            KeyChord("b", command: true): .block(.bookmark),
+            KeyChord("up", option: true): .blockBookmarkPrevious,
+            KeyChord("down", option: true): .blockBookmarkNext,
+            KeyChord("c", command: true, shift: true): .block(.copyCommand),
+            KeyChord("c", command: true, shift: true, option: true): .block(.copyOutput),
+            KeyChord("i", command: true): .block(.reinput),
+            KeyChord("i", command: true, shift: true): .block(.reinputSudo),
+            KeyChord("m", control: true): .block(.menu),
+            KeyChord("k", command: true, shift: true): .clearScrollback,
             KeyChord("pageup", shift: true): .scroll(.pageUp),
             KeyChord("pagedown", shift: true): .scroll(.pageDown),
             KeyChord("home", shift: true): .scroll(.top),

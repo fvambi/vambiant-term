@@ -97,8 +97,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
                 MainActor.assumeIsolated { _ = pane.viewer?.send(text: "grep -c vambiant /nonexistent\r") }
             }
+            // Select the last block, bookmark the first, extend the selection
+            // upwards: tint, tick and range are all in the shot.
             Timer.scheduledTimer(withTimeInterval: 3.3, repeats: false) { _ in
-                MainActor.assumeIsolated { pane.selectBlock(previous: true) }
+                MainActor.assumeIsolated {
+                    pane.selectBlock(previous: true)
+                    if let first = pane.blocks.commands.first {
+                        pane.perform(.bookmark, on: first)
+                    }
+                    pane.view.extendSelection(previous: true)
+                }
             }
             Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { _ in
                 MainActor.assumeIsolated { pane.view.captureNext(to: shot) }
@@ -184,6 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         renderer.boldIsBright = c.font.boldIsBright
         renderer.cursorStyle = CursorStyle(rawValue: c.cursor.style) ?? .block
+        renderer.blockChrome = BlockChrome(
+            dividers: c.blocks.dividers, failedTint: c.blocks.failedTint, stickyHeader: c.blocks.stickyHeader
+        )
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let wanted = c.theme.followSystem && !dark ? c.theme.light : c.theme.name
         if let file = snapshot.themes[wanted], let theme = Theme(file: file) {
@@ -257,7 +268,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         blocksMenu.addItem(.separator())
         blocksMenu.addItem(withTitle: "Copy Command", action: #selector(MetalGridView.copyCommand(_:)), keyEquivalent: "")
         blocksMenu.addItem(withTitle: "Copy Output", action: #selector(MetalGridView.copyOutput(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Copy Command and Output", action: #selector(MetalGridView.copyBoth(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Copy as HTML", action: #selector(MetalGridView.exportBlock(_:)), keyEquivalent: "")
+        blocksMenu.addItem(.separator())
+        blocksMenu.addItem(withTitle: "Re-input Command", action: #selector(MetalGridView.reinputCommand(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Re-input as Root", action: #selector(MetalGridView.reinputSudo(_:)), keyEquivalent: "")
         blocksMenu.addItem(withTitle: "Re-run Command", action: #selector(MetalGridView.rerunCommand(_:)), keyEquivalent: "")
+        blocksMenu.addItem(.separator())
+        blocksMenu.addItem(withTitle: "Toggle Bookmark", action: #selector(MetalGridView.toggleBookmark(_:)), keyEquivalent: "")
+        blocksMenu.addItem(withTitle: "Clear Scrollback", action: #selector(MetalGridView.clearScrollback(_:)), keyEquivalent: "")
         blocks.submenu = blocksMenu
         main.addItem(blocks)
 

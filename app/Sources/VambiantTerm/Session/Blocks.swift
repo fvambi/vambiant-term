@@ -18,6 +18,8 @@ struct Block: Equatable, Sendable {
     let confidence: String
     let start: UInt64
     let end: UInt64?
+    /// User bookmark, stored by the daemon.
+    var bookmarked: Bool = false
 
     var isCommand: Bool {
         if case .command = kind {
@@ -89,11 +91,13 @@ struct Block: Equatable, Sendable {
         )
     }
 
-    /// One `{seq, block}` item of `session.blocks`, or a `session.block`
-    /// notification (same shape plus `id`).
+    /// One `{seq, bookmarked?, block}` item of `session.blocks`, or a
+    /// `session.block` notification (same shape plus `id`).
     static func parse(item: JSONValue) -> Block? {
         guard let seq = item[path: "seq"]?.doubleValue, let b = item[path: "block"] else { return nil }
-        return parse(seq: Int64(seq), block: b)
+        var block = parse(seq: Int64(seq), block: b)
+        block?.bookmarked = item[path: "bookmarked"]?.boolValue ?? false
+        return block
     }
 }
 
@@ -128,6 +132,40 @@ struct BlockList: Equatable, Sendable {
         blocks.first { $0.seq == seq && $0.isCommand }
     }
 
+    mutating func setBookmark(seq: Int64, on: Bool) {
+        guard let i = blocks.firstIndex(where: { $0.seq == seq }) else { return }
+        blocks[i].bookmarked = on
+    }
+
+    var bookmarks: [Block] {
+        commands.filter(\.bookmarked)
+    }
+
+    /// Nearest bookmarked command starting above `top`.
+    func previousBookmark(before top: UInt64) -> Block? {
+        bookmarks.last { $0.start < top }
+    }
+
+    /// Nearest bookmarked command starting below `top`.
+    func nextBookmark(after top: UInt64) -> Block? {
+        bookmarks.first { $0.start > top }
+    }
+
+    /// Sequence numbers of every command between `a` and `b` inclusive, in
+    /// start order (a ⇧-click range).
+    func range(from a: Int64, to b: Int64) -> Set<Int64> {
+        let cmds = commands
+        guard let i = cmds.firstIndex(where: { $0.seq == a }),
+              let j = cmds.firstIndex(where: { $0.seq == b })
+        else { return [] }
+        return Set(cmds[min(i, j) ... max(i, j)].map(\.seq))
+    }
+
+    /// Commands in `seqs`, in start order.
+    func ordered(_ seqs: Set<Int64>) -> [Block] {
+        commands.filter { seqs.contains($0.seq) }
+    }
+
     /// The command block drawn on `row`. Where one block's finish row is
     /// the next block's prompt line, the newer block wins.
     func command(at row: UInt64) -> Block? {
@@ -158,5 +196,7 @@ struct BlockList: Equatable, Sendable {
 
 /// What the user can do with one block (docs/06 §4's kebab menu).
 enum BlockAction: Equatable, Sendable {
-    case copyCommand, copyOutput, rerun, explain
+    case copyCommand, copyOutput, copyBoth, exportHTML
+    case reinput, reinputSudo, rerun
+    case bookmark, menu, explain
 }

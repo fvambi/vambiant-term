@@ -45,6 +45,7 @@ final class GridRenderer {
     private(set) var fonts: FontSet
     var theme: Theme
     var cursorStyle: CursorStyle = .block
+    var blockChrome = BlockChrome()
     /// `[font] bold_is_bright`: bold text in the 0–7 palette uses 8–15.
     var boldIsBright = false
     private(set) var scale: CGFloat
@@ -126,13 +127,9 @@ final class GridRenderer {
         bg.removeAll(keepingCapacity: true)
         glyphs.removeAll(keepingCapacity: true)
         guard let cells = view.cells else { return true }
-        // A selected block tints its default-background cells; cells that
-        // set their own colour keep it (the tint is chrome, not content).
-        var selectedRows = Set<Int>()
-        for d in decorations where d.selected {
-            selectedRows.formUnion(d.firstRow ... d.lastRow)
-        }
+        let (selectedRows, failedRows) = tintedRows(decorations)
         let tint = theme.background.mixed(with: theme.selection, 0.35)
+        let failedTint = theme.background.mixed(with: theme.palette[1], 0.08)
         let cols = Int(view.cols)
         let rows = Int(view.rows)
         let cw = Float(cellSize.width)
@@ -166,8 +163,12 @@ final class GridRenderer {
                 if attrs & Attrs.dim != 0 {
                     fg = fg.scaled(0.6)
                 }
-                if selectedRows.contains(r), cell.bg.0 == 0, attrs & Attrs.inverse == 0 {
-                    bgc = tint
+                if cell.bg.0 == 0, attrs & Attrs.inverse == 0 {
+                    if selectedRows.contains(r) {
+                        bgc = tint
+                    } else if failedRows.contains(r) {
+                        bgc = failedTint
+                    }
                 }
                 let isCursor = view.cursor_visible && Int(view.cursor_row) == r && Int(view.cursor_col) == c
                 let solidCursor = isCursor && focused && cursorOn && cursorStyle == .block
@@ -202,6 +203,22 @@ final class GridRenderer {
         return atlas.generation == generation
     }
 
+    /// Rows a selected or failed block tints. Only default-background cells
+    /// take the tint; cells that set their own colour keep it (chrome, not
+    /// content).
+    private func tintedRows(_ decorations: [BlockDecoration]) -> (selected: Set<Int>, failed: Set<Int>) {
+        var selected = Set<Int>()
+        var failed = Set<Int>()
+        for d in decorations {
+            if d.selected {
+                selected.formUnion(d.firstRow ... d.lastRow)
+            } else if d.status == .failed, blockChrome.failedTint {
+                failed.formUnion(d.firstRow ... d.lastRow)
+            }
+        }
+        return (selected, failed)
+    }
+
     /// Gutter stripe in the left padding, a hairline above the header row,
     /// and the exit chip at the right end of the header when that space is
     /// blank (chrome never covers content).
@@ -221,9 +238,21 @@ final class GridRenderer {
         let stripe = (d.selected ? theme.selection : colour).simd
         bg.append(CellInstance(origin: SIMD2(stripeX, top), size: SIMD2(stripeW, height), uv: .zero, fg: stripe, bg: stripe, flags: 0))
         guard d.startsHere else { return }
-        let hair = theme.background.mixed(with: theme.foreground, 0.18).simd
         let width = origin.x * 2 + Float(cols) * cell.x
-        bg.append(CellInstance(origin: SIMD2(0, top), size: SIMD2(width, max(1, s)), uv: .zero, fg: hair, bg: hair, flags: 0))
+        if blockChrome.dividers {
+            let hair = theme.background.mixed(with: theme.foreground, 0.18).simd
+            bg.append(CellInstance(origin: SIMD2(0, top), size: SIMD2(width, max(1, s)), uv: .zero, fg: hair, bg: hair, flags: 0))
+        }
+        if d.bookmarked {
+            // A tick in the right padding, in the cursor colour (the accent
+            // that stays legible on light and dark themes): the bookmark
+            // indicator Warp users look for at the edge.
+            let mark = theme.cursor.simd
+            let w = max(2 * s, min(origin.x - 2 * s, 4 * s))
+            bg.append(CellInstance(
+                origin: SIMD2(width - w - s, top + s), size: SIMD2(w, cell.y - 2 * s), uv: .zero, fg: mark, bg: mark, flags: 0
+            ))
+        }
         guard let chip = d.chip else { return }
         let scalars = Array(chip.unicodeScalars)
         let startCol = cols - scalars.count - 1

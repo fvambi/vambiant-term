@@ -83,6 +83,37 @@ struct BlockListTests {
         #expect(l.neighbour(of: 3, previous: false) == nil)
     }
 
+    @Test func rangesAndOrderingFollowStartRows() {
+        let l = list
+        #expect(l.range(from: 3, to: 2) == [2, 4, 3])
+        #expect(l.range(from: 4, to: 4) == [4])
+        #expect(l.range(from: 4, to: 99).isEmpty, "unknown end")
+        #expect(l.ordered([3, 2]).map(\.seq) == [2, 3])
+    }
+
+    @Test func bookmarksNavigateAndParse() throws {
+        var l = list
+        #expect(l.bookmarks.isEmpty)
+        l.setBookmark(seq: 4, on: true)
+        l.setBookmark(seq: 3, on: true)
+        #expect(l.bookmarks.map(\.seq) == [4, 3])
+        #expect(l.previousBookmark(before: 9)?.seq == 4)
+        #expect(l.previousBookmark(before: 5) == nil)
+        #expect(l.nextBookmark(after: 5)?.seq == 3)
+        l.setBookmark(seq: 4, on: false)
+        #expect(l.bookmarks.map(\.seq) == [3])
+        let item = try JSONDecoder().decode(
+            JSONValue.self,
+            from: Data(
+                #"{"seq": 5, "bookmarked": true, "block": {"confidence": "marked", "start_line": 1, "kind": {"kind": "prompt"}}}"#.utf8
+            )
+        )
+        #expect(Block.parse(item: item)?.bookmarked == true)
+        let d = BlockDecor.decorations(for: l, top: 0, rows: 20, selected: [2, 3])
+        #expect(d.map(\.selected) == [true, false, true])
+        #expect(d.map(\.bookmarked) == [false, false, true])
+    }
+
     @Test func appendIgnoresDuplicateSequenceNumbers() {
         var l = list
         l.append(cmd(4, 5, 9))
@@ -125,7 +156,12 @@ struct BlockKeymapTests {
     @Test func builtInDefaultsBindTheWarpStyleChords() {
         var k = Keymap()
         #expect(k.resolve(KeyChord("up", command: true)) == .action(.promptPrevious))
-        #expect(k.resolve(KeyChord("down", command: true, shift: true)) == .action(.blockSelectNext))
+        #expect(k.resolve(KeyChord("down", command: true, control: true)) == .action(.blockSelectNext))
+        #expect(k.resolve(KeyChord("down", command: true, option: true)) == .action(.focus(.down)), "pane focus keeps ⌘⌥")
+        #expect(k.resolve(KeyChord("down", command: true, shift: true)) == .action(.blockBottom))
+        #expect(k.resolve(KeyChord("b", command: true)) == .action(.block(.bookmark)))
+        #expect(k.resolve(KeyChord("up", option: true)) == .action(.blockBookmarkPrevious))
+        #expect(k.resolve(KeyChord("k", command: true, shift: true)) == .action(.clearScrollback))
         #expect(k.resolve(KeyChord("pageup", shift: true)) == .action(.scroll(.pageUp)))
         #expect(k.resolve(KeyChord("b", control: true)) == .prefixArmed)
         #expect(k.resolve(KeyChord("[")) == .action(.promptPrevious))

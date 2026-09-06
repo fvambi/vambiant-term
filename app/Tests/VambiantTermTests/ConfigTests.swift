@@ -91,6 +91,7 @@ struct ShellConfigTests {
          "window":{"padding":{"x":4,"y":2},"opacity":1},
          "cursor":{"style":"bar","blink":false,"blink_interval_ms":600},
          "mux":{"keymap_profile":"both","prefix":"ctrl+a","detach_on_close":false,"default_layout":"single"},
+         "blocks":{"dividers":false,"failed_tint":true,"sticky_header":true},
          "extra":{"ignored":1}}
         """#
         let v = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
@@ -100,6 +101,7 @@ struct ShellConfigTests {
         #expect(c.cursor.style == "bar")
         #expect(c.mux.prefix == "ctrl+a")
         #expect(!c.mux.detachOnClose)
+        #expect(!c.blocks.dividers && c.blocks.failedTint)
         #expect(c.window.padding.x == 4)
     }
 }

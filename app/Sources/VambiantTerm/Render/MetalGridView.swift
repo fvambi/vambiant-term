@@ -61,11 +61,23 @@ final class MetalGridView: NSView {
         }
     }
 
-    /// Sequence number of the selected block, if any.
-    var selectedBlock: Int64? {
+    /// Selected blocks (docs/06 §4: selection is semantic). `anchor` is
+    /// the block a ⇧-click range extends from.
+    var selectedBlocks = Set<Int64>() {
         didSet {
             lastSeq = .max
             markDirty()
+        }
+    }
+
+    var selectionAnchor: Int64?
+
+    /// The single selected block, for actions that take one.
+    var selectedBlock: Int64? {
+        get { selectedBlocks.count == 1 ? selectedBlocks.first : selectionAnchor.flatMap { selectedBlocks.contains($0) ? $0 : nil } }
+        set {
+            selectedBlocks = newValue.map { [$0] } ?? []
+            selectionAnchor = newValue
         }
     }
 
@@ -81,6 +93,11 @@ final class MetalGridView: NSView {
             selectedBlock = nil
             markDirty()
         }
+    }
+
+    /// Rows visible right now, for "scroll this into view" decisions.
+    var viewportRows: Int {
+        Int(rows)
     }
 
     /// Absolute row at the top of the grid, as last drawn.
@@ -299,7 +316,7 @@ final class MetalGridView: NSView {
         let origin = CGPoint(x: padding.width * scale, y: padding.height * scale)
         var summary: FrameSummary?
         let built: Bool = viewer.withGrid { view in
-            let decor = BlockDecor.decorations(for: blocks, top: view.top, rows: Int(view.rows), selected: selectedBlock)
+            let decor = BlockDecor.decorations(for: blocks, top: view.top, rows: Int(view.rows), selected: selectedBlocks)
             var ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor)
             if !ok {
                 ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor)

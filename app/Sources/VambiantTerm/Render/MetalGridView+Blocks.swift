@@ -59,11 +59,55 @@ extension MetalGridView {
         // Clicking the gutter or the header row selects the whole block;
         // clicking inside its output only deselects (future text selection).
         let headerRow = block.start >= viewportTop ? Int(block.start - viewportTop) : -1
-        if inGutter || gridRow(at: point) == headerRow {
-            selectedBlock = selectedBlock == block.seq ? nil : block.seq
-        } else {
+        guard inGutter || gridRow(at: point) == headerRow else {
             selectedBlock = nil
+            return
         }
+        let mods = event.modifierFlags
+        if mods.contains(.shift), let anchor = selectionAnchor {
+            // ⇧-click: the range from the anchor, like Warp and Finder.
+            selectedBlocks = blocks.range(from: anchor, to: block.seq)
+        } else if mods.contains(.command) {
+            // ⌘-click toggles one block in and out of the selection.
+            var set = selectedBlocks
+            if set.contains(block.seq) {
+                set.remove(block.seq)
+            } else {
+                set.insert(block.seq)
+            }
+            selectedBlocks = set
+            selectionAnchor = block.seq
+        } else {
+            selectedBlock = selectedBlocks == [block.seq] ? nil : block.seq
+        }
+    }
+
+    /// ⌘⌥⇧↑/↓: grow the selection by one block at either end.
+    func extendSelection(previous: Bool) {
+        guard let anchor = selectionAnchor ?? selectedBlocks.first else {
+            onAction?(previous ? .blockSelectPrevious : .blockSelectNext)
+            return
+        }
+        let ordered = blocks.ordered(selectedBlocks)
+        let edge = previous ? ordered.first?.seq : ordered.last?.seq
+        guard let edge, let next = blocks.neighbour(of: edge, previous: previous) else {
+            NSSound.beep()
+            return
+        }
+        selectedBlocks = blocks.range(from: anchor, to: next.seq).union(selectedBlocks)
+    }
+
+    /// `⌃M`: the same menu right-click shows, anchored at the header row.
+    func openBlockMenu() {
+        guard let block = selectedBlock.flatMap(blocks.command(seq:)), let window else {
+            NSSound.beep()
+            return
+        }
+        let row = block.start >= viewportTop ? Int(block.start - viewportTop) : 0
+        let scale = window.backingScaleFactor
+        let y = padding.height + (CGFloat(row) + 1) * renderer.cellSize.height / scale
+        let menu = blockMenu(for: block)
+        menu.popUp(positioning: nil, at: CGPoint(x: padding.width, y: y), in: self)
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -72,12 +116,25 @@ extension MetalGridView {
             super.rightMouseDown(with: event)
             return
         }
-        selectedBlock = block.seq
+        if !selectedBlocks.contains(block.seq) {
+            selectedBlock = block.seq
+        }
+        NSMenu.popUpContextMenu(blockMenu(for: block), with: event, for: self)
+    }
+
+    /// docs/06 §4's kebab menu. Chords are not shown: the keymap owns them.
+    private func blockMenu(for block: Block) -> NSMenu {
         let menu = NSMenu(title: "Block")
+        let several = selectedBlocks.count > 1
         let items: [(String, Selector, Bool)] = [
-            ("Copy Command", #selector(copyCommand(_:)), block.cmdline != nil),
-            ("Copy Output", #selector(copyOutput(_:)), block.outputRows != nil),
-            ("Re-run Command", #selector(rerunCommand(_:)), block.cmdline != nil),
+            (several ? "Copy Commands" : "Copy Command", #selector(copyCommand(_:)), block.cmdline != nil || several),
+            (several ? "Copy Outputs" : "Copy Output", #selector(copyOutput(_:)), block.outputRows != nil || several),
+            ("Copy Command and Output", #selector(copyBoth(_:)), true),
+            ("Copy as HTML", #selector(exportBlock(_:)), true),
+            ("Re-input Command", #selector(reinputCommand(_:)), block.cmdline != nil && !several),
+            ("Re-input as Root", #selector(reinputSudo(_:)), block.cmdline != nil && !several),
+            ("Re-run Command", #selector(rerunCommand(_:)), block.cmdline != nil && !several),
+            (block.bookmarked ? "Remove Bookmark" : "Bookmark", #selector(toggleBookmark(_:)), !several),
             ("Explain (needs the provider layer, M-AI)", #selector(explainBlock(_:)), false),
         ]
         for (title, selector, enabled) in items {
@@ -87,7 +144,7 @@ extension MetalGridView {
             menu.addItem(item)
         }
         menu.autoenablesItems = false
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
+        return menu
     }
 
     private func act(_ action: BlockAction) {
@@ -108,6 +165,30 @@ extension MetalGridView {
 
     @objc func rerunCommand(_ sender: Any?) {
         act(.rerun)
+    }
+
+    @objc func copyBoth(_ sender: Any?) {
+        act(.copyBoth)
+    }
+
+    @objc func exportBlock(_ sender: Any?) {
+        act(.exportHTML)
+    }
+
+    @objc func reinputCommand(_ sender: Any?) {
+        act(.reinput)
+    }
+
+    @objc func reinputSudo(_ sender: Any?) {
+        act(.reinputSudo)
+    }
+
+    @objc func toggleBookmark(_ sender: Any?) {
+        act(.bookmark)
+    }
+
+    @objc func clearScrollback(_ sender: Any?) {
+        onAction?(.clearScrollback)
     }
 
     @objc func explainBlock(_ sender: Any?) {

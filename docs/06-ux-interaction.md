@@ -127,8 +127,14 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 | Search scrollback | `⌘F` | `<prefix> /` |
 | Jump to previous prompt | `⌘↑` | `<prefix> [` |
 | Jump to next prompt | `⌘↓` | `<prefix> ]` |
-| Select previous / next block | `⌘⇧↑` / `⌘⇧↓` | — |
-| Copy block command / output, re-run | Blocks menu, right-click; `⌘C` with a block selected copies its output | — |
+| Select previous / next block | `⌃⌘↑` / `⌃⌘↓` | — |
+| Extend the block selection | `⌃⌘⇧↑` / `⌃⌘⇧↓`; `⌘`-click toggles, `⇧`-click ranges | — |
+| Top / bottom of the selected block | `⌘⇧↑` / `⌘⇧↓` | — |
+| Bookmark block; previous / next bookmark | `⌘B`; `⌥↑` / `⌥↓` | — |
+| Copy block command / output | `⌘⇧C` / `⌘⌥⇧C`; `⌘C` with a block selected copies its output; copy both and copy-as-HTML in the menu | — |
+| Re-input command (plain / with sudo); re-run | `⌘I` / `⌘⇧I`; menu | — |
+| Block menu from the keyboard | `⌃M` | — |
+| Clear scrollback | `⌘⇧K` | — |
 | Scroll back / forward a page | `⇧PgUp` / `⇧PgDn` | `<prefix> PgUp` / `<prefix> PgDn` |
 | Scroll to oldest line / live end | `⇧Home` / `⇧End` | — |
 
