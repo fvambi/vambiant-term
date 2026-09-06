@@ -33,6 +33,7 @@ vt-policy = { path = "crates/vt-policy" }
 vt-store = { path = "crates/vt-store" }
 vt-worktree = { path = "crates/vt-worktree" }
 vt-config = { path = "crates/vt-config" }
+vt-shell = { path = "crates/vt-shell" }
 vt-ffi = { path = "crates/vt-ffi" }
 vt-conform = { path = "crates/vt-conform" }
 

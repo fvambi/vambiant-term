@@ -215,7 +215,73 @@ impl Registry {
                 crate::codex::observe(agents, id.clone(), socket);
                 Ok((spec, Some(token), vt_agent::codex::CAPABILITIES))
             }
-            AgentKind::Generic => Ok((spec, None, Capabilities::default())),
+            AgentKind::Generic => {
+                self.inject_shell_integration(id, &mut spec);
+                Ok((spec, None, Capabilities::default()))
+            }
+        }
+    }
+
+    /// For a plain shell session, write our OSC 133/7 snippet and point the
+    /// shell at it (`[shell_integration]`). Best effort: a shell we do not
+    /// recognise, or `inject = off`, leaves the session on heuristic blocks.
+    fn inject_shell_integration(&self, id: &SessionId, spec: &mut NewSession) {
+        let cfg = self.cfg().shell_integration;
+        if !cfg.enabled || matches!(cfg.inject, vt_config::schema::Inject::Off) {
+            return;
+        }
+        // The program: the explicit argv[0], else the user's login shell.
+        let controls_argv = !spec.argv.is_empty();
+        let program = spec
+            .argv
+            .first()
+            .cloned()
+            .or_else(|| std::env::var("SHELL").ok())
+            .unwrap_or_default();
+        let Some(shell) = vt_shell::Shell::from_program(&program) else {
+            return;
+        };
+        // Only recognised as a shell to integrate; write under a per-session dir.
+        let dir = self.state_dir.join("shell-integration").join(&id.0);
+        let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
+        let user_zdotdir = std::env::var_os("ZDOTDIR").map_or(home, PathBuf::from);
+        let inj = vt_shell::inject(shell, &dir, &user_zdotdir, controls_argv);
+        for (path, contents) in &inj.files {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(path, contents) {
+                eprintln!(
+                    "vtermd: session {}: shell integration file {}: {e}",
+                    id.0,
+                    path.display()
+                );
+                return;
+            }
+        }
+        // XDG_DATA_DIRS must prepend to the *real* current value, which the
+        // injection could not read; re-derive it here.
+        for (k, v) in inj.env {
+            let value = if k == "XDG_DATA_DIRS" {
+                let existing = std::env::var("XDG_DATA_DIRS")
+                    .unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+                format!("{}:{existing}", dir.display())
+            } else {
+                v
+            };
+            spec.env.retain(|(ek, _)| ek != &k);
+            spec.env.push((k, value));
+        }
+        if controls_argv && !inj.args.is_empty() {
+            // bash `--rcfile <file>` goes right after the program.
+            let program = spec.argv.remove(0);
+            let mut argv = vec![program];
+            argv.extend(inj.args);
+            argv.extend(std::mem::take(&mut spec.argv));
+            spec.argv = argv;
+        }
+        if let Some(why) = inj.limitation {
+            eprintln!("vtermd: session {}: shell integration limited: {why}", id.0);
         }
     }
 

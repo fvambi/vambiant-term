@@ -956,6 +956,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vt-shell"
+version = "0.0.0"
+
+[[package]]
 name = "vt-store"
 version = "0.0.0"
 dependencies = [
@@ -1016,6 +1020,7 @@ dependencies = [
  "vt-ipc",
  "vt-proto",
  "vt-pty",
+ "vt-shell",
  "vt-store",
 ]
 
