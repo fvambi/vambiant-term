@@ -14,6 +14,10 @@ pub struct Block {
     /// Wall-clock time from the command's `C` to its `D`, when both were seen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// The row the command's output starts on (`C`), so the command line's
+    /// rows — wrapped or multi-line — are known exactly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_line: Option<u64>,
 }
 
 /// Kinds of block. Agent-event blocks are added in M5 from `vt-proto`.

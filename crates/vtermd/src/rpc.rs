@@ -263,11 +263,12 @@ impl Handler for Rpc {
                 let format: String = Self::param(req, "format").unwrap_or_else(|_| "plain".into());
                 let format = match format.as_str() {
                     "plain" => TextFormat::Plain,
+                    "rows" => TextFormat::Rows,
                     "html" => TextFormat::Html,
                     other => {
                         return Err(RpcError::new(
                             RpcError::INVALID_PARAMS,
-                            format!("unknown text format `{other}` (plain|html)"),
+                            format!("unknown text format `{other}` (plain|rows|html)"),
                         ));
                     }
                 };
@@ -497,7 +498,8 @@ fn find_rows(
     let end = from.max(to);
     while start <= end && out.len() < limit {
         let stop = start.saturating_add(CHUNK - 1).min(end);
-        let Some(text) = Registry::text(h, start, stop) else {
+        // One line per grid row: soft wraps must not shift the row numbers.
+        let Some(text) = Registry::export(h, start, stop, TextFormat::Rows) else {
             break;
         };
         for (i, line) in text.lines().enumerate() {

@@ -16,7 +16,7 @@ final class SplitContainer: NSView {
     init(initial: PaneController) {
         super.init(frame: .zero)
         autoresizingMask = [.width, .height]
-        install(initial.view)
+        install(initial.container)
         panes = [initial]
     }
 
@@ -34,12 +34,12 @@ final class SplitContainer: NSView {
     }
 
     var focused: PaneController? {
-        guard let responder = window?.firstResponder as? MetalGridView else { return panes.first }
-        return panes.first { $0.view === responder }
+        guard let responder = window?.firstResponder as? NSView else { return panes.first }
+        return panes.first { responder === $0.view || responder.isDescendant(of: $0.container) } ?? panes.first
     }
 
     func focus(_ pane: PaneController) {
-        window?.makeFirstResponder(pane.view)
+        pane.focus()
         onFocusChange?(pane)
     }
 
@@ -49,7 +49,7 @@ final class SplitContainer: NSView {
         if zoomed != nil {
             toggleZoom(pane)
         }
-        let old = pane.view
+        let old = pane.container
         let container = old.superview
         let split = NSSplitView()
         split.isVertical = vertical
@@ -65,7 +65,7 @@ final class SplitContainer: NSView {
             install(split)
         }
         split.addArrangedSubview(old)
-        split.addArrangedSubview(newPane.view)
+        split.addArrangedSubview(newPane.container)
         split.adjustSubviews()
         split.setPosition(vertical ? split.bounds.width / 2 : split.bounds.height / 2, ofDividerAt: 0)
         panes.append(newPane)
@@ -79,7 +79,7 @@ final class SplitContainer: NSView {
         if zoomed != nil {
             toggleZoom(pane)
         }
-        let view = pane.view
+        let view = pane.container
         guard let split = view.superview as? NSSplitView else { return false }
         split.removeArrangedSubview(view)
         view.removeFromSuperview()
@@ -104,13 +104,13 @@ final class SplitContainer: NSView {
     func toggleZoom(_ pane: PaneController) {
         if let zoomed {
             for p in panes where p !== zoomed {
-                p.view.isHidden = false
+                p.container.isHidden = false
             }
             self.zoomed = nil
             root?.needsLayout = true
         } else {
             for p in panes where p !== pane {
-                p.view.isHidden = true
+                p.container.isHidden = true
             }
             zoomed = pane
         }
@@ -119,11 +119,11 @@ final class SplitContainer: NSView {
 
     /// The nearest pane whose edge lies in `direction` from `pane`.
     func neighbour(of pane: PaneController, direction: ShellAction.Direction) -> PaneController? {
-        let from = pane.view.convert(pane.view.bounds, to: self)
+        let from = pane.container.convert(pane.container.bounds, to: self)
         let centre = CGPoint(x: from.midX, y: from.midY)
         var best: (PaneController, CGFloat)?
-        for candidate in panes where candidate !== pane && !candidate.view.isHidden {
-            let r = candidate.view.convert(candidate.view.bounds, to: self)
+        for candidate in panes where candidate !== pane && !candidate.container.isHidden {
+            let r = candidate.container.convert(candidate.container.bounds, to: self)
             let distance: CGFloat
             switch direction {
             case .left where r.maxX <= from.minX + 1: distance = from.minX - r.maxX

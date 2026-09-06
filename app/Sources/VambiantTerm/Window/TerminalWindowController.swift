@@ -32,6 +32,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             alpha: 1
         )
         window.contentResizeIncrements = cell
+        window.appearance = Self.appearance(for: renderer.theme)
         super.init(window: window)
         window.delegate = self
         let first = makePane()
@@ -39,7 +40,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         container.onFocusChange = { [weak self] pane in self?.window?.title = pane.title }
         window.contentView = container
         window.center()
-        window.makeFirstResponder(first.view)
+        container.layoutSubtreeIfNeeded()
+        first.focus()
         // The view has a size now, so the session can be created at it.
         first.start(cwd: NSHomeDirectory(), cols: max(first.view.cols, 80), rows: max(first.view.rows, 24))
         window.title = first.title
@@ -53,9 +55,22 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     /// `[mux] detach_on_close`; false kills the sessions with the window.
     var detachOnClose = true
 
+    /// System controls (search field, buttons, menus) follow the theme's
+    /// lightness, so a dark theme gets dark chrome.
+    static func appearance(for theme: Theme) -> NSAppearance? {
+        let b = theme.background
+        let dark = (b.r + b.g + b.b) / 3 < 0.5
+        return NSAppearance(named: dark ? .darkAqua : .aqua)
+    }
+
+    func applyTheme() {
+        window?.appearance = Self.appearance(for: renderer.theme)
+        window?.backgroundColor = renderer.theme.background.nsColor
+    }
+
     private func makePane() -> PaneController {
         let pane = PaneController(daemon: daemon, renderer: renderer)
-        (NSApp.delegate as? AppDelegate)?.configure(pane.view)
+        (NSApp.delegate as? AppDelegate)?.configure(pane)
         pane.view.onAction = { [weak self, weak pane] action in
             guard let self, let pane else { return }
             perform(action, on: pane)

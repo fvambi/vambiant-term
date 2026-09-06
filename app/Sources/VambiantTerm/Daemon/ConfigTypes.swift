@@ -190,6 +190,10 @@ struct ShellBlocks: Decodable, Equatable, Sendable {
     }
 }
 
+struct ShellInput: Decodable, Equatable, Sendable {
+    var mode: String
+}
+
 struct ShellConfig: Decodable, Equatable, Sendable {
     var font: ShellFont
     var theme: ShellThemeRef
@@ -197,6 +201,7 @@ struct ShellConfig: Decodable, Equatable, Sendable {
     var cursor: ShellCursor
     var mux: ShellMux
     var blocks: ShellBlocks
+    var input: ShellInput
 }
 
 struct SetParams: Encodable {

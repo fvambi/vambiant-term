@@ -22,8 +22,10 @@ pub enum Scroll {
 /// Output format for [`TerminalCore::export`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextFormat {
-    /// Plain text, one line per row.
+    /// Plain text with soft-wrapped rows joined into logical lines.
     Plain,
+    /// Plain text, exactly one line per grid row (find and row mapping).
+    Rows,
     /// HTML with inline colours and styles.
     Html,
 }

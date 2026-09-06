@@ -94,6 +94,8 @@ final class MetalGridView: NSView {
     /// Find requests and steps go to the pane, which has the daemon.
     var onFindChange: ((FindState) -> Void)?
     var onFindStep: ((Bool) -> Void)?
+    /// Warp mode: the context line for a command block's prompt row.
+    var headerProvider: ((Block) -> String)?
 
     /// Forces the next render even when the grid's sequence is unchanged.
     func lastSeqReset() {
@@ -332,7 +334,10 @@ final class MetalGridView: NSView {
         let origin = CGPoint(x: padding.width * scale, y: padding.height * scale)
         var summary: FrameSummary?
         let built: Bool = viewer.withGrid { view in
-            let decor = BlockDecor.decorations(for: blocks, top: view.top, rows: Int(view.rows), selected: selectedBlocks)
+            let decor = BlockDecor.decorations(
+                for: blocks, top: view.top, rows: Int(view.rows), selected: selectedBlocks,
+                headers: renderer.blockChrome.warpMode ? headerProvider : nil
+            )
             let marks = findState.visible(top: view.top, rows: Int(view.rows))
             updateStickyHeader(top: view.top)
             var ok = renderer.build(

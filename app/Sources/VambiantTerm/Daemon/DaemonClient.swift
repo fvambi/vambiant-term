@@ -20,6 +20,7 @@ struct SessionInfo: Decodable, Sendable {
     let size: [UInt16]
     let state: String?
     let degraded: String?
+    let cwd: String?
 
     var cols: UInt16 {
         size.first ?? 0

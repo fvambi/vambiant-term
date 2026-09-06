@@ -2,6 +2,7 @@
 // Runs on the main actor; the grid lock is held only while instances are
 // built, never across GPU work.
 
+import AppKit
 import CVambiantTerm
 @preconcurrency import Metal
 import QuartzCore
@@ -117,6 +118,12 @@ final class GridRenderer {
         CGSize(width: fonts.metrics.width * scale, height: fonts.metrics.height * scale)
     }
 
+    /// The grid's font as AppKit sees it, for chrome drawn with text views.
+    var nsFont: NSFont {
+        NSFont(name: CTFontCopyPostScriptName(fonts.regular) as String, size: fonts.size)
+            ?? NSFont.monospacedSystemFont(ofSize: fonts.size, weight: .regular)
+    }
+
     /// Builds the instance lists for `view` with the cell grid starting at
     /// `origin` (device pixels). Returns false if the atlas was cleared
     /// mid-build and the caller should run it again.
@@ -129,6 +136,7 @@ final class GridRenderer {
         glyphs.removeAll(keepingCapacity: true)
         guard let cells = view.cells else { return true }
         let (selectedRows, failedRows) = tintedRows(decorations)
+        let boldRows = Self.boldRows(decorations)
         let tint = theme.background.mixed(with: theme.selection, 0.35)
         let failedTint = theme.background.mixed(with: theme.palette[1], 0.08)
         let cols = Int(view.cols)
@@ -189,7 +197,7 @@ final class GridRenderer {
                     continue
                 }
                 appendDecorations(attrs, at: originPx, size: size, fg: fg.simd, style: decoration)
-                let style = FontStyle(bold: attrs & Attrs.bold != 0, italic: attrs & Attrs.italic != 0)
+                let style = FontStyle(bold: attrs & Attrs.bold != 0 || boldRows.contains(r), italic: attrs & Attrs.italic != 0)
                 guard let g = atlas.glyph(for: GlyphKey(scalar: cell.ch, style: style, wide: wide)) else { continue }
                 var flags = CellInstance.hasGlyph
                 if g.isColor {
@@ -217,6 +225,46 @@ final class GridRenderer {
             let c = m.current ? now : hit
             bg.append(CellInstance(origin: o, size: SIMD2(width, cell.y), uv: .zero, fg: c, bg: c, flags: 0))
         }
+    }
+
+    /// The grid as the chrome drawers see it: cells plus pixel geometry.
+    private struct CellPlane {
+        let cells: UnsafePointer<VtCell>
+        let cols: Int
+        let origin: SIMD2<Float>
+        let cell: SIMD2<Float>
+    }
+
+    /// Draws `text` into blank cells of a row from column 0 (the context
+    /// line of a block in Warp mode). Stops at the first non-blank cell:
+    /// chrome never covers content.
+    private func appendText(_ text: String, row: Int, colour: RGBA, in plane: CellPlane) {
+        let style = FontStyle(bold: false, italic: false)
+        for (c, scalar) in text.unicodeScalars.enumerated() {
+            guard c < plane.cols else { return }
+            let under = plane.cells[row * plane.cols + c]
+            guard under.ch == 32 || under.ch == 0, under.bg.0 == 0 else { return }
+            guard scalar != " ", let g = atlas.glyph(for: GlyphKey(scalar: scalar.value, style: style, wide: false)) else {
+                continue
+            }
+            let o = SIMD2(plane.origin.x + Float(c) * plane.cell.x, plane.origin.y + Float(row) * plane.cell.y)
+            var flags = CellInstance.hasGlyph
+            if g.isColor {
+                flags |= CellInstance.isColor
+            }
+            glyphs.append(CellInstance(origin: o, size: plane.cell, uv: g.uv, fg: colour.simd, bg: theme.background.simd, flags: flags))
+        }
+    }
+
+    /// Warp mode: the command line is bold, like Warp's block header.
+    private static func boldRows(_ decorations: [BlockDecoration]) -> Set<Int> {
+        var rows = Set<Int>()
+        for d in decorations {
+            if let r = d.commandRows {
+                rows.formUnion(r)
+            }
+        }
+        return rows
     }
 
     /// Rows a selected or failed block tints. Only default-background cells
@@ -268,6 +316,10 @@ final class GridRenderer {
             bg.append(CellInstance(
                 origin: SIMD2(width - w - s, top + s), size: SIMD2(w, cell.y - 2 * s), uv: .zero, fg: mark, bg: mark, flags: 0
             ))
+        }
+        if let header = d.header, d.firstRow > 0 {
+            let plane = CellPlane(cells: cells, cols: cols, origin: origin, cell: cell)
+            appendText(header, row: d.firstRow - 1, colour: theme.foreground.scaled(0.55), in: plane)
         }
         guard let chip = d.chip else { return }
         let scalars = Array(chip.unicodeScalars)

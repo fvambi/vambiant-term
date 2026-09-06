@@ -77,6 +77,7 @@ A block is one command (from OSC 133) or one agent event. Rendering:
 - Selection is semantic: clicking a block's header selects the whole block; `⌘⇧↑` selects the previous block.
 - When shell integration is unavailable or broken, blocks degrade to heuristic segmentation with a small "≈" marker in the gutter, and the tooltip says why.
 - Output that arrives at an idle prompt from a background job gets a grey gutter and a "≈ background" chip: it is a guess (see `10 §10`), never a command block.
+- **Warp mode** (ADR-0011, default): the shell's prompt is a blank row the app fills with a dim context line (`~/code/app  git:(main)  (0.027s)`); the command line below it is bold; the editor lives at the bottom of the pane with cwd and branch chips and a hint (`⌘↩ for new agent · ⇧↩ newline`). While a command runs the hint says so and keys go to the command.
 
 ## 5. Inline suggestions
 

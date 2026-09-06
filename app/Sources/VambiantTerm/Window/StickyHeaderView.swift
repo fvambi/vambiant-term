@@ -34,13 +34,11 @@ final class StickyHeaderView: NSView {
         label.font = font
         label.stringValue = block.cmdline ?? "(command without a recorded command line)"
         chip.stringValue = BlockDecor.chip(for: block)
-        let fg = NSColor(red: CGFloat(theme.foreground.r), green: CGFloat(theme.foreground.g), blue: CGFloat(theme.foreground.b), alpha: 1)
-        let bg = theme.background.mixed(with: theme.foreground, 0.08)
-        layer?.backgroundColor = NSColor(red: CGFloat(bg.r), green: CGFloat(bg.g), blue: CGFloat(bg.b), alpha: 0.97).cgColor
-        label.textColor = fg
+        layer?.backgroundColor = theme.background.mixed(with: theme.foreground, 0.08).nsColor.withAlphaComponent(0.97).cgColor
+        label.textColor = theme.foreground.nsColor
         let status = BlockDecor.status(of: block)
         let accent = status == .failed ? theme.palette[1] : (status == .ok ? theme.palette[2] : theme.foreground)
-        chip.textColor = NSColor(red: CGFloat(accent.r), green: CGFloat(accent.g), blue: CGFloat(accent.b), alpha: 1)
+        chip.textColor = accent.nsColor
         isHidden = false
         toolTip = "Scrolled-off command; click to jump to its start"
     }

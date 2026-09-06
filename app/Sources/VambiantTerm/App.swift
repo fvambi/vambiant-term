@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             renderer = try GridRenderer(
                 device: device,
                 fonts: FontSet(),
-                theme: .vambiantDark,
+                theme: .warpDark,
                 scale: NSScreen.main?.backingScaleFactor ?? 2
             )
         } catch {
@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// then write the frame and log the overlay state.
     private func runScreenshotDiagnostic(pane: PaneController, shot: String) {
         // Something worth looking at: attributes, colours, CJK, emoji.
-        let demo = "clear; printf '\\e[1mbold\\e[0m \\e[3mitalic\\e[0m \\e[4munderline\\e[0m "
+        let demo = "printf '\\e[1mbold\\e[0m \\e[3mitalic\\e[0m \\e[4munderline\\e[0m "
             + "\\e[31mred\\e[0m \\e[42m bg \\e[0m \\e[38;5;208m256\\e[0m \\e[38;2;122;162;247mrgb\\e[0m "
             + "世界 😀\\n'; ls -la | head -6; seq 1 40\r"
         Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
@@ -127,9 +127,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 pane.runFind(FindState(query: "fwartner"))
             }
         }
-        // Below the first command line, so its header is pinned.
+        // Below the first command line, so its header is pinned for the
+        // log line; then back to the top so the shot shows the block's
+        // context row and bold command line.
         Timer.scheduledTimer(withTimeInterval: 3.7, repeats: false) { _ in
             MainActor.assumeIsolated { _ = pane.viewer?.scroll(VtScrollTo_Row, n: 10) }
+        }
+        Timer.scheduledTimer(withTimeInterval: 3.85, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                let sticky = pane.view.stickyHeader.isHidden ? "hidden" : "block \(pane.view.stickyHeader.seq ?? -1)"
+                NSLog("screenshot: sticky header at row 10: %@", sticky)
+                _ = pane.viewer?.scroll(VtScrollTo_Top)
+            }
         }
         Timer.scheduledTimer(withTimeInterval: 3.9, repeats: false) { _ in
             MainActor.assumeIsolated {
@@ -143,6 +152,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     pane.blocks.command(at: top)?.seq ?? -1, pane.view.renderer.blockChrome.stickyHeader ? 1 : 0
                 )
                 pane.view.captureNext(to: shot)
+                // The whole window (chrome, chips, editor) through AppKit's
+                // display cache; the Metal grid inside may come out blank.
+                if let content = pane.container.window?.contentView,
+                   let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                    content.cacheDisplay(in: content.bounds, to: rep)
+                    if let png = rep.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: shot + ".window.png"))
+                    }
+                }
             }
         }
     }
@@ -182,6 +200,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             view.padding = CGSize(width: c.window.padding.x, height: c.window.padding.y)
             view.blink = (c.cursor.blink, c.cursor.blinkIntervalMs)
         }
+    }
+
+    /// A pane: its grid plus the input mode (`[input] mode`, ADR-0011).
+    func configure(_ pane: PaneController) {
+        configure(pane.view)
+        pane.setInputMode(warp: shellConfig.map { $0.input.mode == "warp" } ?? true)
+    }
+
+    private var allPanes: [PaneController] {
+        windows.flatMap(\.container.panes)
     }
 
     private var allViews: [MetalGridView] {
@@ -226,7 +254,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         renderer.boldIsBright = c.font.boldIsBright
         renderer.cursorStyle = CursorStyle(rawValue: c.cursor.style) ?? .block
         renderer.blockChrome = BlockChrome(
-            dividers: c.blocks.dividers, failedTint: c.blocks.failedTint, stickyHeader: c.blocks.stickyHeader
+            dividers: c.blocks.dividers, failedTint: c.blocks.failedTint, stickyHeader: c.blocks.stickyHeader,
+            warpMode: c.input.mode == "warp"
         )
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let wanted = c.theme.followSystem && !dark ? c.theme.light : c.theme.name
@@ -237,14 +266,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         for w in windows {
             w.detachOnClose = c.mux.detachOnClose
-            w.window?.backgroundColor = NSColor(
-                red: CGFloat(renderer.theme.background.r), green: CGFloat(renderer.theme.background.g),
-                blue: CGFloat(renderer.theme.background.b), alpha: 1
-            )
+            w.applyTheme()
         }
-        for view in allViews {
-            configure(view)
-            view.configChanged()
+        for pane in allPanes {
+            configure(pane)
+            pane.view.configChanged()
         }
     }
 

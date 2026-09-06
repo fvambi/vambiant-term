@@ -94,6 +94,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE blocks ADD COLUMN bookmarked INTEGER NOT NULL DEFAULT 0;",
     // v6 — M5.5: command duration for the block header (12 §L).
     "ALTER TABLE blocks ADD COLUMN duration_ms INTEGER;",
+    // v7 — M5.5: the row a command's output starts on (its `C` mark).
+    "ALTER TABLE blocks ADD COLUMN output_line INTEGER;",
 ];
 
 /// Newest schema version this binary understands.
@@ -146,7 +148,7 @@ mod tests {
     fn migrates_fresh_and_is_idempotent() {
         let mut store = Store::open_in_memory().unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
-        assert_eq!(CURRENT_VERSION, 6);
+        assert_eq!(CURRENT_VERSION, 7);
         migrate(&mut store).unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
         let tables: Vec<String> = store

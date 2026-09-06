@@ -171,14 +171,24 @@ fn output_at_an_idle_prompt_becomes_a_background_block() {
             )
             .unwrap();
         let arr = blocks.as_array().cloned().unwrap_or_default();
-        if let Some(bg) = arr
+        // The two lines may arrive in one chunk (one block, rows 0..2) or
+        // two (two blocks); either way they are heuristic, start at the
+        // prompt row, and between them cover both printed rows.
+        let bg: Vec<_> = arr
             .iter()
-            .find(|b| b["block"]["kind"]["kind"] == "background")
-        {
-            assert_eq!(bg["block"]["confidence"], "heuristic", "{bg}");
-            assert_eq!(bg["block"]["start_line"], 0, "{bg}");
-            assert_eq!(bg["block"]["end_line"], 2, "two lines printed: {bg}");
-            break;
+            .filter(|b| b["block"]["kind"]["kind"] == "background")
+            .collect();
+        if let Some(first) = bg.first() {
+            assert_eq!(first["block"]["confidence"], "heuristic", "{first}");
+            assert_eq!(first["block"]["start_line"], 0, "{first}");
+            let last_row = bg
+                .iter()
+                .filter_map(|b| b["block"]["end_line"].as_u64())
+                .max()
+                .unwrap_or(0);
+            if last_row >= 2 {
+                break;
+            }
         }
         assert!(
             start.elapsed() < Duration::from_secs(10),

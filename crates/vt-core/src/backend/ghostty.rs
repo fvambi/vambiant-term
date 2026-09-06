@@ -321,10 +321,10 @@ impl TerminalCore for GhosttyCore {
         let selection = Selection::new(start, end, false);
         let opts = FormatterOptions::new()
             .with_format(match format {
-                TextFormat::Plain => Format::Plain,
+                TextFormat::Plain | TextFormat::Rows => Format::Plain,
                 TextFormat::Html => Format::Html,
             })
-            .with_unwrap(true)
+            .with_unwrap(format != TextFormat::Rows)
             .with_trim(true)
             .with_selection(&selection);
         let Ok(mut formatter) = Formatter::new(&self.term, opts) else {
@@ -615,6 +615,12 @@ mod tests {
 
         let html = core.export(0, 0, TextFormat::Html);
         assert!(html.contains('<') && html.contains('a'), "{html}");
+
+        // A soft-wrapped line is one logical line in Plain, two rows in Rows.
+        let mut wide = GhosttyCore::new(GridSize { cols: 5, rows: 4 }).unwrap();
+        wide.advance(b"abcdefgh\r\nz");
+        assert_eq!(wide.export(0, 2, TextFormat::Plain), "abcdefgh\nz");
+        assert_eq!(wide.export(0, 2, TextFormat::Rows), "abcde\nfgh\nz");
 
         core.scroll(Scroll::Top);
         core.clear_scrollback();

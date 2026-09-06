@@ -57,6 +57,19 @@ struct Theme: Sendable {
     /// 0–15: normal then bright ANSI colours; 16–255 the xterm cube and ramp.
     let palette: [RGBA]
 
+    /// The default look (ADR-0011): our reading of Warp's screenshots.
+    static let warpDark = Theme(
+        name: "warp-dark",
+        background: RGBA(hex: 0x1B1D23),
+        foreground: RGBA(hex: 0xDCDFE4),
+        cursor: RGBA(hex: 0x8AB4F8),
+        selection: RGBA(hex: 0x2C3140),
+        ansi: [
+            0x23262E, 0xF07178, 0x8FD18A, 0xE6C07B, 0x6FB3F2, 0xD08FF0, 0x6CD3DE, 0xB4B9C4,
+            0x5C6270, 0xFF8A92, 0xA3E39F, 0xF2D28C, 0x8AC4FF, 0xE0A6FF, 0x86E5EE, 0xECEFF4,
+        ]
+    )
+
     static let vambiantDark = Theme(
         name: "vambiant-dark",
         background: RGBA(hex: 0x0D0F12),

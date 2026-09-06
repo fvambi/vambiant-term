@@ -227,6 +227,44 @@ fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
         .unwrap_err();
     assert!(err.to_string().contains("query"), "{err}");
 
+    // A soft-wrapped row above a match must not shift the match's row. The
+    // typed command is echoed too, so it must not contain the needle itself.
+    let bytes = base64::engine::general_purpose::STANDARD
+        .encode("printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nNEEDL%s\\n' E\n");
+    c.call(
+        method::SESSION_INPUT,
+        Some(serde_json::json!({ "id": info.id.0, "bytes": bytes })),
+    )
+    .unwrap();
+    let start = Instant::now();
+    let needle = loop {
+        let hits = c
+            .call(
+                method::SESSION_FIND,
+                Some(serde_json::json!({ "id": info.id.0, "query": "NEEDLE" })),
+            )
+            .unwrap();
+        if let Some(h) = hits.as_array().and_then(|a| a.first()) {
+            break h.clone();
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "NEEDLE never printed"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let row = needle["row"].as_u64().unwrap();
+    let there = c
+        .call(
+            method::SESSION_TEXT,
+            Some(serde_json::json!({ "id": info.id.0, "from": row, "to": row, "format": "rows" })),
+        )
+        .unwrap();
+    assert_eq!(
+        there["text"], "NEEDLE",
+        "the reported row holds the match: {needle}"
+    );
+
     // Typing while scrolled up snaps the viewport back to the live end.
     let bytes = base64::engine::general_purpose::STANDARD.encode("\n");
     c.call(

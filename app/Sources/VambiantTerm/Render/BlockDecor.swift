@@ -22,6 +22,11 @@ struct BlockDecoration: Equatable, Sendable {
     let chip: String?
     /// The block is bookmarked (tick in the right gutter on its header row).
     var bookmarked: Bool = false
+    /// Warp mode: the context line drawn into the blank prompt row above the
+    /// command (`firstRow - 1`), and the command rows set in bold.
+    var header: String?
+    /// Visible rows of the command line (bold in Warp mode).
+    var commandRows: ClosedRange<Int>?
 }
 
 /// What the renderer draws around blocks, from `[blocks]` in config.
@@ -29,6 +34,8 @@ struct BlockChrome: Equatable, Sendable {
     var dividers = true
     var failedTint = true
     var stickyHeader = true
+    /// The shell's prompt is a blank row the app fills (ADR-0011).
+    var warpMode = true
 }
 
 enum BlockDecor {
@@ -38,6 +45,14 @@ enum BlockDecor {
     }
 
     static func decorations(for list: BlockList, top: UInt64, rows: Int, selected: Set<Int64>) -> [BlockDecoration] {
+        decorations(for: list, top: top, rows: rows, selected: selected, headers: nil)
+    }
+
+    /// `headers(block)` supplies Warp's context line for a command block
+    /// whose prompt row is visible; nil disables headers (classic mode).
+    static func decorations(
+        for list: BlockList, top: UInt64, rows: Int, selected: Set<Int64>, headers: ((Block) -> String)?
+    ) -> [BlockDecoration] {
         guard rows > 0 else { return [] }
         let bottom = top + UInt64(rows) - 1
         var out: [BlockDecoration] = []
@@ -47,6 +62,12 @@ enum BlockDecor {
                 continue
             }
             let startsHere = span.lowerBound >= top
+            // The header needs the prompt row (start - 1) on screen too.
+            let headerVisible = startsHere && b.isCommand && span.lowerBound > top
+            let cmd = b.commandRows
+            let commandVisible: ClosedRange<Int>? = b.isCommand && cmd.upperBound >= top && cmd.lowerBound <= bottom
+                ? Int(max(cmd.lowerBound, top) - top) ... Int(min(cmd.upperBound, bottom) - top)
+                : nil
             out.append(BlockDecoration(
                 firstRow: Int(max(span.lowerBound, top) - top),
                 lastRow: Int(min(span.upperBound, bottom) - top),
@@ -55,10 +76,27 @@ enum BlockDecor {
                 heuristic: b.heuristic,
                 startsHere: startsHere,
                 chip: startsHere ? chip(for: b) : nil,
-                bookmarked: b.bookmarked
+                bookmarked: b.bookmarked,
+                header: headerVisible ? headers?(b) : nil,
+                commandRows: headers != nil ? commandVisible : nil
             ))
         }
         return out
+    }
+
+    /// Warp's context line: `~/code/app  git:(main)  (0.027s)`.
+    static func header(for b: Block, cwd: String?, branch: String?) -> String {
+        var parts: [String] = []
+        if let cwd = b.cwd ?? cwd {
+            parts.append(GitProbe.abbreviated(cwd))
+        }
+        if let branch {
+            parts.append("git:(\(branch))")
+        }
+        if let ms = b.durationMs {
+            parts.append(BlockList.durationText(ms: ms))
+        }
+        return parts.joined(separator: "  ")
     }
 
     static func status(of b: Block) -> BlockDecoration.Status {

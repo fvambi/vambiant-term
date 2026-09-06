@@ -8,7 +8,7 @@ struct BlockParsingTests {
         try! JSONDecoder().decode(JSONValue.self, from: Data(s.utf8))
     }
 
-    @Test func parsesTheDaemonsTaggedShape() {
+    @Test func parsesTheDaemonsTaggedShape() throws {
         let item = json(
             #"{"seq": 13, "block": {"confidence": "marked", "start_line": 1, "end_line": 3, "#
                 + #""kind": {"kind": "command", "cmdline": "false", "exit": 1}}}"#
@@ -18,6 +18,11 @@ struct BlockParsingTests {
         #expect(b?.failed == true)
         #expect(b?.outputRows == 2 ... 2)
         #expect(b?.visualRows == 1 ... 2)
+        #expect(b?.commandRows == 1 ... 1)
+        var wrapped = try #require(b)
+        wrapped.outputLine = 3
+        #expect(wrapped.commandRows == 1 ... 2, "a wrapped command line spans to the C row")
+        #expect(wrapped.outputRows == nil, "nothing between the C row and the D row")
     }
 
     @Test func promptsAndUnknownKindsAreHandled() {

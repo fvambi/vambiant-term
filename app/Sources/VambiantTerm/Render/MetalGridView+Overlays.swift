@@ -50,9 +50,7 @@ extension MetalGridView {
             return
         }
         if stickyHeader.seq != block.seq || stickyHeader.isHidden {
-            let font = NSFont(name: CTFontCopyPostScriptName(renderer.fonts.regular) as String, size: renderer.fonts.size)
-                ?? NSFont.monospacedSystemFont(ofSize: renderer.fonts.size, weight: .regular)
-            stickyHeader.show(block: block, font: font, theme: renderer.theme)
+            stickyHeader.show(block: block, font: renderer.nsFont, theme: renderer.theme)
         }
     }
 

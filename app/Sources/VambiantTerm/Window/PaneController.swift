@@ -5,27 +5,121 @@
 import AppKit
 import CVambiantTerm
 
+/// Where the shell is, as the daemon's prompt-phase events report it.
+enum PromptPhase: Equatable, Sendable {
+    /// No mark seen yet (a program without integration, or just started).
+    case unknown
+    /// Between `A` and `C`: the shell is reading a command line.
+    case prompt
+    /// Between `C` and the next `A`: a command owns the keyboard.
+    case running
+}
+
 @MainActor
 final class PaneController {
     let daemon: DaemonClient
     let view: MetalGridView
+    /// The grid plus Warp's input area; what the window installs.
+    let container: PaneView
+    private(set) var phase: PromptPhase = .unknown
+    private(set) var cwd: String?
+    private(set) var branch: String?
     private(set) var session: SessionInfo?
     private(set) var viewer: SessionViewer?
     private(set) var lastError: String?
     private var lastRequestedSize: (UInt16, UInt16) = (0, 0)
     /// Probe hook: every dirty signal, on the viewer's thread.
     let dirtyHook = DirtyHook()
-    private(set) var blocks = BlockList() {
+    var blocks = BlockList() {
         didSet { view.blocks = blocks }
     }
 
     init(daemon: DaemonClient, renderer: GridRenderer) {
         self.daemon = daemon
         view = MetalGridView(renderer: renderer)
+        container = PaneView(grid: view)
         view.onResize = { [weak self] cols, rows in self?.resize(cols: cols, rows: rows) }
         view.onBlockAction = { [weak self] action, block in self?.perform(action, on: block) }
         view.onFindChange = { [weak self] state in self?.runFind(state) }
         view.onFindStep = { [weak self] forward in self?.findStep(forward: forward) }
+        view.headerProvider = { [weak self] block in
+            BlockDecor.header(for: block, cwd: self?.cwd, branch: self?.branch)
+        }
+        container.input.editor.onSubmit = { [weak self] text in self?.submit(text) }
+        container.input.editor.onKeyEquivalent = { [weak self] event in
+            self?.view.performKeyEquivalent(with: event) ?? false
+        }
+        container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
+    }
+
+    // MARK: Warp-mode input
+
+    var warpMode: Bool {
+        container.warpMode
+    }
+
+    /// `[input] mode`, plus the theme and font the input area draws with.
+    func setInputMode(warp: Bool) {
+        container.warpMode = warp
+        container.input.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
+        refreshChips()
+    }
+
+    /// The editor takes the keyboard while the shell reads a line; the
+    /// grid takes it while a command runs (passwords, TUIs, ^C).
+    func focus() {
+        if warpMode, phase != .running {
+            container.window?.makeFirstResponder(container.input.editor)
+        } else {
+            container.window?.makeFirstResponder(view)
+        }
+    }
+
+    private var isFocused: Bool {
+        guard let responder = container.window?.firstResponder as? NSView else { return false }
+        return responder === view || responder.isDescendant(of: container)
+    }
+
+    /// The editor's text to the shell; multi-line input goes as one paste.
+    func submit(_ text: String) {
+        guard let viewer else { return }
+        let line = text.replacingOccurrences(of: "\r\n", with: "\n")
+        viewer.send(text: line + "\r")
+        if !line.isEmpty {
+            phase = .running
+            container.input.setHint("running — keys go to the command  ·  ⌃C interrupts")
+            container.window?.makeFirstResponder(view)
+        }
+    }
+
+    private func setPhase(_ new: PromptPhase) {
+        guard new != phase else { return }
+        phase = new
+        switch new {
+        case .prompt:
+            container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
+            if isFocused {
+                focus()
+            }
+        case .running:
+            container.input.setHint("running — keys go to the command  ·  ⌃C interrupts")
+            if isFocused {
+                container.window?.makeFirstResponder(view)
+            }
+        case .unknown:
+            break
+        }
+    }
+
+    private func refreshChips() {
+        container.input.setChips(cwd: cwd, branch: branch, theme: view.renderer.theme)
+        view.lastSeqReset()
+    }
+
+    private func setCwd(_ path: String) {
+        cwd = path
+        branch = GitProbe.branch(for: path)
+        refreshChips()
     }
 
     // MARK: Find
@@ -124,6 +218,9 @@ final class PaneController {
             if view.cols > 0, (view.cols, view.rows) != (info.cols, info.rows) {
                 v.resize(cols: view.cols, rows: view.rows)
             }
+            if let cwd = info.cwd {
+                setCwd(cwd)
+            }
             loadBlocks()
         } catch {
             lastError = "cannot attach to \(info.id): \(error)"
@@ -164,28 +261,7 @@ final class PaneController {
 
     // MARK: Blocks
 
-    private struct IdParams: Encodable {
-        let id: String
-    }
-
-    private struct TextParams: Encodable {
-        let id: String
-        let from: UInt64
-        let to: UInt64
-        var format: String = "plain"
-    }
-
-    private struct BookmarkParams: Encodable {
-        let id: String
-        let seq: Int64
-        let on: Bool
-    }
-
     private var findGeneration = 0
-
-    private struct TextReply: Decodable {
-        let text: String
-    }
 
     /// Blocks persisted so far; live ones arrive through `handle(event:)`.
     func loadBlocks() {
@@ -206,11 +282,20 @@ final class PaneController {
         guard let session, params[path: "id"]?.stringValue == session.id else { return }
         switch method {
         case "session.block":
-            if let block = Block.parse(item: params) {
+            if var block = Block.parse(item: params) {
+                block.cwd = cwd
                 blocks.append(block)
             }
         case "session.event" where params[path: "event.kind"]?.stringValue == "blocks_degraded":
             blocks.degraded = params[path: "event.reason"]?.stringValue ?? "shell-integration marks are corrupted"
+        case "session.event" where params[path: "event.kind"]?.stringValue == "prompt":
+            setPhase(.prompt)
+        case "session.event" where params[path: "event.kind"]?.stringValue == "command_started":
+            setPhase(.running)
+        case "session.event" where params[path: "event.kind"]?.stringValue == "pwd":
+            if let path = params[path: "event.path"]?.stringValue {
+                setCwd(path)
+            }
         case "session.block_changed":
             if let seq = params[path: "seq"]?.doubleValue, let on = params[path: "bookmarked"]?.boolValue {
                 blocks.setBookmark(seq: Int64(seq), on: on)
@@ -280,86 +365,6 @@ final class PaneController {
         if block.start < top || block.start > bottom {
             viewer?.scroll(VtScrollTo_Row, n: Int64(block.start))
         }
-    }
-
-    /// Actions on the selection; `block` is the one the menu was opened on
-    /// and the fallback when nothing else is selected.
-    func perform(_ action: BlockAction, on block: Block) {
-        let targets = view.selectedBlocks.count > 1 ? blocks.ordered(view.selectedBlocks) : [block]
-        switch action {
-        case .copyCommand:
-            let cmds = targets.compactMap(\.cmdline)
-            guard !cmds.isEmpty else {
-                NSLog("block %lld has no command line (the shell did not send 633;E)", block.seq)
-                NSSound.beep()
-                return
-            }
-            setPasteboard(cmds.joined(separator: "\n"))
-        case .copyOutput:
-            setPasteboard(targets.map { text(of: $0.outputRows) }.joined(separator: "\n"))
-        case .copyBoth:
-            // The command line as a prompt would show it, then the output.
-            setPasteboard(targets.map { "$ \($0.cmdline ?? "")\n\(text(of: $0.outputRows))" }.joined(separator: "\n\n"))
-        case .exportHTML:
-            let html = targets.map { text(of: $0.visualRows, format: "html") }.joined(separator: "\n")
-            let plain = targets.map { text(of: $0.visualRows) }.joined(separator: "\n")
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.setString(html, forType: .html)
-            pb.setString(plain, forType: .string)
-        case .reinput, .reinputSudo:
-            guard let cmd = block.cmdline else {
-                NSSound.beep()
-                return
-            }
-            // Into the prompt, no newline: the user edits or confirms.
-            viewer?.send(text: action == .reinputSudo ? "sudo \(cmd)" : cmd)
-        case .bookmark:
-            guard let session else { return }
-            let on = !block.bookmarked
-            do {
-                try daemon.invoke("session.block.bookmark", params: BookmarkParams(id: session.id, seq: block.seq, on: on))
-                blocks.setBookmark(seq: block.seq, on: on)
-            } catch {
-                NSLog("bookmark for block %lld failed: %@", block.seq, "\(error)")
-                NSSound.beep()
-            }
-        case .menu:
-            view.openBlockMenu()
-        case .rerun:
-            // The user's own earlier command, on their explicit request; not
-            // model output, so rule 5 (stage, never execute) does not apply.
-            guard let cmd = block.cmdline else {
-                NSSound.beep()
-                return
-            }
-            viewer?.send(text: cmd + "\n")
-        case .explain:
-            NSLog("not available yet: explain block (ai.explain_last_failure, M-AI)")
-            NSSound.beep()
-        }
-    }
-
-    /// Text of absolute rows through the daemon; empty when there are none
-    /// or the daemon refuses (logged, never guessed).
-    private func text(of rows: ClosedRange<UInt64>?, format: String = "plain") -> String {
-        guard let session, let rows else { return "" }
-        do {
-            let reply: TextReply = try daemon.call(
-                "session.text",
-                params: TextParams(id: session.id, from: rows.lowerBound, to: rows.upperBound, format: format)
-            )
-            return reply.text
-        } catch {
-            NSLog("text for rows %llu-%llu failed: %@", rows.lowerBound, rows.upperBound, "\(error)")
-            return ""
-        }
-    }
-
-    private func setPasteboard(_ text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
     }
 }
 

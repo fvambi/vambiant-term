@@ -46,6 +46,8 @@ struct Open {
     executed: bool,
     /// When `C` was seen, for the block's duration.
     started: Option<std::time::Instant>,
+    /// The row `C` landed on: where output begins.
+    output_line: Option<u64>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,6 +81,7 @@ impl Segmenter {
                     cmdline: None,
                     executed: false,
                     started: None,
+                    output_line: None,
                 });
                 closed
             }
@@ -93,6 +96,7 @@ impl Segmenter {
                     cmdline: self.pending_cmdline.take(),
                     executed: false,
                     started: None,
+                    output_line: None,
                 });
                 closed
             }
@@ -109,11 +113,13 @@ impl Segmenter {
                         cmdline: self.pending_cmdline.take(),
                         executed: false,
                         started: None,
+                        output_line: None,
                     });
                 }
                 if let Some(open) = self.open.as_mut() {
                     open.executed = true;
                     open.started = Some(std::time::Instant::now());
+                    open.output_line = Some(row);
                 }
                 Segmented::Pending
             }
@@ -129,6 +135,7 @@ impl Segmenter {
                     duration_ms: open
                         .started
                         .map(|t| u64::try_from(t.elapsed().as_millis()).unwrap_or(u64::MAX)),
+                    output_line: open.output_line,
                 }),
                 other => {
                     self.open = other;
@@ -185,6 +192,7 @@ impl Segmenter {
             start_line: first,
             end_line: Some(last),
             duration_ms: None,
+            output_line: None,
         })
     }
 
@@ -202,6 +210,7 @@ impl Segmenter {
             start_line: open.start,
             end_line: Some(end.max(open.start)),
             duration_ms: None,
+            output_line: None,
         }
     }
 
@@ -252,6 +261,7 @@ mod tests {
                 start_line: 4,
                 end_line: Some(6),
                 duration_ms: None,
+                output_line: None,
             })
         );
         assert_eq!(seg.on_output(6, 6), Segmented::Pending, "no new row");
@@ -282,6 +292,7 @@ mod tests {
                 start_line: 10,
                 end_line: Some(10),
                 duration_ms: None,
+                output_line: None,
             })
         );
         assert_eq!(
@@ -307,6 +318,7 @@ mod tests {
                 start_line: 10,
                 end_line: Some(14),
                 duration_ms: None,
+                output_line: Some(10),
             }
         );
         assert!(!seg.is_corrupted());
@@ -357,6 +369,7 @@ mod tests {
                 start_line: 5,
                 end_line: Some(8),
                 duration_ms: None,
+                output_line: Some(5),
             }
         );
     }

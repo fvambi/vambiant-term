@@ -45,8 +45,8 @@ impl Store {
         let (kind, cmdline, exit) = kind_str(&block.kind);
         self.conn
             .execute(
-                "INSERT INTO blocks (session_id, kind, confidence, start_line, end_line, cmdline, exit_code, started_at, duration_ms) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO blocks (session_id, kind, confidence, start_line, end_line, cmdline, exit_code, started_at, duration_ms, output_line) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     session.0,
                     kind,
@@ -57,6 +57,7 @@ impl Store {
                     exit,
                     at,
                     block.duration_ms.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
+                    block.output_line.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
                 ],
             )
             .map_err(|source| StoreError::Query { what: "append block", source })?;
@@ -88,7 +89,7 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT seq, kind, confidence, start_line, end_line, cmdline, exit_code, bookmarked, duration_ms \
+                "SELECT seq, kind, confidence, start_line, end_line, cmdline, exit_code, bookmarked, duration_ms, output_line \
                  FROM blocks WHERE session_id=?1 AND seq>?2 ORDER BY seq LIMIT ?3",
             )
             .map_err(|source| StoreError::Query {
@@ -112,6 +113,7 @@ impl Store {
                     let exit: Option<i32> = row.get(6)?;
                     let bookmarked: i32 = row.get(7)?;
                     let duration: Option<i64> = row.get(8)?;
+                    let output_line: Option<i64> = row.get(9)?;
                     Ok((
                         seq,
                         kind,
@@ -122,6 +124,7 @@ impl Store {
                         exit,
                         bookmarked != 0,
                         duration,
+                        output_line,
                     ))
                 },
             )
@@ -131,11 +134,21 @@ impl Store {
             })?;
         let mut out = Vec::new();
         for row in rows {
-            let (seq, kind, confidence, start, end, cmdline, exit, bookmarked, duration) = row
-                .map_err(|source| StoreError::Query {
-                    what: "read block",
-                    source,
-                })?;
+            let (
+                seq,
+                kind,
+                confidence,
+                start,
+                end,
+                cmdline,
+                exit,
+                bookmarked,
+                duration,
+                output_line,
+            ) = row.map_err(|source| StoreError::Query {
+                what: "read block",
+                source,
+            })?;
             let kind = match kind.as_str() {
                 "command" => BlockKind::Command { cmdline, exit },
                 "background" => BlockKind::Background,
@@ -153,6 +166,7 @@ impl Store {
                     start_line: u64::try_from(start).unwrap_or(0),
                     end_line: end.map(|e| u64::try_from(e).unwrap_or(0)),
                     duration_ms: duration.and_then(|d| u64::try_from(d).ok()),
+                    output_line: output_line.and_then(|l| u64::try_from(l).ok()),
                 },
                 bookmarked,
             });
@@ -203,6 +217,7 @@ mod tests {
             start_line: 0,
             end_line: Some(0),
             duration_ms: None,
+            output_line: None,
         };
         let b = Block {
             kind: BlockKind::Command {
@@ -213,6 +228,7 @@ mod tests {
             start_line: 1,
             end_line: Some(4),
             duration_ms: Some(27),
+            output_line: Some(2),
         };
         store
             .append_block(&sid, "2026-09-06T00:00:00Z", &a)

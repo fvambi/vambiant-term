@@ -22,6 +22,13 @@ struct Block: Equatable, Sendable {
     let end: UInt64?
     /// User bookmark, stored by the daemon.
     var bookmarked: Bool = false
+    /// C..D wall-clock time, when the daemon timed it.
+    var durationMs: UInt64?
+    /// The row output starts on (the `C` mark); the command line occupies
+    /// `start ..< outputLine` even when wrapped or multi-line.
+    var outputLine: UInt64?
+    /// The session's cwd when the block arrived (not stored; nil after a reload).
+    var cwd: String?
 
     var isCommand: Bool {
         if case .command = kind {
@@ -72,10 +79,18 @@ struct Block: Equatable, Sendable {
         start ... max(start, lastRow > start ? lastRow - 1 : start)
     }
 
+    /// Rows of the command line itself.
+    var commandRows: ClosedRange<UInt64> {
+        guard let outputLine, outputLine > start else { return start ... start }
+        return start ... (outputLine - 1)
+    }
+
     /// Rows holding the command's output, if any.
     var outputRows: ClosedRange<UInt64>? {
-        guard isCommand, let end, end > start + 1 else { return nil }
-        return (start + 1) ... (end - 1)
+        guard isCommand, let end else { return nil }
+        let first = commandRows.upperBound + 1
+        guard end > first else { return nil }
+        return first ... (end - 1)
     }
 
     /// A `block` object as the daemon serialises `vt_blocks::Block`.
@@ -110,6 +125,8 @@ struct Block: Equatable, Sendable {
         guard let seq = item[path: "seq"]?.doubleValue, let b = item[path: "block"] else { return nil }
         var block = parse(seq: Int64(seq), block: b)
         block?.bookmarked = item[path: "bookmarked"]?.boolValue ?? false
+        block?.durationMs = b[path: "duration_ms"]?.doubleValue.map { UInt64(max(0, $0)) }
+        block?.outputLine = b[path: "output_line"]?.doubleValue.map { UInt64(max(0, $0)) }
         return block
     }
 }
@@ -148,6 +165,17 @@ struct BlockList: Equatable, Sendable {
 
     func command(seq: Int64) -> Block? {
         blocks.first { $0.seq == seq && $0.isCommand }
+    }
+
+    /// `(0.027s)`, `(1.2s)`, `(2m 05s)`: Warp's duration format.
+    static func durationText(ms: UInt64) -> String {
+        if ms < 1000 {
+            return String(format: "(%.3fs)", Double(ms) / 1000)
+        }
+        if ms < 60000 {
+            return String(format: "(%.1fs)", Double(ms) / 1000)
+        }
+        return String(format: "(%dm %02ds)", Int(ms / 60000), Int(ms % 60000 / 1000))
     }
 
     mutating func setBookmark(seq: Int64, on: Bool) {
