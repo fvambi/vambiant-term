@@ -135,6 +135,7 @@ mod tests {
                 visible: true,
             },
             cells,
+            viewport: vt_core::cell::Viewport::default(),
             rows: Vec::new(),
         };
         assert_eq!(reply(&reqs[0], &snap), b"\x1bP7!~0083\x1b\\");

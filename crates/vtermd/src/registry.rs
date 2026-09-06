@@ -571,4 +571,11 @@ impl Registry {
         handle.cmd.send(SessionCmd::Snapshot(tx)).ok()?;
         rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
     }
+
+    /// Plain text of absolute rows `from..=to`, from the session thread.
+    pub fn text(handle: &SessionHandle, from: u64, to: u64) -> Option<String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle.cmd.send(SessionCmd::Text(from, to, tx)).ok()?;
+        rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+    }
 }

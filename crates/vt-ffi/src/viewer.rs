@@ -79,6 +79,25 @@ pub struct GridView {
     pub seq: u64,
     /// The daemon connection is gone; the grid is the last known state.
     pub disconnected: bool,
+    /// Absolute row shown at the top of the grid (0 = oldest scrollback
+    /// row; block rows use the same numbering).
+    pub top: u64,
+    /// Scrollback rows plus the visible grid.
+    pub total: u64,
+}
+
+/// Scroll target for [`vt_viewer_scroll`].
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollTo {
+    /// Oldest retained row at the top.
+    Top = 0,
+    /// The live end of the buffer.
+    Bottom = 1,
+    /// Relative by `n` rows; negative is up.
+    Lines = 2,
+    /// Absolute row `n` at the top.
+    Row = 3,
 }
 
 /// A key event as the renderer reports it. `key` is a `KeyCode` numeric
@@ -110,6 +129,8 @@ struct Grid {
     rows: u16,
     cursor: (u16, u16, bool),
     seq: u64,
+    top: u64,
+    total: u64,
 }
 
 impl Grid {
@@ -132,6 +153,8 @@ impl Grid {
         }
         self.cursor = d.cursor;
         self.seq = d.seq;
+        self.top = d.top;
+        self.total = d.total;
     }
 }
 
@@ -212,6 +235,8 @@ fn attach(
         rows: 0,
         cursor: (0, 0, true),
         seq: 0,
+        top: 0,
+        total: 0,
     };
     grid.apply(&first);
     let grid = Arc::new(Mutex::new(grid));
@@ -321,6 +346,8 @@ pub unsafe extern "C" fn vt_viewer_acquire(v: *mut Viewer) -> GridView {
         cursor_visible: guard.cursor.2,
         seq: guard.seq,
         disconnected: v.disconnected.load(Ordering::Relaxed),
+        top: guard.top,
+        total: guard.total,
     };
     v.held = Some(guard);
     view
@@ -422,6 +449,25 @@ pub unsafe extern "C" fn vt_viewer_resize(v: *const Viewer, cols: u16, rows: u16
     with_input(v, |c| c.call(method::SESSION_RESIZE, Some(params)))
 }
 
+/// Move the session's viewport (`session.scroll`); the grid follows on the
+/// next delta. Returns `false` when the daemon is gone.
+///
+/// # Safety
+/// `v` must be a live viewer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vt_viewer_scroll(v: *const Viewer, to: ScrollTo, n: i64) -> bool {
+    // SAFETY: caller guarantees a live viewer.
+    let v = unsafe { &*v };
+    let to = match to {
+        ScrollTo::Top => "top",
+        ScrollTo::Bottom => "bottom",
+        ScrollTo::Lines => "lines",
+        ScrollTo::Row => "row",
+    };
+    let params = serde_json::json!({ "id": v.session, "to": to, "n": n });
+    with_input(v, |c| c.call(method::SESSION_SCROLL, Some(params)))
+}
+
 /// Detach and free. Returns `false` (and does nothing) while the grid is
 /// still acquired.
 ///
@@ -466,6 +512,8 @@ mod tests {
             rows: 0,
             cursor: (0, 0, true),
             seq: 0,
+            top: 0,
+            total: 0,
         };
         let cell = |c: char| WireCell {
             c,
@@ -484,7 +532,10 @@ mod tests {
             }],
             cursor: (0, 2, true),
             seq: 1,
+            top: 7,
+            total: 9,
         });
+        assert_eq!((g.top, g.total), (7, 9));
         assert_eq!(g.cells.len(), 6);
         assert_eq!(g.cells[0].ch, u32::from('a'));
         assert_eq!(g.cells[0].fg, [1, 3, 0, 0]);
@@ -506,6 +557,8 @@ mod tests {
             ],
             cursor: (1, 1, false),
             seq: 2,
+            top: 7,
+            total: 10,
         });
         assert_eq!(g.cells[3].ch, u32::from('z'));
         assert_eq!(g.cells[0].ch, u32::from('a'), "untouched rows stay");

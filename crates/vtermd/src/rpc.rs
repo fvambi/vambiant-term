@@ -3,6 +3,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
+use vt_core::core::Scroll;
 use vt_core::key::KeyEvent;
 use vt_ipc::{ConnId, Handler};
 use vt_proto::jsonrpc::{Request, RpcError};
@@ -236,6 +237,31 @@ impl Handler for Rpc {
                         Ok(serde_json::json!({ "text": text, "live": false }))
                     }
                 }
+            }
+            method::SESSION_SCROLL => {
+                let h = self.session(req)?;
+                let to: String = Self::param(req, "to")?;
+                let n: i64 = Self::param(req, "n").unwrap_or(0);
+                let bad = |what: &str| RpcError::new(RpcError::INVALID_PARAMS, what.to_owned());
+                let scroll = match to.as_str() {
+                    "top" => Scroll::Top,
+                    "bottom" => Scroll::Bottom,
+                    "lines" => {
+                        Scroll::Lines(i32::try_from(n).map_err(|_| bad("`n` out of range"))?)
+                    }
+                    "row" => Scroll::Row(u64::try_from(n).map_err(|_| bad("`n` must be >= 0"))?),
+                    other => return Err(bad(&format!("unknown scroll target `{other}`"))),
+                };
+                h.cmd.send(SessionCmd::Scroll(scroll)).map_err(|_| gone())?;
+                let snap = Registry::snapshot(&h).ok_or_else(gone)?;
+                Ok(serde_json::json!({ "top": snap.viewport.top, "total": snap.viewport.total }))
+            }
+            method::SESSION_TEXT => {
+                let h = self.session(req)?;
+                let from: u64 = Self::param(req, "from")?;
+                let to: u64 = Self::param(req, "to")?;
+                let text = Registry::text(&h, from, to).ok_or_else(gone)?;
+                Ok(serde_json::json!({ "text": text }))
             }
             method::SESSION_BLOCKS => {
                 let after: i64 = req

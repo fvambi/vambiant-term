@@ -13,7 +13,29 @@
  * ABI version. Bumped on every incompatible change to any exported type
  * or function; Swift asserts equality at startup.
  */
-#define VtABI_VERSION 1
+#define VtABI_VERSION 2
+
+/**
+ * Scroll target for [`vt_viewer_scroll`].
+ */
+typedef enum VtScrollTo {
+  /**
+   * Oldest retained row at the top.
+   */
+  VtScrollTo_Top = 0,
+  /**
+   * The live end of the buffer.
+   */
+  VtScrollTo_Bottom = 1,
+  /**
+   * Relative by `n` rows; negative is up.
+   */
+  VtScrollTo_Lines = 2,
+  /**
+   * Absolute row `n` at the top.
+   */
+  VtScrollTo_Row = 3,
+} VtScrollTo;
 
 /**
  * A subscription. Opaque to C.
@@ -96,6 +118,15 @@ typedef struct VtGridView {
    * The daemon connection is gone; the grid is the last known state.
    */
   bool disconnected;
+  /**
+   * Absolute row shown at the top of the grid (0 = oldest scrollback
+   * row; block rows use the same numbering).
+   */
+  uint64_t top;
+  /**
+   * Scrollback rows plus the visible grid.
+   */
+  uint64_t total;
 } VtGridView;
 
 /**
@@ -232,6 +263,15 @@ void vt_viewer_release(struct VtViewer *v);
  * `v` must be a live viewer.
  */
 bool vt_viewer_resize(const struct VtViewer *v, uint16_t cols, uint16_t rows);
+
+/**
+ * Move the session's viewport (`session.scroll`); the grid follows on the
+ * next delta. Returns `false` when the daemon is gone.
+ *
+ * # Safety
+ * `v` must be a live viewer.
+ */
+bool vt_viewer_scroll(const struct VtViewer *v, enum VtScrollTo to, int64_t n);
 
 /**
  * Send raw bytes (paste, IME commit). Returns `false` when the daemon is gone.

@@ -100,6 +100,12 @@ pub mod method {
     pub const SESSION_LOGS: &str = "session.logs";
     /// `{ id, after? }` → the session's command blocks (OSC 133/633).
     pub const SESSION_BLOCKS: &str = "session.blocks";
+    /// `{id, to: "top"|"bottom"|"lines"|"row", n?}` → `{top, total}`.
+    /// Moves the session's viewport; every attached viewer follows.
+    pub const SESSION_SCROLL: &str = "session.scroll";
+    /// `{id, from, to}` (absolute rows, inclusive) → `{text}`; plain text
+    /// with soft wraps joined. Empty when the rows were pruned.
+    pub const SESSION_TEXT: &str = "session.text";
     /// → everything in `vt_config::Loaded` plus field metadata and actions.
     pub const CONFIG_GET: &str = "config.get";
     /// `{ key, value }` → the new `Config`; errors name file and key.
@@ -193,4 +199,11 @@ pub struct OutputDelta {
     pub cursor: (u16, u16, bool),
     /// Monotonic sequence number per session; gaps mean a missed delta.
     pub seq: u64,
+    /// Absolute row shown at the top of the grid (0 = oldest retained
+    /// scrollback row; block rows use the same numbering).
+    #[serde(default)]
+    pub top: u64,
+    /// Scrollback rows plus the visible grid.
+    #[serde(default)]
+    pub total: u64,
 }

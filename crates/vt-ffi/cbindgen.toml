@@ -12,6 +12,10 @@ sort_by = "Name"
 [export]
 prefix = "Vt"
 
+[enum]
+# C enum constants share one namespace; `VtScrollTo_Top`, not `Top`.
+prefix_with_name = true
+
 [fn]
 sort_by = "Name"
 

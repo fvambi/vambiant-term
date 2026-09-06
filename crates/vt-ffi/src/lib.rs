@@ -21,7 +21,7 @@ pub use viewer::*;
 
 /// ABI version. Bumped on every incompatible change to any exported type
 /// or function; Swift asserts equality at startup.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 /// Returns [`ABI_VERSION`] so the Swift side can refuse a mismatched
 /// static library before touching any other symbol.

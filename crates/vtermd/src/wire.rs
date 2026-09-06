@@ -40,6 +40,8 @@ pub fn full(id: &SessionId, snap: &CellSnapshot, seq: u64) -> OutputDelta {
         lines: (0..snap.size.rows).map(|r| row(snap, r)).collect(),
         cursor: (snap.cursor.row, snap.cursor.col, snap.cursor.visible),
         seq,
+        top: snap.viewport.top,
+        total: snap.viewport.total,
     }
 }
 
@@ -59,6 +61,8 @@ pub fn delta(id: &SessionId, snap: &CellSnapshot, damage: &DamageSet, seq: u64) 
                 .collect(),
             cursor: (snap.cursor.row, snap.cursor.col, snap.cursor.visible),
             seq,
+            top: snap.viewport.top,
+            total: snap.viewport.total,
         },
     }
 }

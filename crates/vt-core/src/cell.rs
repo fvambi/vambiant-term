@@ -46,6 +46,27 @@ pub struct RowMeta {
     pub wrap_continuation: bool,
 }
 
+/// Where the visible grid sits in the scrollable area, in absolute rows:
+/// row 0 is the oldest retained scrollback row. Block boundaries
+/// (`TermEvent::ShellMark`) use the same numbering. When the backend prunes
+/// old scrollback the numbering shifts down; consumers must treat rows past
+/// `total` as unmapped rather than trusting them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Viewport {
+    /// Absolute row shown at the top of the visible grid.
+    pub top: u64,
+    /// Scrollback rows plus the visible grid.
+    pub total: u64,
+}
+
+impl Viewport {
+    /// True when the viewport shows the live (bottom) end of the buffer.
+    #[must_use]
+    pub fn at_bottom(&self, rows: u16) -> bool {
+        self.top.saturating_add(u64::from(rows)) >= self.total
+    }
+}
+
 /// A full-grid snapshot handed to a newly attached viewer.
 ///
 /// Row-major; `cells.len() == cols * rows`. The wire/FFI representation is
@@ -58,6 +79,8 @@ pub struct CellSnapshot {
     pub cursor: Cursor,
     /// Cell contents, row-major.
     pub cells: Vec<Cell>,
+    /// Where the visible grid sits in the scrollable area.
+    pub viewport: Viewport,
     /// One entry per visible row.
     pub rows: Vec<RowMeta>,
 }

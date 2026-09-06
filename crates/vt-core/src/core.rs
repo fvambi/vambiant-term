@@ -1,10 +1,23 @@
 //! The [`TerminalCore`] trait — the only surface the rest of the workspace sees.
 
-use crate::cell::{CellSnapshot, GridSize};
+use crate::cell::{CellSnapshot, GridSize, Viewport};
 use crate::damage::DamageSet;
 use crate::error::CoreError;
 use crate::event::TermEvent;
 use crate::key::KeyEvent;
+
+/// A viewport scroll request, in absolute rows (see [`Viewport`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scroll {
+    /// Oldest retained row at the top.
+    Top,
+    /// Back to the live end of the buffer.
+    Bottom,
+    /// Relative; negative is up (older).
+    Lines(i32),
+    /// Put this absolute row at the top of the viewport.
+    Row(u64),
+}
 
 /// A VT state machine: bytes in, grid + damage out.
 ///
@@ -49,4 +62,16 @@ pub trait TerminalCore {
     /// OSC 8 hyperlink target under a visible cell, if any. Looked up on
     /// demand (hover/click) rather than carried per cell across the snapshot.
     fn hyperlink_at(&self, row: u16, col: u16) -> Option<String>;
+
+    /// Where the visible grid sits in the scrollable area.
+    fn viewport(&self) -> Viewport;
+
+    /// Move the viewport. Output arriving while scrolled up leaves the
+    /// viewport where it is; the caller decides when to follow (typing).
+    /// The next [`TerminalCore::take_damage`] reports `Full`.
+    fn scroll(&mut self, to: Scroll);
+
+    /// Plain text of the absolute rows `from..=to` (soft-wrapped lines
+    /// joined, trailing blanks trimmed). Empty when the range is gone.
+    fn text_range(&self, from: u64, to: u64) -> String;
 }

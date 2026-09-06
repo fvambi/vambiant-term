@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use vt_blocks::{Segmented, Segmenter};
 use vt_core::backend::GhosttyCore;
 use vt_core::cell::{CellSnapshot, GridSize};
+use vt_core::core::Scroll;
 use vt_core::damage::DamageSet;
 use vt_core::key::KeyEvent;
 use vt_core::{TermEvent, TerminalCore};
@@ -35,6 +36,10 @@ pub enum SessionCmd {
     Resize(u16, u16),
     /// Grid snapshot request.
     Snapshot(Sender<CellSnapshot>),
+    /// Move the viewport (every viewer follows; the next flush is full).
+    Scroll(Scroll),
+    /// Plain text of absolute rows `from..=to`.
+    Text(u64, u64, Sender<String>),
     /// Send a signal to the child.
     Signal(i32),
     /// Rename.
@@ -216,12 +221,21 @@ fn run(
             Ok(Wake::Cmd(cmd)) => match cmd {
                 SessionCmd::Input(bytes) => {
                     let _ = writer.write_all(&bytes);
+                    follow_output(&mut core, &mut pending);
                 }
                 SessionCmd::Key(key) => {
                     let bytes = core.encode_key(&key);
                     if !bytes.is_empty() {
                         let _ = writer.write_all(&bytes);
+                        follow_output(&mut core, &mut pending);
                     }
+                }
+                SessionCmd::Scroll(to) => {
+                    core.scroll(to);
+                    pending = DamageSet::Full;
+                }
+                SessionCmd::Text(from, to, reply_to) => {
+                    let _ = reply_to.send(core.text_range(from, to));
                 }
                 SessionCmd::Resize(cols, rows) => {
                     if core.resize(GridSize { cols, rows }).is_ok() {
@@ -299,6 +313,16 @@ fn run(
     }
 }
 
+/// Typing while scrolled up jumps back to the live end, as every terminal
+/// does; output alone never moves a viewport the user positioned.
+fn follow_output(core: &mut GhosttyCore, pending: &mut DamageSet) {
+    let vp = core.viewport();
+    if !vp.at_bottom(core.size().rows) {
+        core.scroll(Scroll::Bottom);
+        *pending = DamageSet::Full;
+    }
+}
+
 fn merge_damage(pending: &mut DamageSet, new: DamageSet) {
     match (&mut *pending, new) {
         (DamageSet::Full, _) | (_, DamageSet::Full) => *pending = DamageSet::Full,
@@ -329,15 +353,20 @@ fn segment(
         Segmented::Pending => {}
         Segmented::Closed(block) => {
             let now = crate::registry::now();
-            if let Ok(store) = registry.store().lock() {
-                let _ = store.append_block(id, &now, &block);
-            }
+            // The store's sequence number is what `session.blocks` returns,
+            // so the live notification carries it too: a viewer can merge
+            // both without duplicates.
+            let seq = registry
+                .store()
+                .lock()
+                .ok()
+                .and_then(|store| store.append_block(id, &now, &block).ok());
             if let Some(server) = registry.server() {
                 server.broadcast(
                     notification::SESSION_BLOCK,
                     serde_json::to_value(&block)
                         .ok()
-                        .map(|b| serde_json::json!({ "id": id.0, "block": b })),
+                        .map(|b| serde_json::json!({ "id": id.0, "seq": seq, "block": b })),
                 );
             }
         }

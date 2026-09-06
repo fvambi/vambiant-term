@@ -12,16 +12,20 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use libghostty_vt::fmt::{Format, Formatter, FormatterOptions};
 use libghostty_vt::key::{self, Action, Encoder, Key, Mods, OptionAsAlt};
 use libghostty_vt::render::{CellIterator, Dirty, RenderState, RowIterator};
 use libghostty_vt::screen::{CellWide, RowSemanticPrompt};
+use libghostty_vt::selection::Selection;
 use libghostty_vt::style::{StyleColor, Underline};
 use libghostty_vt::terminal::{
-    ClipboardLocation, Options, Point, PointCoordinate, SizeReportSize, Terminal,
+    ClipboardLocation, Options, Point, PointCoordinate, ScrollViewport, SizeReportSize, Terminal,
 };
 
-use crate::cell::{Attrs, Cell, CellSnapshot, Color, Cursor, GridSize, PromptMark, RowMeta};
-use crate::core::TerminalCore;
+use crate::cell::{
+    Attrs, Cell, CellSnapshot, Color, Cursor, GridSize, PromptMark, RowMeta, Viewport,
+};
+use crate::core::{Scroll, TerminalCore};
 use crate::damage::{DamageSet, LineDamage};
 use crate::error::CoreError;
 use crate::event::{ClipboardTarget, TermEvent, pwd_from_osc7};
@@ -256,7 +260,64 @@ impl TerminalCore for GhosttyCore {
             size: self.size,
             cursor,
             cells,
+            viewport: self.viewport(),
             rows: metas,
+        }
+    }
+
+    fn viewport(&self) -> Viewport {
+        match self.term.scrollbar() {
+            Ok(sb) => Viewport {
+                top: sb.offset,
+                total: sb.total,
+            },
+            Err(_) => Viewport {
+                top: 0,
+                total: u64::from(self.size.rows),
+            },
+        }
+    }
+
+    fn scroll(&mut self, to: Scroll) {
+        let req = match to {
+            Scroll::Top => ScrollViewport::Top,
+            Scroll::Bottom => ScrollViewport::Bottom,
+            Scroll::Lines(n) => ScrollViewport::Delta(n as isize),
+            Scroll::Row(r) => ScrollViewport::Row(usize::try_from(r).unwrap_or(usize::MAX)),
+        };
+        self.term.scroll_viewport(req);
+        // The render state tracks cell damage, not viewport moves: every
+        // visible row changed as far as a viewer is concerned.
+        self.force_full = true;
+    }
+
+    fn text_range(&self, from: u64, to: u64) -> String {
+        let (from, to) = (from.min(to), from.max(to));
+        let point = |x: u16, y: u64| {
+            Point::Screen(PointCoordinate {
+                x,
+                y: u32::try_from(y).unwrap_or(u32::MAX),
+            })
+        };
+        let (Ok(start), Ok(end)) = (
+            self.term.grid_ref(point(0, from)),
+            self.term
+                .grid_ref(point(self.size.cols.saturating_sub(1), to)),
+        ) else {
+            return String::new();
+        };
+        let selection = Selection::new(start, end, false);
+        let opts = FormatterOptions::new()
+            .with_format(Format::Plain)
+            .with_unwrap(true)
+            .with_trim(true)
+            .with_selection(&selection);
+        let Ok(mut formatter) = Formatter::new(&self.term, opts) else {
+            return String::new();
+        };
+        match formatter.format_alloc(None) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(_) => String::new(),
         }
     }
 
@@ -505,6 +566,37 @@ mod tests {
             "absolute row past the viewport: {}",
             marks[0].1
         );
+    }
+
+    #[test]
+    fn viewport_scrolls_in_absolute_rows_and_reads_back_text() {
+        let mut core = GhosttyCore::new(GridSize { cols: 10, rows: 3 }).unwrap();
+        // Five lines plus the cursor line: six rows, three of them above
+        // the visible grid.
+        core.advance(b"a\r\nb\r\nc\r\nd\r\ne\r\n");
+        let vp = core.viewport();
+        assert_eq!(vp, Viewport { top: 3, total: 6 }, "{vp:?}");
+        assert!(vp.at_bottom(3));
+        let _ = core.take_damage();
+
+        core.scroll(Scroll::Top);
+        assert_eq!(core.viewport().top, 0);
+        assert!(!core.viewport().at_bottom(3));
+        assert!(matches!(core.take_damage(), DamageSet::Full));
+        let snap = core.snapshot();
+        assert_eq!(snap.viewport.top, 0);
+        assert_eq!(snap.cells[0].ch, 'a', "the viewport shows the oldest row");
+
+        core.scroll(Scroll::Lines(1));
+        assert_eq!(core.viewport().top, 1);
+        core.scroll(Scroll::Row(2));
+        assert_eq!(core.viewport().top, 2);
+        core.scroll(Scroll::Bottom);
+        assert_eq!(core.viewport().top, 3);
+
+        assert_eq!(core.text_range(0, 2), "a\nb\nc");
+        assert_eq!(core.text_range(4, 4), "e");
+        assert_eq!(core.text_range(3, 1), "b\nc\nd", "ranges may be reversed");
     }
 
     #[test]
