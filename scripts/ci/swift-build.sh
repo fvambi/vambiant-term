@@ -23,4 +23,5 @@ if [[ -d "$devdir/Library/Developer/Frameworks/Testing.framework" ]]; then
   l="$devdir/Library/Developer/usr/lib"
   testflags=(-Xswiftc "-F$f" -Xlinker "-F$f" -Xlinker -rpath -Xlinker "$f" -Xlinker -rpath -Xlinker "$l")
 fi
-swift test "${testflags[@]}"
+# bash 3.2 (macOS) treats an empty array as unbound under `set -u`.
+swift test ${testflags[@]+"${testflags[@]}"}
