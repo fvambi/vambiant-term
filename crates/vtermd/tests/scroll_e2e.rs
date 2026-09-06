@@ -78,6 +78,7 @@ fn row_text(d: &OutputDelta, row: u16) -> String {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
     let daemon = Daemon::start();
     let mut c = daemon.client();
@@ -170,6 +171,62 @@ fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
         .unwrap();
     assert_eq!(t["text"], "line40");
 
+    // HTML export carries markup; unknown formats are refused by name.
+    let t = c
+        .call(
+            method::SESSION_TEXT,
+            Some(serde_json::json!({ "id": info.id.0, "from": 0, "to": 0, "format": "html" })),
+        )
+        .unwrap();
+    let html = t["text"].as_str().unwrap();
+    assert!(html.contains('<') && html.contains("line1"), "{html}");
+    let err = c
+        .call(
+            method::SESSION_TEXT,
+            Some(serde_json::json!({ "id": info.id.0, "from": 0, "to": 0, "format": "pdf" })),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("pdf"), "{err}");
+
+    // Find over the whole scrollback, literal and regex, with a limit.
+    let hits = c
+        .call(
+            method::SESSION_FIND,
+            Some(serde_json::json!({ "id": info.id.0, "query": "LINE1" })),
+        )
+        .unwrap();
+    let rows: Vec<u64> = hits
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["row"].as_u64().unwrap())
+        .collect();
+    // line1, line10..line19 (case-insensitive by default): 11 hits at col 0.
+    assert_eq!(
+        rows,
+        vec![0, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+        "{hits}"
+    );
+    assert_eq!(hits[0]["col"], 0);
+    assert_eq!(hits[0]["len"], 5);
+    let hits = c
+        .call(
+            method::SESSION_FIND,
+            Some(serde_json::json!({
+                "id": info.id.0, "query": "line[24]0$", "regex": true, "limit": 1
+            })),
+        )
+        .unwrap();
+    assert_eq!(hits.as_array().unwrap().len(), 1, "limit honoured: {hits}");
+    assert_eq!(hits[0]["row"], 19);
+    let err = c
+        .call(
+            method::SESSION_FIND,
+            Some(serde_json::json!({ "id": info.id.0, "query": "(", "regex": true })),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("query"), "{err}");
+
     // Typing while scrolled up snaps the viewport back to the live end.
     let bytes = base64::engine::general_purpose::STANDARD.encode("\n");
     c.call(
@@ -187,5 +244,18 @@ fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
         "typing follows output: top {} total {}",
         after.top,
         after.total
+    );
+
+    // Clearing drops the scrollback but keeps the live grid.
+    let r = c.call(method::SESSION_CLEAR, Some(id.clone())).unwrap();
+    assert_eq!(r["top"], 0, "{r}");
+    assert_eq!(r["total"], 6, "{r}");
+    let cleared: OutputDelta =
+        serde_json::from_value(c.call(method::SESSION_ATTACH, Some(id.clone())).unwrap()).unwrap();
+    assert_eq!(cleared.total, 6);
+    assert!(
+        row_text(&cleared, 0).starts_with("line3"),
+        "{}",
+        row_text(&cleared, 0)
     );
 }

@@ -19,6 +19,15 @@ pub enum Scroll {
     Row(u64),
 }
 
+/// Output format for [`TerminalCore::export`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextFormat {
+    /// Plain text, one line per row.
+    Plain,
+    /// HTML with inline colours and styles.
+    Html,
+}
+
 /// A VT state machine: bytes in, grid + damage out.
 ///
 /// Implementations are single-threaded by design; the daemon owns one per
@@ -73,5 +82,14 @@ pub trait TerminalCore {
 
     /// Plain text of the absolute rows `from..=to` (soft-wrapped lines
     /// joined, trailing blanks trimmed). Empty when the range is gone.
-    fn text_range(&self, from: u64, to: u64) -> String;
+    fn text_range(&self, from: u64, to: u64) -> String {
+        self.export(from, to, TextFormat::Plain)
+    }
+
+    /// The absolute rows `from..=to` in `format`. Empty when the range is gone.
+    fn export(&self, from: u64, to: u64, format: TextFormat) -> String;
+
+    /// Drop the scrollback, keep the live grid, put the viewport at the
+    /// live end. Block rows recorded before this call no longer map.
+    fn clear_scrollback(&mut self);
 }

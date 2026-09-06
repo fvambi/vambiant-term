@@ -90,6 +90,8 @@ const MIGRATIONS: &[&str] = &[
     // v4 — M3: the visible grid as text at exit, so `vterm logs` and the
     // timeline still have something for ended sessions.
     "ALTER TABLE sessions ADD COLUMN last_output TEXT;",
+    // v5 — M5: block bookmarks (Warp parity, 12 §A9).
+    "ALTER TABLE blocks ADD COLUMN bookmarked INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Newest schema version this binary understands.
@@ -142,7 +144,7 @@ mod tests {
     fn migrates_fresh_and_is_idempotent() {
         let mut store = Store::open_in_memory().unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
-        assert_eq!(CURRENT_VERSION, 4);
+        assert_eq!(CURRENT_VERSION, 5);
         migrate(&mut store).unwrap();
         assert_eq!(store.schema_version().unwrap(), CURRENT_VERSION);
         let tables: Vec<String> = store

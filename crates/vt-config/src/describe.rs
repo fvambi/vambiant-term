@@ -342,6 +342,24 @@ pub fn fields() -> Vec<Field> {
             Later { milestone: "M5" }
         ),
         f!(
+            "blocks.dividers",
+            "Hairline above each command block.",
+            Bool,
+            Now
+        ),
+        f!(
+            "blocks.failed_tint",
+            "Tint the rows of a command that exited non-zero.",
+            Bool,
+            Now
+        ),
+        f!(
+            "blocks.sticky_header",
+            "Keep a scrolled-off command line pinned at the top of the pane.",
+            Bool,
+            Now
+        ),
+        f!(
             "mux.keymap_profile",
             "Which keymap profiles are active.",
             e(KeymapProfile::OPTIONS),

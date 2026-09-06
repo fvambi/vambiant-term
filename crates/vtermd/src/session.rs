@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use vt_blocks::{Segmented, Segmenter};
 use vt_core::backend::GhosttyCore;
 use vt_core::cell::{CellSnapshot, GridSize};
-use vt_core::core::Scroll;
+use vt_core::core::{Scroll, TextFormat};
 use vt_core::damage::DamageSet;
 use vt_core::key::KeyEvent;
 use vt_core::{TermEvent, TerminalCore};
@@ -38,8 +38,10 @@ pub enum SessionCmd {
     Snapshot(Sender<CellSnapshot>),
     /// Move the viewport (every viewer follows; the next flush is full).
     Scroll(Scroll),
-    /// Plain text of absolute rows `from..=to`.
-    Text(u64, u64, Sender<String>),
+    /// Absolute rows `from..=to` in a format.
+    Export(u64, u64, TextFormat, Sender<String>),
+    /// Drop the scrollback; the next flush is full.
+    Clear,
     /// Send a signal to the child.
     Signal(i32),
     /// Rename.
@@ -234,8 +236,12 @@ fn run(
                     core.scroll(to);
                     pending = DamageSet::Full;
                 }
-                SessionCmd::Text(from, to, reply_to) => {
-                    let _ = reply_to.send(core.text_range(from, to));
+                SessionCmd::Export(from, to, format, reply_to) => {
+                    let _ = reply_to.send(core.export(from, to, format));
+                }
+                SessionCmd::Clear => {
+                    core.clear_scrollback();
+                    pending = DamageSet::Full;
                 }
                 SessionCmd::Resize(cols, rows) => {
                     if core.resize(GridSize { cols, rows }).is_ok() {

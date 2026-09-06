@@ -25,7 +25,7 @@ use libghostty_vt::terminal::{
 use crate::cell::{
     Attrs, Cell, CellSnapshot, Color, Cursor, GridSize, PromptMark, RowMeta, Viewport,
 };
-use crate::core::{Scroll, TerminalCore};
+use crate::core::{Scroll, TerminalCore, TextFormat};
 use crate::damage::{DamageSet, LineDamage};
 use crate::error::CoreError;
 use crate::event::{ClipboardTarget, TermEvent, pwd_from_osc7};
@@ -291,7 +291,14 @@ impl TerminalCore for GhosttyCore {
         self.force_full = true;
     }
 
-    fn text_range(&self, from: u64, to: u64) -> String {
+    fn clear_scrollback(&mut self) {
+        // ED 3: erase saved lines. The live grid is untouched.
+        self.term.vt_write(b"\x1b[3J");
+        self.term.scroll_viewport(ScrollViewport::Bottom);
+        self.force_full = true;
+    }
+
+    fn export(&self, from: u64, to: u64, format: TextFormat) -> String {
         let (from, to) = (from.min(to), from.max(to));
         let point = |x: u16, y: u64| {
             Point::Screen(PointCoordinate {
@@ -308,7 +315,10 @@ impl TerminalCore for GhosttyCore {
         };
         let selection = Selection::new(start, end, false);
         let opts = FormatterOptions::new()
-            .with_format(Format::Plain)
+            .with_format(match format {
+                TextFormat::Plain => Format::Plain,
+                TextFormat::Html => Format::Html,
+            })
             .with_unwrap(true)
             .with_trim(true)
             .with_selection(&selection);
@@ -597,6 +607,17 @@ mod tests {
         assert_eq!(core.text_range(0, 2), "a\nb\nc");
         assert_eq!(core.text_range(4, 4), "e");
         assert_eq!(core.text_range(3, 1), "b\nc\nd", "ranges may be reversed");
+
+        let html = core.export(0, 0, TextFormat::Html);
+        assert!(html.contains('<') && html.contains('a'), "{html}");
+
+        core.scroll(Scroll::Top);
+        core.clear_scrollback();
+        let vp = core.viewport();
+        assert_eq!(vp.total, 3, "only the live grid remains: {vp:?}");
+        assert!(vp.at_bottom(3));
+        assert_eq!(core.text_range(0, 0), "d", "the grid's own rows are kept");
+        assert!(matches!(core.take_damage(), DamageSet::Full));
     }
 
     #[test]

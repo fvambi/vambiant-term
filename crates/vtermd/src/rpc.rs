@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
-use vt_core::core::Scroll;
+use vt_core::core::{Scroll, TextFormat};
 use vt_core::key::KeyEvent;
 use vt_ipc::{ConnId, Handler};
 use vt_proto::jsonrpc::{Request, RpcError};
@@ -260,8 +260,72 @@ impl Handler for Rpc {
                 let h = self.session(req)?;
                 let from: u64 = Self::param(req, "from")?;
                 let to: u64 = Self::param(req, "to")?;
-                let text = Registry::text(&h, from, to).ok_or_else(gone)?;
+                let format: String = Self::param(req, "format").unwrap_or_else(|_| "plain".into());
+                let format = match format.as_str() {
+                    "plain" => TextFormat::Plain,
+                    "html" => TextFormat::Html,
+                    other => {
+                        return Err(RpcError::new(
+                            RpcError::INVALID_PARAMS,
+                            format!("unknown text format `{other}` (plain|html)"),
+                        ));
+                    }
+                };
+                let text = Registry::export(&h, from, to, format).ok_or_else(gone)?;
                 Ok(serde_json::json!({ "text": text }))
+            }
+            method::SESSION_CLEAR => {
+                let h = self.session(req)?;
+                h.cmd.send(SessionCmd::Clear).map_err(|_| gone())?;
+                let snap = Registry::snapshot(&h).ok_or_else(gone)?;
+                Ok(serde_json::json!({ "top": snap.viewport.top, "total": snap.viewport.total }))
+            }
+            method::SESSION_FIND => {
+                let h = self.session(req)?;
+                let query: String = Self::param(req, "query")?;
+                let is_regex: bool = Self::param(req, "regex").unwrap_or(false);
+                let case_sensitive: bool = Self::param(req, "case_sensitive").unwrap_or(false);
+                let snap = Registry::snapshot(&h).ok_or_else(gone)?;
+                let from: u64 = Self::param(req, "from").unwrap_or(0);
+                let to: u64 = Self::param(req, "to")
+                    .unwrap_or_else(|_| snap.viewport.total.saturating_sub(1));
+                let limit: usize = Self::param(req, "limit").unwrap_or(1000);
+                let pattern = if is_regex {
+                    query
+                } else {
+                    regex::escape(&query)
+                };
+                let re = regex::RegexBuilder::new(&pattern)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| {
+                        RpcError::new(RpcError::INVALID_PARAMS, format!("bad `query`: {e}"))
+                    })?;
+                Ok(serde_json::json!(find_rows(&h, &re, from, to, limit)))
+            }
+            method::SESSION_BLOCK_BOOKMARK => {
+                let sid = self.session_id_for(req)?;
+                let seq: i64 = Self::param(req, "seq")?;
+                let on: bool = Self::param(req, "on")?;
+                let found = self
+                    .store
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .set_block_bookmark(seq, on)
+                    .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+                if !found {
+                    return Err(RpcError::new(
+                        RpcError::INVALID_PARAMS,
+                        format!("no block with seq {seq}"),
+                    ));
+                }
+                if let Some(server) = self.registry.server() {
+                    server.broadcast(
+                        vt_proto::session::notification::SESSION_BLOCK_CHANGED,
+                        Some(serde_json::json!({ "id": sid.0, "seq": seq, "bookmarked": on })),
+                    );
+                }
+                Ok(serde_json::json!({ "seq": seq, "bookmarked": on }))
             }
             method::SESSION_BLOCKS => {
                 let after: i64 = req
@@ -277,7 +341,9 @@ impl Handler for Rpc {
                     .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
                 let out: Vec<_> = blocks
                     .into_iter()
-                    .map(|b| serde_json::json!({ "seq": b.seq, "block": b.block }))
+                    .map(|b| {
+                        serde_json::json!({ "seq": b.seq, "bookmarked": b.bookmarked, "block": b.block })
+                    })
                     .collect();
                 Ok(serde_json::json!(out))
             }
@@ -414,6 +480,44 @@ impl Handler for Rpc {
             )),
         }
     }
+}
+
+/// Scans absolute rows `from..=to` in chunks through the session thread
+/// and returns matches as `{row, col, len}` (columns in characters).
+fn find_rows(
+    h: &crate::registry::SessionHandle,
+    re: &regex::Regex,
+    from: u64,
+    to: u64,
+    limit: usize,
+) -> Vec<serde_json::Value> {
+    const CHUNK: u64 = 500;
+    let mut out = Vec::new();
+    let mut start = from.min(to);
+    let end = from.max(to);
+    while start <= end && out.len() < limit {
+        let stop = start.saturating_add(CHUNK - 1).min(end);
+        let Some(text) = Registry::text(h, start, stop) else {
+            break;
+        };
+        for (i, line) in text.lines().enumerate() {
+            for m in re.find_iter(line) {
+                out.push(serde_json::json!({
+                    "row": start + i as u64,
+                    "col": line[..m.start()].chars().count(),
+                    "len": m.as_str().chars().count(),
+                }));
+                if out.len() >= limit {
+                    return out;
+                }
+            }
+        }
+        if stop == end {
+            break;
+        }
+        start = stop + 1;
+    }
+    out
 }
 
 fn internal(e: &serde_json::Error) -> RpcError {

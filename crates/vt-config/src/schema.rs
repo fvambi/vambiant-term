@@ -109,6 +109,12 @@ section!(Terminal {
     osc: Osc = Osc::default(),
 });
 
+section!(Blocks {
+    dividers: bool = true,
+    failed_tint: bool = true,
+    sticky_header: bool = true,
+});
+
 section!(ShellIntegration {
     enabled: bool = true,
     shells: Vec<String> = strings(&["zsh", "fish", "bash"]),
@@ -224,6 +230,7 @@ section!(
         cursor: Cursor = Cursor::default(),
         terminal: Terminal = Terminal::default(),
         shell_integration: ShellIntegration = ShellIntegration::default(),
+        blocks: Blocks = Blocks::default(),
         mux: Mux = Mux::default(),
         agents: Agents = Agents::default(),
         notifications: Notifications = Notifications::default(),

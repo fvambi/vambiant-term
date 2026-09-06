@@ -109,6 +109,37 @@ fn osc133_marks_become_blocks() {
     };
     assert_eq!(block["block"]["kind"]["exit"], 3);
     assert_eq!(block["block"]["confidence"], "marked");
+    assert_eq!(block["bookmarked"], false);
+
+    // Bookmarks are stored per block and echoed back by the query.
+    let seq = block["seq"].as_i64().unwrap();
+    let r = c
+        .call(
+            method::SESSION_BLOCK_BOOKMARK,
+            Some(serde_json::json!({ "id": info.id.0, "seq": seq, "on": true })),
+        )
+        .unwrap();
+    assert_eq!(r["bookmarked"], true);
+    let blocks = c
+        .call(
+            method::SESSION_BLOCKS,
+            Some(serde_json::json!({ "id": info.id.0 })),
+        )
+        .unwrap();
+    let again = blocks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["seq"] == seq)
+        .unwrap();
+    assert_eq!(again["bookmarked"], true);
+    let err = c
+        .call(
+            method::SESSION_BLOCK_BOOKMARK,
+            Some(serde_json::json!({ "id": info.id.0, "seq": 424_242, "on": true })),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("424242"), "{err}");
 }
 
 #[test]

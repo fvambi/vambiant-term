@@ -78,6 +78,12 @@ warn_on_conflict = true                   # p10k/starship printing preexec hooks
 ssh_wrap         = false
 sudo_wrap        = false
 
+# ─── Blocks ────────────────────────────────────────────────────
+[blocks]
+dividers         = true                   # hairline above each command block
+failed_tint      = true                   # tint the rows of a non-zero exit
+sticky_header    = true                   # pin a scrolled-off command line at the top
+
 # ─── Multiplexer ───────────────────────────────────────────────
 [mux]
 keymap_profile   = "tmux"                 # tmux | macos | both

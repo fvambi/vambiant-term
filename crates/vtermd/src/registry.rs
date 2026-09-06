@@ -574,8 +574,21 @@ impl Registry {
 
     /// Plain text of absolute rows `from..=to`, from the session thread.
     pub fn text(handle: &SessionHandle, from: u64, to: u64) -> Option<String> {
+        Self::export(handle, from, to, vt_core::core::TextFormat::Plain)
+    }
+
+    /// Absolute rows `from..=to` in `format`, from the session thread.
+    pub fn export(
+        handle: &SessionHandle,
+        from: u64,
+        to: u64,
+        format: vt_core::core::TextFormat,
+    ) -> Option<String> {
         let (tx, rx) = std::sync::mpsc::channel();
-        handle.cmd.send(SessionCmd::Text(from, to, tx)).ok()?;
+        handle
+            .cmd
+            .send(SessionCmd::Export(from, to, format, tx))
+            .ok()?;
         rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
     }
 }

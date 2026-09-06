@@ -15,6 +15,8 @@ pub struct StoredBlock {
     pub seq: i64,
     /// The block.
     pub block: Block,
+    /// User bookmark (jump target, listed in the gutter).
+    pub bookmarked: bool,
 }
 
 fn kind_str(kind: &BlockKind) -> (&'static str, Option<String>, Option<i32>) {
@@ -59,6 +61,21 @@ impl Store {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Set or clear a block's bookmark. `Ok(false)` when no such block.
+    pub fn set_block_bookmark(&self, seq: i64, on: bool) -> Result<bool, StoreError> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE blocks SET bookmarked=?2 WHERE seq=?1",
+                params![seq, i32::from(on)],
+            )
+            .map_err(|source| StoreError::Query {
+                what: "set bookmark",
+                source,
+            })?;
+        Ok(n == 1)
+    }
+
     /// Blocks for a session after `after_seq`, oldest first, at most `limit`.
     pub fn blocks(
         &self,
@@ -69,7 +86,7 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT seq, kind, confidence, start_line, end_line, cmdline, exit_code \
+                "SELECT seq, kind, confidence, start_line, end_line, cmdline, exit_code, bookmarked \
                  FROM blocks WHERE session_id=?1 AND seq>?2 ORDER BY seq LIMIT ?3",
             )
             .map_err(|source| StoreError::Query {
@@ -91,7 +108,17 @@ impl Store {
                     let end: Option<i64> = row.get(4)?;
                     let cmdline: Option<String> = row.get(5)?;
                     let exit: Option<i32> = row.get(6)?;
-                    Ok((seq, kind, confidence, start, end, cmdline, exit))
+                    let bookmarked: i32 = row.get(7)?;
+                    Ok((
+                        seq,
+                        kind,
+                        confidence,
+                        start,
+                        end,
+                        cmdline,
+                        exit,
+                        bookmarked != 0,
+                    ))
                 },
             )
             .map_err(|source| StoreError::Query {
@@ -100,7 +127,7 @@ impl Store {
             })?;
         let mut out = Vec::new();
         for row in rows {
-            let (seq, kind, confidence, start, end, cmdline, exit) =
+            let (seq, kind, confidence, start, end, cmdline, exit, bookmarked) =
                 row.map_err(|source| StoreError::Query {
                     what: "read block",
                     source,
@@ -121,6 +148,7 @@ impl Store {
                     start_line: u64::try_from(start).unwrap_or(0),
                     end_line: end.map(|e| u64::try_from(e).unwrap_or(0)),
                 },
+                bookmarked,
             });
         }
         Ok(out)
@@ -191,5 +219,15 @@ mod tests {
         let after = store.blocks(&sid, all[0].seq, 10).unwrap();
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].block, b);
+
+        assert!(!all[1].bookmarked);
+        assert!(store.set_block_bookmark(all[1].seq, true).unwrap());
+        assert!(store.blocks(&sid, 0, 10).unwrap()[1].bookmarked);
+        assert!(store.set_block_bookmark(all[1].seq, false).unwrap());
+        assert!(!store.blocks(&sid, 0, 10).unwrap()[1].bookmarked);
+        assert!(
+            !store.set_block_bookmark(9_999, true).unwrap(),
+            "unknown seq"
+        );
     }
 }

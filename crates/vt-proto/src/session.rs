@@ -103,9 +103,18 @@ pub mod method {
     /// `{id, to: "top"|"bottom"|"lines"|"row", n?}` → `{top, total}`.
     /// Moves the session's viewport; every attached viewer follows.
     pub const SESSION_SCROLL: &str = "session.scroll";
-    /// `{id, from, to}` (absolute rows, inclusive) → `{text}`; plain text
-    /// with soft wraps joined. Empty when the rows were pruned.
+    /// `{id, from, to, format?: "plain"|"html"}` (absolute rows, inclusive)
+    /// → `{text}`; soft wraps joined. Empty when the rows were pruned.
     pub const SESSION_TEXT: &str = "session.text";
+    /// `{id}` → `{top, total}`. Erases the scrollback (not the live grid)
+    /// and moves every viewer to the live end.
+    pub const SESSION_CLEAR: &str = "session.clear";
+    /// `{id, query, regex?, case_sensitive?, from?, to?, limit?}` →
+    /// `[{row, col, len}]` over absolute rows, oldest first.
+    pub const SESSION_FIND: &str = "session.find";
+    /// `{id, seq, on}` → `{seq, bookmarked}`; broadcasts
+    /// `session.block_changed`.
+    pub const SESSION_BLOCK_BOOKMARK: &str = "session.block.bookmark";
     /// → everything in `vt_config::Loaded` plus field metadata and actions.
     pub const CONFIG_GET: &str = "config.get";
     /// `{ key, value }` → the new `Config`; errors name file and key.
@@ -128,6 +137,8 @@ pub mod notification {
     pub const SESSION_EVENT: &str = "session.event";
     /// `{ id, block }` — a command block closed (OSC 133/633).
     pub const SESSION_BLOCK: &str = "session.block";
+    /// `{id, seq, bookmarked}` — a stored block's user flags changed.
+    pub const SESSION_BLOCK_CHANGED: &str = "session.block_changed";
     /// `{ id, exit_code? , signal? }` — child exited.
     pub const SESSION_EXITED: &str = "session.exited";
     /// `SessionInfo` — a session was created, renamed or removed.
