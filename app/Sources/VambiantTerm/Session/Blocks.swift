@@ -10,6 +10,8 @@ struct Block: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case prompt
         case command(cmdline: String?, exit: Int?)
+        /// Output at an idle prompt; always a guess (docs/06 §4 `≈`).
+        case background
     }
 
     let seq: Int64
@@ -26,6 +28,15 @@ struct Block: Equatable, Sendable {
             return true
         }
         return false
+    }
+
+    var isBackground: Bool {
+        kind == .background
+    }
+
+    /// Blocks that get chrome: commands and background output.
+    var drawsChrome: Bool {
+        isCommand || isBackground
     }
 
     var cmdline: String? {
@@ -79,6 +90,8 @@ struct Block: Equatable, Sendable {
                 cmdline: b[path: "kind.cmdline"]?.stringValue,
                 exit: b[path: "kind.exit"]?.doubleValue.map { Int($0) }
             )
+        case "background":
+            kind = .background
         default:
             return nil
         }
@@ -109,6 +122,11 @@ struct BlockList: Equatable, Sendable {
 
     var commands: [Block] {
         blocks.filter(\.isCommand)
+    }
+
+    /// Commands and background blocks, in start order.
+    var chrome: [Block] {
+        blocks.filter(\.drawsChrome)
     }
 
     mutating func replace(with new: [Block]) {

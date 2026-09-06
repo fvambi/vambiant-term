@@ -23,6 +23,7 @@ fn kind_str(kind: &BlockKind) -> (&'static str, Option<String>, Option<i32>) {
     match kind {
         BlockKind::Prompt => ("prompt", None, None),
         BlockKind::Command { cmdline, exit } => ("command", cmdline.clone(), *exit),
+        BlockKind::Background => ("background", None, None),
     }
 }
 
@@ -134,6 +135,7 @@ impl Store {
                 })?;
             let kind = match kind.as_str() {
                 "command" => BlockKind::Command { cmdline, exit },
+                "background" => BlockKind::Background,
                 _ => BlockKind::Prompt,
             };
             out.push(StoredBlock {

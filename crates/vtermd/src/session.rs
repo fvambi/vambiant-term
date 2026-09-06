@@ -26,6 +26,11 @@ use crate::wire;
 /// Minimum interval between output deltas (one frame at 120 Hz).
 const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
 
+/// Output at the prompt this long after the last keystroke is not an echo
+/// of typing: it came from a background job (12 §A12). Typing faster than
+/// this while a job prints is the documented misattribution.
+const BACKGROUND_QUIET: Duration = Duration::from_millis(150);
+
 /// Commands other threads send to a session.
 pub enum SessionCmd {
     /// Raw bytes to the PTY.
@@ -174,6 +179,7 @@ fn run(
     let mut eof = false;
     let mut exit_code: Option<Option<i32>> = None;
     let mut eof_at: Option<Instant> = None;
+    let mut last_input = Instant::now();
 
     loop {
         let timeout = if pending.is_clean() {
@@ -206,6 +212,7 @@ fn run(
                 }
             }
             Ok(Wake::Bytes(bytes)) => {
+                let row_before = core.cursor_row_absolute();
                 observer.on_output(registry, &id, &bytes);
                 core.advance(&bytes);
                 let responses = core.take_responses();
@@ -213,22 +220,38 @@ fn run(
                     let _ = writer.write_all(&responses);
                 }
                 merge_damage(&mut pending, core.take_damage());
+                let mut had_mark = false;
                 for ev in core.take_events() {
                     if let TermEvent::ShellMark { mark, row } = &ev {
+                        had_mark = true;
                         segment(registry, &id, &mut segmenter, mark, *row);
                     }
                     publish_event(registry, &id, info, &ev);
+                }
+                // A chunk with no marks, a newline, and nothing typed lately,
+                // while the shell waits at its prompt: a background job.
+                if !had_mark
+                    && bytes.contains(&b'\n')
+                    && last_input.elapsed() > BACKGROUND_QUIET
+                    && segmenter.at_prompt()
+                {
+                    let row_after = core.cursor_row_absolute();
+                    if let Segmented::Closed(block) = segmenter.on_output(row_before, row_after) {
+                        emit_block(registry, &id, &block);
+                    }
                 }
             }
             Ok(Wake::Cmd(cmd)) => match cmd {
                 SessionCmd::Input(bytes) => {
                     let _ = writer.write_all(&bytes);
+                    last_input = Instant::now();
                     follow_output(&mut core, &mut pending);
                 }
                 SessionCmd::Key(key) => {
                     let bytes = core.encode_key(&key);
                     if !bytes.is_empty() {
                         let _ = writer.write_all(&bytes);
+                        last_input = Instant::now();
                         follow_output(&mut core, &mut pending);
                     }
                 }
@@ -346,6 +369,26 @@ fn merge_damage(pending: &mut DamageSet, new: DamageSet) {
     }
 }
 
+/// Persist a closed block and broadcast it. The store's sequence number is
+/// what `session.blocks` returns, so the live notification carries it too:
+/// a viewer can merge both without duplicates.
+fn emit_block(registry: &Registry, id: &vt_proto::session::SessionId, block: &vt_blocks::Block) {
+    let now = crate::registry::now();
+    let seq = registry
+        .store()
+        .lock()
+        .ok()
+        .and_then(|store| store.append_block(id, &now, block).ok());
+    if let Some(server) = registry.server() {
+        server.broadcast(
+            notification::SESSION_BLOCK,
+            serde_json::to_value(block)
+                .ok()
+                .map(|b| serde_json::json!({ "id": id.0, "seq": seq, "block": b })),
+        );
+    }
+}
+
 /// Feed one mark to the segmenter; persist and broadcast a closed block,
 /// and warn once when the marks turn out to be corrupted.
 fn segment(
@@ -357,25 +400,7 @@ fn segment(
 ) {
     match segmenter.on_mark(mark, row) {
         Segmented::Pending => {}
-        Segmented::Closed(block) => {
-            let now = crate::registry::now();
-            // The store's sequence number is what `session.blocks` returns,
-            // so the live notification carries it too: a viewer can merge
-            // both without duplicates.
-            let seq = registry
-                .store()
-                .lock()
-                .ok()
-                .and_then(|store| store.append_block(id, &now, &block).ok());
-            if let Some(server) = registry.server() {
-                server.broadcast(
-                    notification::SESSION_BLOCK,
-                    serde_json::to_value(&block)
-                        .ok()
-                        .map(|b| serde_json::json!({ "id": id.0, "seq": seq, "block": b })),
-                );
-            }
-        }
+        Segmented::Closed(block) => emit_block(registry, id, &block),
         Segmented::Corrupted(why) => {
             eprintln!("vtermd: session {}: {why}", id.0);
             if let Some(server) = registry.server() {

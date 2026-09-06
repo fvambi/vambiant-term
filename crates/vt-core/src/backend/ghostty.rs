@@ -265,6 +265,11 @@ impl TerminalCore for GhosttyCore {
         }
     }
 
+    fn cursor_row_absolute(&self) -> u64 {
+        self.term.scrollback_rows().unwrap_or(0) as u64
+            + u64::from(self.term.cursor_y().unwrap_or(0))
+    }
+
     fn viewport(&self) -> Viewport {
         match self.term.scrollbar() {
             Ok(sb) => Viewport {

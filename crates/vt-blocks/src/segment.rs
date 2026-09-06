@@ -42,6 +42,8 @@ struct Open {
     kind: OpenKind,
     start: u64,
     cmdline: Option<String>,
+    /// `C` seen: the command is running, output belongs to it.
+    executed: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -73,6 +75,7 @@ impl Segmenter {
                     kind: OpenKind::Prompt,
                     start: row,
                     cmdline: None,
+                    executed: false,
                 });
                 closed
             }
@@ -85,6 +88,7 @@ impl Segmenter {
                     kind: OpenKind::Command,
                     start: row,
                     cmdline: self.pending_cmdline.take(),
+                    executed: false,
                 });
                 closed
             }
@@ -99,7 +103,11 @@ impl Segmenter {
                         kind: OpenKind::Command,
                         start: row,
                         cmdline: self.pending_cmdline.take(),
+                        executed: false,
                     });
+                }
+                if let Some(open) = self.open.as_mut() {
+                    open.executed = true;
                 }
                 Segmented::Pending
             }
@@ -142,6 +150,32 @@ impl Segmenter {
                 Segmented::Pending
             }
         }
+    }
+
+    /// True between a prompt's `A` and the command's `C`: the shell is
+    /// waiting for input, so unsolicited output is not a command's.
+    #[must_use]
+    pub fn at_prompt(&self) -> bool {
+        !self.corrupted
+            && self
+                .open
+                .as_ref()
+                .is_some_and(|o| o.kind == OpenKind::Prompt || !o.executed)
+    }
+
+    /// Output (with a newline, no marks, no recent keystrokes) landed on
+    /// rows `first..=last` while the shell sat at its prompt: a background
+    /// block, flagged heuristic. Pending when the shell was busy.
+    pub fn on_output(&mut self, first: u64, last: u64) -> Segmented {
+        if !self.at_prompt() || last <= first {
+            return Segmented::Pending;
+        }
+        Segmented::Closed(Block {
+            kind: BlockKind::Background,
+            confidence: Confidence::Heuristic,
+            start_line: first,
+            end_line: Some(last),
+        })
     }
 
     fn block_of(open: Open, end: u64) -> Block {
@@ -188,6 +222,30 @@ mod tests {
             cmdline: line.into(),
             nonce: None,
         }
+    }
+
+    #[test]
+    fn background_output_is_a_heuristic_block_only_at_the_prompt() {
+        let mut seg = Segmenter::default();
+        assert!(!seg.at_prompt(), "nothing open yet");
+        assert_eq!(seg.on_output(0, 3), Segmented::Pending);
+        seg.on_mark(&ShellMark::PromptStart { params: vec![] }, 4);
+        assert!(seg.at_prompt());
+        seg.on_mark(&ShellMark::CommandStart, 4);
+        assert!(seg.at_prompt(), "typing is still the prompt phase");
+        assert_eq!(
+            seg.on_output(4, 6),
+            Segmented::Closed(Block {
+                kind: BlockKind::Background,
+                confidence: Confidence::Heuristic,
+                start_line: 4,
+                end_line: Some(6),
+            })
+        );
+        assert_eq!(seg.on_output(6, 6), Segmented::Pending, "no new row");
+        seg.on_mark(&ShellMark::CommandExecuted, 6);
+        assert!(!seg.at_prompt(), "a running command owns its output");
+        assert_eq!(seg.on_output(6, 9), Segmented::Pending);
     }
 
     #[test]

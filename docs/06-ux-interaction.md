@@ -76,6 +76,7 @@ A block is one command (from OSC 133) or one agent event. Rendering:
 - Failed blocks get a subtle left border and an `⌥E explain` affordance in the gutter — not a popup, not a banner.
 - Selection is semantic: clicking a block's header selects the whole block; `⌘⇧↑` selects the previous block.
 - When shell integration is unavailable or broken, blocks degrade to heuristic segmentation with a small "≈" marker in the gutter, and the tooltip says why.
+- Output that arrives at an idle prompt from a background job gets a grey gutter and a "≈ background" chip: it is a guess (see `10 §10`), never a command block.
 
 ## 5. Inline suggestions
 

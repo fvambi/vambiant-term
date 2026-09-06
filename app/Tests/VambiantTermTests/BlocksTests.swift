@@ -138,6 +138,26 @@ struct BlockListTests {
         #expect(BlockDecor.decorations(for: l, top: 0, rows: 0, selected: nil).isEmpty)
     }
 
+    @Test func backgroundBlocksAreGuessesWithTheirOwnChip() {
+        let json = try? JSONDecoder().decode(
+            JSONValue.self,
+            from: Data(
+                #"{"seq": 8, "block": {"confidence": "heuristic", "start_line": 4, "end_line": 6, "kind": {"kind": "background"}}}"#.utf8
+            )
+        )
+        let b = Block.parse(item: json!)
+        #expect(b?.isBackground == true)
+        #expect(b?.isCommand == false)
+        #expect(BlockDecor.chip(for: b!) == "≈ background")
+        #expect(BlockDecor.status(of: b!) == .unknown)
+        var l = list
+        l.append(b!)
+        #expect(l.commands.count == 3, "not a command: navigation skips it")
+        #expect(l.chrome.count == 4, "but it gets a gutter")
+        let d = BlockDecor.decorations(for: l, top: 0, rows: 20, selected: nil)
+        #expect(d.contains { $0.chip == "≈ background" && $0.status == .unknown })
+    }
+
     @Test func chipsSayWhatTheyKnow() {
         let guess = Block(seq: 9, kind: .command(cmdline: nil, exit: nil), confidence: "heuristic", start: 0, end: nil)
         #expect(BlockDecor.chip(for: guess) == "≈ exit ?")

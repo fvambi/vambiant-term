@@ -143,6 +143,53 @@ fn osc133_marks_become_blocks() {
 }
 
 #[test]
+fn output_at_an_idle_prompt_becomes_a_background_block() {
+    let daemon = Daemon::start("bg");
+    let mut c = daemon.client();
+    // A prompt with marks, then a job that prints half a second later with
+    // nothing typed in between: the daemon cannot attribute it to a
+    // command, so it becomes a heuristic background block.
+    let script = "printf '\\033]133;A\\007$ \\033]133;B\\007'; (sleep 0.5; echo hello-from-bg; echo more) & sleep 30";
+    let req = NewSession {
+        name: Some("bg".into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        cwd: Some(std::env::temp_dir()),
+        size: Some((40, 6)),
+        ..Default::default()
+    };
+    let info: SessionInfo = serde_json::from_value(
+        c.call(method::SESSION_NEW, serde_json::to_value(req).ok())
+            .unwrap(),
+    )
+    .unwrap();
+    let start = Instant::now();
+    loop {
+        let blocks = c
+            .call(
+                method::SESSION_BLOCKS,
+                Some(serde_json::json!({ "id": info.id.0 })),
+            )
+            .unwrap();
+        let arr = blocks.as_array().cloned().unwrap_or_default();
+        if let Some(bg) = arr
+            .iter()
+            .find(|b| b["block"]["kind"]["kind"] == "background")
+        {
+            assert_eq!(bg["block"]["confidence"], "heuristic", "{bg}");
+            assert_eq!(bg["block"]["start_line"], 0, "{bg}");
+            assert_eq!(bg["block"]["end_line"], 2, "two lines printed: {bg}");
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "no background block: {}",
+            serde_json::to_string(&arr).unwrap()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
 fn injected_zsh_integration_produces_blocks() {
     if which_zsh().is_none() {
         eprintln!("skipping: no zsh on PATH");

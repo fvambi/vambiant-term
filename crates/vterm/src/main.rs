@@ -651,6 +651,7 @@ fn blocks(cli: &Cli, session: &str, json: bool) {
                 let cmd = kind["cmdline"].as_str().unwrap_or("<no command line>");
                 println!("{mark} [{chip}] {cmd}");
             }
+            Some("background") => println!("\u{2248} (background output)"),
             _ => println!("{mark} (prompt)"),
         }
     }

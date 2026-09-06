@@ -75,6 +75,10 @@ pub trait TerminalCore {
     /// Where the visible grid sits in the scrollable area.
     fn viewport(&self) -> Viewport;
 
+    /// The cursor's row in absolute numbering (scrollback rows plus its row
+    /// in the live grid): where the next output lands.
+    fn cursor_row_absolute(&self) -> u64;
+
     /// Move the viewport. Output arriving while scrolled up leaves the
     /// viewport where it is; the caller decides when to follow (typing).
     /// The next [`TerminalCore::take_damage`] reports `Full`.

@@ -41,7 +41,7 @@ enum BlockDecor {
         guard rows > 0 else { return [] }
         let bottom = top + UInt64(rows) - 1
         var out: [BlockDecoration] = []
-        for b in list.commands {
+        for b in list.chrome {
             let span = b.visualRows
             if span.upperBound < top || span.lowerBound > bottom {
                 continue
@@ -67,8 +67,11 @@ enum BlockDecor {
     }
 
     /// `exit 0` / `exit 1` / `exit ?`, with docs/06's `≈` when the block is
-    /// a guess rather than a shell mark.
+    /// a guess rather than a shell mark; background output is always one.
     static func chip(for b: Block) -> String {
+        if b.isBackground {
+            return "≈ background"
+        }
         let code = b.exit.map(String.init) ?? "?"
         return (b.heuristic ? "≈ " : "") + "exit \(code)"
     }

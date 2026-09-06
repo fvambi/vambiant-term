@@ -26,6 +26,11 @@ pub enum BlockKind {
         /// Exit status from OSC 133 `D;<exit>`.
         exit: Option<i32>,
     },
+    /// Output that arrived at an idle prompt with no command running and no
+    /// keystrokes behind it: a background job (`&`, a process that outlived
+    /// its command). Always [`Confidence::Heuristic`] — the terminal cannot
+    /// know which process wrote it.
+    Background,
 }
 
 /// Provenance of a block boundary. Surfaced in the UI verbatim.
