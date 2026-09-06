@@ -66,10 +66,24 @@ final class SplitContainer: NSView {
         }
         split.addArrangedSubview(old)
         split.addArrangedSubview(newPane.container)
-        split.adjustSubviews()
-        split.setPosition(vertical ? split.bounds.width / 2 : split.bounds.height / 2, ofDividerAt: 0)
+        split.setHoldingPriority(.defaultLow, forSubviewAt: 0)
+        split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
+        // Halve after the split view has laid itself out once: a position
+        // set before that is overwritten by the first Auto Layout pass, which
+        // leaves one pane at zero width.
+        split.layoutSubtreeIfNeeded()
+        Self.halve(split, vertical: vertical)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { Self.halve(split, vertical: vertical) }
+        }
         panes.append(newPane)
         focus(newPane)
+    }
+
+    private static func halve(_ split: NSSplitView, vertical: Bool) {
+        let extent = vertical ? split.bounds.width : split.bounds.height
+        guard extent > 0 else { return }
+        split.setPosition((extent - split.dividerThickness) / 2, ofDividerAt: 0)
     }
 
     /// Removes `pane`; its sibling takes the space. Returns false when it
