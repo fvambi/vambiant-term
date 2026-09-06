@@ -122,6 +122,8 @@ enum AgentTurn: Equatable, Sendable {
     case text(String)
     /// A command the model asked to run.
     case tool(AgentToolCall)
+    /// Warp's `Thought for N seconds ›` row, kept once the answer is in.
+    case thought(seconds: Double)
     /// A request in flight; `since` drives the "Thinking for Ns" row.
     case thinking(profile: String, since: Date)
     /// Deltas arriving; `partial` is the text so far.
@@ -224,6 +226,12 @@ struct AgentConversation: Equatable, Sendable {
     }
 
     mutating func answer(_ answer: AgentAnswer) {
+        if case let .thinking(_, since) = turns.last {
+            let secs = Date().timeIntervalSince(since)
+            if secs >= 1 {
+                turns.insert(.thought(seconds: secs), at: turns.count - 1)
+            }
+        }
         var shown = answer
         if hasToolTurnsInFlight {
             shown.transcript = answer.text
@@ -265,7 +273,7 @@ struct AgentConversation: Equatable, Sendable {
                     out.append(AgentHistoryTurn(role: "assistant", text: answer.transcript ?? answer.text))
                 }
                 pending = nil
-            case .text, .tool:
+            case .text, .tool, .thought:
                 break
             case .thinking, .streaming, .failure:
                 pending = nil

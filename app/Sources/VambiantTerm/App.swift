@@ -206,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The inbox sheet over `window` (docs/06 §3, ⌘⇧A).
-    func showInbox(for window: NSWindow) {
+    func showInbox(for window: NSWindow, editing: Bool = false) {
         guard inboxSheet.window.sheetParent == nil else { return }
         inboxSheet.canEdit = { [weak self] item in
             let pane = self?.windows.flatMap(\.container.panes).first { $0.session?.id == item.session }
@@ -226,6 +226,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         inboxSheet.update(items: inbox.items)
         window.beginSheet(inboxSheet.window) { _ in }
+        if editing {
+            inboxSheet.focusEditor()
+        }
     }
 
     /// Applies what the shell honours (docs/09 `applied: now`): fonts,

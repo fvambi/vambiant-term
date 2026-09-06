@@ -183,6 +183,13 @@ final class AgentPanel: NSView {
                 out.append(NSAttributedString(string: "\n", attributes: [.font: small]))
             case let .tool(call):
                 out.append(toolBlock(call, theme: theme, font: font, small: small))
+            case let .thought(seconds):
+                out.append(NSAttributedString(
+                    string: "Thought for \(Int(seconds.rounded())) second\(Int(seconds.rounded()) == 1 ? "" : "s") ›\n\n",
+                    attributes: [
+                        .font: small, .foregroundColor: dim,
+                    ]
+                ))
             case let .answer(answer):
                 out.append(body(answer.text, theme: theme, font: font))
                 out.append(NSAttributedString(string: "\n\(answer.footer)\n\n", attributes: [

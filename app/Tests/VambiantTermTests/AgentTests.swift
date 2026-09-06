@@ -143,6 +143,13 @@ struct AgentToolTests {
             Issue.record("expected the answer")
         }
         #expect(c.history.last?.text == "Let me check. \n\nDone.", "history carries the whole run")
+        #expect(!c.turns.contains {
+            if case .thought = $0 {
+                true
+            } else {
+                false
+            }
+        }, "a sub-second answer gets no thought row")
         if case let .tool(t) = c.turns[2] {
             #expect(t.statusLine == "exit 0")
         }

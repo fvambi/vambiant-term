@@ -106,6 +106,13 @@ final class InboxSheet: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         refreshDetail()
     }
 
+    /// Puts the caret in the command field (the card's Edit…).
+    func focusEditor() {
+        if editor.isEnabled {
+            window.makeFirstResponder(editor)
+        }
+    }
+
     var selected: InboxItem? {
         let row = table.selectedRow
         return row >= 0 && row < items.count ? items[row] : nil

@@ -9,6 +9,8 @@ import AppKit
 final class ApprovalCard: NSView {
     var onDecide: ((InboxItem, InboxDecision) -> Void)?
     var onOpenInbox: (() -> Void)?
+    /// Warp's `Edit ⌘E`: the inbox sheet with the command field focused.
+    var onEdit: (() -> Void)?
     private(set) var item: InboxItem?
     private let title = NSTextField(labelWithString: "")
     private let body = NSTextField(wrappingLabelWithString: "")
@@ -16,6 +18,7 @@ final class ApprovalCard: NSView {
     private let why = NSTextField(labelWithString: "")
     private let allow = NSButton(title: "Allow", target: nil, action: nil)
     private let deny = NSButton(title: "Deny", target: nil, action: nil)
+    private let edit = NSButton(title: "Edit…", target: nil, action: nil)
     private let more = NSButton(title: "Inbox ⌘⇧A", target: nil, action: nil)
     static let height: CGFloat = 118
 
@@ -31,17 +34,17 @@ final class ApprovalCard: NSView {
         why.font = NSFont.systemFont(ofSize: 10)
         why.lineBreakMode = .byTruncatingTail
         why.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        for (button, action) in [(allow, #selector(allowAction(_:))), (deny, #selector(denyAction(_:))), (
-            more,
-            #selector(moreAction(_:))
-        )] {
+        for (button, action) in [
+            (allow, #selector(allowAction(_:))), (deny, #selector(denyAction(_:))), (edit, #selector(editAction(_:))),
+            (more, #selector(moreAction(_:))),
+        ] {
             button.bezelStyle = .rounded
             button.controlSize = .small
             button.target = self
             button.action = action
         }
         allow.keyEquivalent = ""
-        for v in [title, body, verdict, why, allow, deny, more] {
+        for v in [title, body, verdict, why, allow, deny, edit, more] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -59,7 +62,9 @@ final class ApprovalCard: NSView {
             why.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
             more.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             more.centerYAnchor.constraint(equalTo: why.centerYAnchor),
-            deny.trailingAnchor.constraint(equalTo: more.leadingAnchor, constant: -6),
+            edit.trailingAnchor.constraint(equalTo: more.leadingAnchor, constant: -6),
+            edit.centerYAnchor.constraint(equalTo: why.centerYAnchor),
+            deny.trailingAnchor.constraint(equalTo: edit.leadingAnchor, constant: -6),
             deny.centerYAnchor.constraint(equalTo: why.centerYAnchor),
             allow.trailingAnchor.constraint(equalTo: deny.leadingAnchor, constant: -6),
             allow.centerYAnchor.constraint(equalTo: why.centerYAnchor),
@@ -97,6 +102,11 @@ final class ApprovalCard: NSView {
         why.stringValue = "asked because \(item.askedBecause)"
         allow.isEnabled = !item.promptShown
         deny.isEnabled = !item.promptShown
+        edit.isEnabled = !item.promptShown && item.command != nil
+    }
+
+    @objc private func editAction(_ sender: Any?) {
+        onEdit?()
     }
 
     @objc private func allowAction(_ sender: Any?) {

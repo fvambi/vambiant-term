@@ -11,6 +11,10 @@ extension PaneController {
             guard let self, let window = container.window else { return }
             (NSApp.delegate as? AppDelegate)?.showInbox(for: window)
         }
+        container.approval.onEdit = { [weak self] in
+            guard let self, let window = container.window else { return }
+            (NSApp.delegate as? AppDelegate)?.showInbox(for: window, editing: true)
+        }
     }
 
     /// `inbox.decide`; the daemon's refusal, if any, is shown in the hint.
