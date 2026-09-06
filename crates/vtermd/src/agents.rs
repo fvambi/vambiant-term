@@ -537,6 +537,28 @@ impl Agents {
         self.record_event(session, event);
     }
 
+    /// The session's display name. The registry handle is inserted only after
+    /// the child is spawned, so an agent that posts its first hook at startup
+    /// can beat it; the store record is persisted before the spawn and wins
+    /// that race.
+    fn session_name(&self, session: &SessionId) -> String {
+        if let Some(h) = self.registry.find(&session.0) {
+            return h
+                .info
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .name
+                .clone();
+        }
+        self.registry
+            .store()
+            .lock()
+            .ok()
+            .and_then(|s| s.session(session).ok().flatten())
+            .map(|r| r.info.name)
+            .unwrap_or_default()
+    }
+
     fn set_state(&self, session: &SessionId, state: AgentState) {
         if let Some(h) = self.registry.find(&session.0) {
             let mut info = h.info.lock().unwrap_or_else(PoisonError::into_inner);
@@ -600,17 +622,7 @@ impl Agents {
                     self.set_state(session, AgentState::Thinking);
                 }
                 AgentEvent::ApprovalNeeded(req) => {
-                    let name = self
-                        .registry
-                        .find(&session.0)
-                        .map(|h| {
-                            h.info
-                                .lock()
-                                .unwrap_or_else(PoisonError::into_inner)
-                                .name
-                                .clone()
-                        })
-                        .unwrap_or_default();
+                    let name = self.session_name(session);
                     let pending = Arc::new(PendingApproval {
                         item: InboxItem {
                             id: req.id.clone(),
