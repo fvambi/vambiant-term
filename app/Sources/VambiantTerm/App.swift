@@ -128,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let c = shellConfig {
             view.padding = CGSize(width: c.window.padding.x, height: c.window.padding.y)
             view.blink = (c.cursor.blink, c.cursor.blinkIntervalMs)
+            view.copyOnSelect = c.terminal?.copyOnSelect ?? false
         }
     }
 

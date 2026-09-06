@@ -54,15 +54,18 @@ extension MetalGridView {
         let inGutter = point.x < padding.width
         guard let block = block(at: point) else {
             selectedBlock = nil
+            beginTextSelection(with: event)
             return
         }
         // Clicking the gutter or the header row selects the whole block;
-        // clicking inside its output only deselects (future text selection).
+        // anywhere else starts a text selection.
         let headerRow = block.start >= viewportTop ? Int(block.start - viewportTop) : -1
         guard inGutter || gridRow(at: point) == headerRow else {
             selectedBlock = nil
+            beginTextSelection(with: event)
             return
         }
+        clearTextSelection()
         let mods = event.modifierFlags
         if mods.contains(.shift), let anchor = selectionAnchor {
             // ⇧-click: the range from the anchor, like Warp and Finder.

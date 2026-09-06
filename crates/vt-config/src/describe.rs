@@ -258,6 +258,12 @@ pub fn fields() -> Vec<Field> {
             Now
         ),
         f!(
+            "terminal.copy_on_select",
+            "Copy a mouse selection to the clipboard as soon as the button is released.",
+            Bool,
+            Now
+        ),
+        f!(
             "terminal.term",
             "TERM value (falls back to xterm-256color).",
             Text,

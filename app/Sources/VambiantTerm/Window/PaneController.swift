@@ -58,6 +58,9 @@ final class PaneController {
         view.onBlockAction = { [weak self] action, block in self?.perform(action, on: block) }
         view.onFindChange = { [weak self] state in self?.runFind(state) }
         view.onFindStep = { [weak self] forward in self?.findStep(forward: forward) }
+        view.textProvider = { [weak self] rows in
+            self?.text(of: rows, format: "rows").components(separatedBy: "\n") ?? []
+        }
         view.headerProvider = { [weak self] block in
             BlockDecor.header(for: block, cwd: self?.cwd, branch: self?.branch)
         }

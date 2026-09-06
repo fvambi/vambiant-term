@@ -93,6 +93,19 @@ final class MetalGridView: NSView {
     var hoverBlock: Int64?
     private var tracking: NSTrackingArea?
     var findState = FindState()
+    /// Mouse text selection (`MetalGridView+Selection`); absolute rows.
+    var textSelection: TextSelection? {
+        didSet {
+            if textSelection != oldValue {
+                lastSeqReset()
+            }
+        }
+    }
+
+    /// `[terminal] copy_on_select`.
+    var copyOnSelect = false
+    /// Rows of text for a selection, from the pane (the daemon knows the scrollback).
+    var textProvider: ((ClosedRange<UInt64>) -> [String])?
     /// Per-pane override of `[blocks] sticky_header`.
     var stickyHeaderEnabled = true
     /// Find requests and steps go to the pane, which has the daemon.
@@ -363,13 +376,22 @@ final class MetalGridView: NSView {
                 headers: renderer.blockChrome.warpMode ? headerProvider : nil
             )
             let marks = findState.visible(top: view.top, rows: Int(view.rows))
+            let spans = textSelection?.spans(top: view.top, rows: Int(view.rows), cols: Int(view.cols)) ?? []
             updateStickyHeader(top: view.top)
             var ok = renderer.build(
-                view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor, matches: marks
+                view,
+                origin: origin,
+                focused: focused,
+                cursorOn: cursorOn,
+                overlays: GridOverlays(decorations: decor, matches: marks, selection: spans)
             )
             if !ok {
                 ok = renderer.build(
-                    view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor, matches: marks
+                    view,
+                    origin: origin,
+                    focused: focused,
+                    cursorOn: cursorOn,
+                    overlays: GridOverlays(decorations: decor, matches: marks, selection: spans)
                 )
             }
             if onPresented != nil {
@@ -454,9 +476,11 @@ final class MetalGridView: NSView {
         viewer.send(text: text)
     }
 
-    /// ⌘C copies the selected block's output. Text selection is not built
-    /// yet, so with no block selected there is nothing to copy.
+    /// ⌘C copies the text selection, else the selected block's output.
     @objc func copy(_ sender: Any?) {
+        if copyTextSelection() {
+            return
+        }
         guard let block = selectedBlock.flatMap(blocks.command(seq:)) else {
             NSSound.beep()
             return

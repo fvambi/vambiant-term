@@ -111,6 +111,7 @@ section!(Terminal {
     term: String = "vambiant-term".into(),
     kitty_keyboard: bool = true,
     confirm_close_with_running_process: bool = true,
+    copy_on_select: bool = false,
     osc: Osc = Osc::default(),
 });
 

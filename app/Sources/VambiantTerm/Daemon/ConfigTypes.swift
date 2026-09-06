@@ -179,6 +179,13 @@ struct ShellMux: Decodable, Equatable, Sendable {
     }
 }
 
+struct ShellTerminal: Decodable, Equatable, Sendable {
+    var copyOnSelect: Bool
+    enum CodingKeys: String, CodingKey {
+        case copyOnSelect = "copy_on_select"
+    }
+}
+
 struct ShellBlocks: Decodable, Equatable, Sendable {
     var dividers: Bool
     var failedTint: Bool
@@ -202,6 +209,8 @@ struct ShellConfig: Decodable, Equatable, Sendable {
     var mux: ShellMux
     var blocks: ShellBlocks
     var input: ShellInput
+    /// Absent on daemons older than `copy_on_select`.
+    var terminal: ShellTerminal?
 }
 
 struct SetParams: Encodable {

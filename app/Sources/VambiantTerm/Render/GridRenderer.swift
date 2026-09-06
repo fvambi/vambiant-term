@@ -39,6 +39,13 @@ enum CursorStyle: String, Sendable {
     case block, bar, underline
 }
 
+/// Everything drawn over the cells besides the cells themselves.
+struct GridOverlays {
+    var decorations: [BlockDecoration] = []
+    var matches: [MatchDecoration] = []
+    var selection: [SelectionSpan] = []
+}
+
 @MainActor
 final class GridRenderer {
     let device: MTLDevice
@@ -128,15 +135,14 @@ final class GridRenderer {
     /// `origin` (device pixels). Returns false if the atlas was cleared
     /// mid-build and the caller should run it again.
     func build(
-        _ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true, decorations: [BlockDecoration] = [],
-        matches: [MatchDecoration] = []
+        _ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true, overlays: GridOverlays = GridOverlays()
     ) -> Bool {
         let generation = atlas.generation
         bg.removeAll(keepingCapacity: true)
         glyphs.removeAll(keepingCapacity: true)
         guard let cells = view.cells else { return true }
-        let (selectedRows, failedRows) = tintedRows(decorations)
-        let boldRows = Self.boldRows(decorations)
+        let (selectedRows, failedRows) = tintedRows(overlays.decorations)
+        let boldRows = Self.boldRows(overlays.decorations)
         let tint = theme.background.mixed(with: theme.selection, 0.35)
         let failedTint = theme.background.mixed(with: theme.palette[1], 0.08)
         let cols = Int(view.cols)
@@ -206,11 +212,17 @@ final class GridRenderer {
                 glyphs.append(CellInstance(origin: originPx, size: size, uv: g.uv, fg: fg.simd, bg: bgc.simd, flags: flags))
             }
         }
-        for d in decorations {
-            appendBlockChrome(d, cells: cells, cols: cols, origin: SIMD2(ox, oy), cell: SIMD2(cw, ch))
-        }
-        appendMatches(matches, cols: cols, rows: rows, origin: SIMD2(ox, oy), cell: SIMD2(cw, ch))
+        appendOverlays(overlays, in: CellPlane(cells: cells, cols: cols, origin: SIMD2(ox, oy), cell: SIMD2(cw, ch)), rows: rows)
         return atlas.generation == generation
+    }
+
+    /// Block chrome, find highlights and the text selection, in that order.
+    private func appendOverlays(_ overlays: GridOverlays, in plane: CellPlane, rows: Int) {
+        for d in overlays.decorations {
+            appendBlockChrome(d, cells: plane.cells, cols: plane.cols, origin: plane.origin, cell: plane.cell)
+        }
+        appendMatches(overlays.matches, cols: plane.cols, rows: rows, origin: plane.origin, cell: plane.cell)
+        appendSelection(overlays.selection, cols: plane.cols, rows: rows, origin: plane.origin, cell: plane.cell)
     }
 
     /// Find highlights sit over the cell backgrounds and under the glyphs
@@ -224,6 +236,16 @@ final class GridRenderer {
             let o = SIMD2(origin.x + Float(m.col) * cell.x, origin.y + Float(m.row) * cell.y)
             let c = m.current ? now : hit
             bg.append(CellInstance(origin: o, size: SIMD2(width, cell.y), uv: .zero, fg: c, bg: c, flags: 0))
+        }
+    }
+
+    /// The text selection, in the theme's selection colour, over the cells.
+    private func appendSelection(_ spans: [SelectionSpan], cols: Int, rows: Int, origin: SIMD2<Float>, cell: SIMD2<Float>) {
+        let colour = theme.background.mixed(with: theme.selection, 0.8).simd
+        for s in spans where s.row < rows && s.col < cols {
+            let width = Float(min(s.len, cols - s.col)) * cell.x
+            let o = SIMD2(origin.x + Float(s.col) * cell.x, origin.y + Float(s.row) * cell.y)
+            bg.append(CellInstance(origin: o, size: SIMD2(width, cell.y), uv: .zero, fg: colour, bg: colour, flags: 0))
         }
     }
 

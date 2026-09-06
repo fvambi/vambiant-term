@@ -99,6 +99,14 @@ extension AppDelegate {
                     Self.captureAppKit(self.palette.contentView, to: shot + ".palette.png")
                     self.palette.orderOut(nil)
                 }
+                // A text selection across two rows: the highlight is in the
+                // grid capture, the copied text in the log.
+                let selTop = pane.view.viewportTop
+                pane.view.textSelection = TextSelection(
+                    anchor: GridPoint(row: selTop + 1, col: 2),
+                    head: GridPoint(row: selTop + 2, col: 18)
+                )
+                NSLog("screenshot: selection text: %@", pane.view.selectedText()?.replacingOccurrences(of: "\n", with: "⏎") ?? "nil")
                 pane.view.captureNext(to: shot)
                 // The whole window (chrome, chips, editor) through AppKit's
                 // display cache; the Metal grid inside may come out blank.

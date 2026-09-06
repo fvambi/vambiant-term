@@ -53,7 +53,7 @@ Owner crates: `vt-blocks`, `vt-store`, `vtermd`, `vt-core`; app `Render/`, `Sess
 | A12 background blocks | Segmenter: bytes with a newline arriving while no command is open and after a `D` create `BlockKind::Background {start,end}` closed on the next `A`; app draws a grey gutter labelled "background" | `segment.rs` tests | `10 §10` limits |
 | A13 clear | `TerminalCore::clear_scrollback()` (erase history only, keep the live grid; libghostty's `\e[3J` path) → `session.clear`; `⌘K`-equivalent chord per K1; blocks below the cut are marked `cleared` not deleted | core test: total rows drop | `06 §7` |
 | A14 export | Covered by A8 (text/HTML/Markdown to clipboard or file) | — | — |
-| A15 selection | Mouse drag selection in the app (cell coordinates, absolute rows); `session.text` gains `from_col`, `to_col`, `rect`; double-click word/smart (regex over the line text for URL/path/email/IP/float), triple-click line; `⌘⌥`-drag rectangle; `[terminal] copy_on_select`; selection survives scrolling (absolute rows) | Rust: column-bounded text; Swift: hit-testing and smart-select regexes | `06 §4`, `09` |
+| A15 selection | **Built 2026-09-06** (stream/word/line/rectangle, absolute rows, `session.text` rows, copy_on_select; smart-select regexes in Swift; no column-bounded daemon API needed yet). Mouse drag selection in the app (cell coordinates, absolute rows); `session.text` gains `from_col`, `to_col`, `rect`; double-click word/smart (regex over the line text for URL/path/email/IP/float), triple-click line; `⌘⌥`-drag rectangle; `[terminal] copy_on_select`; selection survives scrolling (absolute rows) | Rust: column-bounded text; Swift: hit-testing and smart-select regexes | `06 §4`, `09` |
 
 ## B. Input decoration, history, corrections (M5.5, 3 weeks)
 
