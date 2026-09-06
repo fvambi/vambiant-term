@@ -123,6 +123,38 @@ fn context(registry: &Registry, store: &Store, session: Option<&str>, max_bytes:
     out
 }
 
+/// One earlier turn of a conversation the caller keeps (the app's Agent
+/// Mode panel); the daemon stores nothing between calls.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct HistoryTurn {
+    /// `user` or `assistant`; anything else is refused.
+    pub role: String,
+    /// The turn's text, redacted before it leaves like the prompt.
+    pub text: String,
+}
+
+/// Prior turns as messages. Every text goes through redaction; a failure
+/// refuses the whole request (ADR-0007).
+fn history_messages(history: &[HistoryTurn]) -> Result<(Vec<Message>, usize), RpcError> {
+    let mut out = Vec::with_capacity(history.len());
+    let mut replaced = 0;
+    for turn in history {
+        let clean = vt_redact::redact(&turn.text).map_err(|e| internal(e.to_string()))?;
+        replaced += clean.replacements;
+        out.push(match turn.role.as_str() {
+            "user" => Message::user(clean.text),
+            "assistant" => Message::assistant(clean.text),
+            other => {
+                return Err(RpcError::new(
+                    RpcError::INVALID_PARAMS,
+                    format!("history role must be user or assistant, not `{other}`"),
+                ));
+            }
+        });
+    }
+    Ok((out, replaced))
+}
+
 /// `ai.ask`.
 pub fn ask(
     registry: &Arc<Registry>,
@@ -130,6 +162,7 @@ pub fn ask(
     prompt: &str,
     feature: &str,
     session: Option<&str>,
+    history: &[HistoryTurn],
 ) -> Result<serde_json::Value, RpcError> {
     let cfg = registry.cfg();
     if !cfg.ai.enabled {
@@ -160,12 +193,15 @@ pub fn ask(
     );
     let system = vt_redact::redact(&system_text).map_err(|e| internal(e.to_string()))?;
     let user = vt_redact::redact(prompt).map_err(|e| internal(e.to_string()))?;
-    let redactions = u64::try_from(system.replacements + user.replacements).unwrap_or(u64::MAX);
+    let (mut messages, earlier) = history_messages(history)?;
+    messages.push(Message::user(user.text.clone()));
+    let redactions =
+        u64::try_from(system.replacements + user.replacements + earlier).unwrap_or(u64::MAX);
 
     let req = Request {
         model: profile.model.clone(),
         system: Some(system.text),
-        messages: vec![Message::user(user.text.clone())],
+        messages,
         tools: vec![],
         max_tokens: 1024,
         temperature: None,

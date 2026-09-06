@@ -308,12 +308,15 @@ impl Handler for Rpc {
                 let prompt: String = Self::param(req, "prompt")?;
                 let feature: String = Self::param(req, "feature").unwrap_or_else(|_| "ask".into());
                 let session: Option<String> = Self::param(req, "session").ok();
+                let history: Vec<crate::ai::HistoryTurn> =
+                    Self::param(req, "history").unwrap_or_default();
                 crate::ai::ask(
                     &self.registry,
                     &self.store,
                     &prompt,
                     &feature,
                     session.as_deref(),
+                    &history,
                 )
             }
             method::AI_DOCTOR => crate::ai::doctor(&self.registry),
