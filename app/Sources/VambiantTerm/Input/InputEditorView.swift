@@ -10,6 +10,10 @@ import AppKit
 final class InputEditorView: NSTextView {
     var onSubmit: ((String) -> Void)?
     var onClear: (() -> Void)?
+    /// ⌘↩: the text goes to the agent, not the shell (ADR-0011 D2).
+    var onAgent: ((String) -> Void)?
+    /// ⎋ with nothing to cancel in the editor: the pane decides.
+    var onEscape: (() -> Void)?
     /// ⌘ chords are offered to the pane before the text view sees them.
     var onKeyEquivalent: ((NSEvent) -> Bool)?
     /// History newest-first for a prefix (the pane asks the daemon).
@@ -29,11 +33,16 @@ final class InputEditorView: NSTextView {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         switch event.keyCode {
         case 0x24, 0x4C: // ↩ / keypad enter
-            if flags.contains(.shift) || flags.contains(.option) {
+            if flags.contains(.command) {
+                askAgent()
+            } else if flags.contains(.shift) || flags.contains(.option) {
                 insertNewlineIgnoringFieldEditor(nil)
             } else {
                 submit()
             }
+            return
+        case 0x35 where ghost == nil && historyIndex == nil: // ⎋
+            onEscape?()
             return
         case 0x7E where isOnFirstLine: // ↑
             walkHistory(back: true)
@@ -69,6 +78,15 @@ final class InputEditorView: NSTextView {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+
+    /// The whole text to the agent; the editor is cleared like on ↩.
+    func askAgent() {
+        let text = string
+        historyIndex = nil
+        string = ""
+        didChangeText()
+        onAgent?(text)
     }
 
     func submit() {

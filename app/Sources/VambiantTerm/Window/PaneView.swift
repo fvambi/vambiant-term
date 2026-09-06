@@ -1,5 +1,6 @@
-// One pane: the grid on top, Warp's input area at the bottom (ADR-0011).
-// In classic mode the input area is hidden and the grid fills the pane.
+// One pane: the grid on top, Warp's input area at the bottom (ADR-0011),
+// and the Agent Mode conversation between them while it is open. In
+// classic mode the input area is hidden and the grid fills the pane.
 
 import AppKit
 
@@ -7,6 +8,9 @@ import AppKit
 final class PaneView: NSView {
     let grid: MetalGridView
     let input = InputAreaView()
+    let agent = AgentPanel()
+    /// Share of the pane the conversation takes while open.
+    static let agentShare: CGFloat = 0.45
     var warpMode = true {
         didSet {
             input.isHidden = !warpMode
@@ -18,7 +22,9 @@ final class PaneView: NSView {
         self.grid = grid
         super.init(frame: .zero)
         addSubview(grid)
+        addSubview(agent)
         addSubview(input)
+        agent.isHidden = true
     }
 
     @available(*, unavailable)
@@ -37,6 +43,8 @@ final class PaneView: NSView {
         let inputHeight = warpMode ? InputAreaView.height(lines: input.editor.lineCount, lineHeight: lineHeight) : 0
         input.relayout(lineHeight: lineHeight)
         input.frame = CGRect(x: 0, y: bounds.height - inputHeight, width: bounds.width, height: inputHeight)
-        grid.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - inputHeight)
+        let agentHeight = agent.isHidden ? 0 : ((bounds.height - inputHeight) * Self.agentShare).rounded()
+        agent.frame = CGRect(x: 0, y: bounds.height - inputHeight - agentHeight, width: bounds.width, height: agentHeight)
+        grid.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - inputHeight - agentHeight)
     }
 }

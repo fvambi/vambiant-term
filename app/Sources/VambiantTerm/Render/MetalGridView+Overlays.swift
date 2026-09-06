@@ -133,6 +133,14 @@ extension MetalGridView {
         onAction?(.paletteOpen)
     }
 
+    @objc func askAgentAction(_ sender: Any?) {
+        onAction?(.askAgent)
+    }
+
+    @objc func explainFailureAction(_ sender: Any?) {
+        onAction?(.explainLastFailure)
+    }
+
     @objc func toggleStickyHeader(_ sender: Any?) {
         stickyHeaderEnabled.toggle()
         lastSeqReset()

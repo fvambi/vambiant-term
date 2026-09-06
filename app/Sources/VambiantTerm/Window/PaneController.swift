@@ -58,6 +58,7 @@ final class PaneController {
         }
         container.input.editor.historyProvider = { [weak self] prefix in self?.history(prefix: prefix) ?? [] }
         container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
+        wireAgent()
     }
 
     // MARK: Warp-mode input
@@ -70,6 +71,7 @@ final class PaneController {
     func setInputMode(warp: Bool) {
         container.warpMode = warp
         container.input.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
+        container.agent.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
         refreshChips()
     }
 

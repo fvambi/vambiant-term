@@ -26,6 +26,7 @@ enum ShellAction: Equatable, Sendable {
     case stickyHeaderToggle
     case sidebarToggle
     case paletteOpen
+    case askAgent, explainLastFailure
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -78,6 +79,8 @@ enum ShellAction: Equatable, Sendable {
         "block.sticky_toggle": .stickyHeaderToggle,
         "sidebar.toggle": .sidebarToggle,
         "palette.open": .paletteOpen,
+        "ai.ask": .askAgent,
+        "ai.explain_last_failure": .explainLastFailure,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),

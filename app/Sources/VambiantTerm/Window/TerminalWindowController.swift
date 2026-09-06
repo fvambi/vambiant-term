@@ -138,7 +138,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func perform(_ action: ShellAction, on pane: PaneController) {
-        if performBlockAction(action, on: pane) {
+        if performBlockAction(action, on: pane) || performAgentAction(action, on: pane) {
             return
         }
         switch action {
@@ -173,12 +173,22 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
              .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
-             .paletteOpen:
+             .paletteOpen, .askAgent, .explainLastFailure:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
             NSSound.beep()
         }
+    }
+
+    /// Agent Mode actions (docs/06 §6). Returns false for the rest.
+    private func performAgentAction(_ action: ShellAction, on pane: PaneController) -> Bool {
+        switch action {
+        case .askAgent: pane.askFromEditor()
+        case .explainLastFailure: pane.explainLastFailure()
+        default: return false
+        }
+        return true
     }
 
     /// Block and scrollback actions (docs/06 §4). Returns false for the rest.

@@ -127,6 +127,8 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 - [x] Cost accounting, ~~budgets with hard stop, `vterm ai spend`~~. *(List-price estimates per request, recorded in the egress log; budgets and `spend` not yet.)*
 - [x] Keychain integration; `vterm ai doctor`. *(`security-framework` generic passwords under `com.vambiant.term`, env var per profile first; `vterm ai key set|remove`, `vterm ai doctor`, `vterm ask`. Every outbound text part goes through `vt-redact` and a failure refuses the request; the e2e test proves a key in the prompt never reaches the mock server.)*
 
+- [x] Agent Mode, first slice (ADR-0011 D2, 2026-09-06): the conversation panel in the pane (`AgentPanel`, `AgentConversation`), `⌘↩`/`⌘K`/Agent menu → `ai.ask` off the main thread with the session as context, `⌥E` explains the last failed block, `history` turns on `ai.ask` (redacted, fail-closed, `user`/`assistant` only), footer and header cost/token meters, proposed commands staged into the editor and never run. Verified end to end against a mock OpenAI-compatible server through a fresh daemon (`VAMBIANT_TERM_SCREENSHOT` writes `.agent.png`). Not yet: streaming, tool loop under `vt-policy`, approval card, thinking rows, task ticks.
+
 **Exit:** `vterm ask` works against all four provider families; `vterm ai doctor` prints resolved capabilities and flags missing models.
 
 ## M-SEC (parallel from M1) — Redaction & policy (3 weeks of effort, spread)
