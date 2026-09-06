@@ -15,7 +15,7 @@ use crate::registry::Registry;
 type PathCache = Mutex<(Option<Instant>, Arc<Vec<String>>)>;
 
 /// Executable names on this process's PATH, rescanned every minute.
-fn executables() -> Arc<Vec<String>> {
+pub(crate) fn executables() -> Arc<Vec<String>> {
     static CACHE: OnceLock<PathCache> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new((None, Arc::new(Vec::new()))));
     let mut guard = cache.lock().unwrap_or_else(PoisonError::into_inner);

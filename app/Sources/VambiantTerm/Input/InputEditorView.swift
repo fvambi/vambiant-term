@@ -26,6 +26,13 @@ final class InputEditorView: NSTextView {
 
     /// Colours for the tokenizer's kinds; set from the theme.
     var tokenColours: [ShellToken: NSColor] = [:]
+    /// Executables on PATH (12 §B5); nil until the daemon answered, and
+    /// then no underline is a guess.
+    var knownCommands: Set<String>? {
+        didSet { highlight() }
+    }
+
+    var errorColour = NSColor.systemRed
     private(set) var ghost: String?
     /// A correction for the last failed command (12 §B8): shown as ghost
     /// text while the editor is empty, accepted with → / ⌃F, dropped by
@@ -193,6 +200,11 @@ final class InputEditorView: NSTextView {
             var attrs: [NSAttributedString.Key: Any] = [.foregroundColor: colour]
             if span.kind == .command {
                 attrs[.font] = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+                let word = String(String.UnicodeScalarView(scalars[span.range]))
+                if let known = knownCommands, !CommandHighlighter.isKnown(word, known: known) {
+                    attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
+                    attrs[.underlineColor] = errorColour
+                }
             }
             storage.addAttributes(attrs, range: NSRange(location: start, length: length))
         }

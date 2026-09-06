@@ -2,6 +2,18 @@ import Foundation
 import Testing
 @testable import VambiantTerm
 
+struct UnknownCommandTests {
+    @Test func pathBuiltinsPathsAndAssignmentsAreKnown() {
+        let known: Set = ["git", "ls"]
+        #expect(CommandHighlighter.isKnown("git", known: known))
+        #expect(CommandHighlighter.isKnown("cd", known: known), "builtin")
+        #expect(CommandHighlighter.isKnown("./run.sh", known: known) && CommandHighlighter.isKnown("/usr/bin/x", known: known))
+        #expect(CommandHighlighter.isKnown("FOO=1", known: known) && CommandHighlighter.isKnown("$CMD", known: known))
+        #expect(!CommandHighlighter.isKnown("gti", known: known), "a typo underlines")
+        #expect(!CommandHighlighter.isKnown("myalias", known: known), "aliases are invisible here and underline too")
+    }
+}
+
 struct CorrectionTests {
     @Test func hintNamesTheCommandAndTheKeys() {
         let hint = Autosuggest.correctionHint(command: "git status", explanation: "`gti` is not on PATH; `git` is")

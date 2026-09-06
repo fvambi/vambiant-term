@@ -44,6 +44,25 @@ extension PaneController {
         }
     }
 
+    /// `path.executables` for the editor's unknown-command underline, at
+    /// most once a minute; the daemon rescans PATH on the same cadence.
+    func refreshKnownCommands() {
+        if let at = knownCommandsFetchedAt, Date().timeIntervalSince(at) < 60 {
+            return
+        }
+        knownCommandsFetchedAt = Date()
+        let daemon = self.daemon
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let names: [String]? = try? daemon.call("path.executables")
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, let names else { return }
+                    self.container.input.editor.knownCommands = Set(names)
+                }
+            }
+        }
+    }
+
     func openHistorySearch() {
         guard let controller = windowController else { return }
         (NSApp.delegate as? AppDelegate)?.showPalette(for: controller, pane: self, query: "h:")

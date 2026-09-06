@@ -373,6 +373,9 @@ impl Handler for Rpc {
                         .collect(),
                 ))
             }
+            method::PATH_EXECUTABLES => {
+                Ok(serde_json::to_value(&*crate::correct::executables()).unwrap_or_default())
+            }
             method::CORRECT_SUGGEST => {
                 let session: String = Self::param(req, "session")?;
                 Ok(crate::correct::suggest(

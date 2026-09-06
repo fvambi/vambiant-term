@@ -43,6 +43,8 @@ final class PaneController {
 
     /// `[editor] program` for ⌘-clicked files; nil or empty means the default app.
     var editorProgram: String?
+    /// When `path.executables` was last fetched for the editor's underline.
+    var knownCommandsFetchedAt: Date?
     /// Pending approvals for this session, oldest first (`inbox.changed`).
     var approvals: [InboxItem] = [] {
         didSet {
@@ -133,6 +135,7 @@ final class PaneController {
             if container.input.editor.correction == nil {
                 container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
             }
+            refreshKnownCommands()
             if isFocused {
                 focus()
             }
@@ -277,6 +280,7 @@ final class PaneController {
                 setCwd(cwd)
             }
             loadBlocks()
+            refreshKnownCommands()
             onChange?()
         } catch {
             lastError = "cannot attach to \(info.id): \(error)"
