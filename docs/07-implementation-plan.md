@@ -149,7 +149,8 @@ Nothing is built on assumptions. Before writing product code, verify the three s
 - [ ] ⌘K palette with staging, explanation and verdict. *(The command palette itself exists since 2026-09-06: ⌘⇧P / `<prefix> :` opens a panel over actions with their chords, every session, the daemon's history and the repo's tracked files, with Warp's `actions:` `sessions:` `history:` `files:` scopes and fuzzy ranking; picking an action performs it, a session focuses it, history or a file lands in the editor. ⌘K's natural-language mode waits for the provider layer.)*
 - [ ] `⌥E` explain-failure returning a patch, not prose.
 - [ ] Context builder with inspectable payload (`⌥⌘E`).
-- [ ] Safety verdicts surfaced inline on typed commands and in the inbox.
+- [x] Safety verdicts surfaced inline on typed commands and in the inbox. *(2026-09-06: the confirm sheet and the inbox card/sheet, docs/06 §3, §5 as-built.)*
+- [x] Corrections after a failed command (12 §B8, 2026-09-06): `vt_blocks::correct` rules, `correct.suggest`, ghost text in the editor with the reason in the hint.
 
 **Exit:** measured p50 suggestion latency under 120 ms with a warm local model; zero suggestions rendered after the user has typed past them.
 

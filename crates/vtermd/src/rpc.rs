@@ -373,6 +373,14 @@ impl Handler for Rpc {
                         .collect(),
                 ))
             }
+            method::CORRECT_SUGGEST => {
+                let session: String = Self::param(req, "session")?;
+                Ok(crate::correct::suggest(
+                    &self.registry,
+                    &self.store,
+                    &session,
+                ))
+            }
             method::POLICY_CLASSIFY => {
                 let command: String = Self::param(req, "command")?;
                 let session: Option<String> = Self::param(req, "session").ok();

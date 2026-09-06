@@ -130,7 +130,9 @@ final class PaneController {
         phase = new
         switch new {
         case .prompt:
-            container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
+            if container.input.editor.correction == nil {
+                container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
+            }
             if isFocused {
                 focus()
             }
@@ -340,6 +342,9 @@ final class PaneController {
                 block.cwd = cwd
                 blocks.append(block)
                 onChange?()
+                if block.failed {
+                    suggestCorrection()
+                }
             }
         case "session.changed":
             sessionState = params[path: "state"]?.stringValue

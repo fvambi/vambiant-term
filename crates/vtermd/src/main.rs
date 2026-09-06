@@ -20,6 +20,7 @@ mod agents;
 mod ai;
 mod codex;
 mod config;
+mod correct;
 mod holder;
 mod observe;
 mod policy;

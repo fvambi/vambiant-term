@@ -14,6 +14,36 @@ extension PaneController {
         container.input.editor.onHistorySearch = { [weak self] in self?.openHistorySearch() }
     }
 
+    /// After a failed command: the daemon's correction, as ghost text in
+    /// the empty editor with the reason in the hint (Warp's "did you mean").
+    func suggestCorrection() {
+        guard warpMode, let session else { return }
+        struct Params: Encodable {
+            let session: String
+        }
+        struct Correction: Decodable {
+            let command: String
+            let rule: String
+            let explanation: String
+        }
+        struct Reply: Decodable {
+            let corrections: [Correction]
+        }
+        let daemon = self.daemon
+        let id = session.id
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let reply: Reply? = try? daemon.call("correct.suggest", params: Params(session: id))
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.session?.id == id, let first = reply?.corrections.first,
+                          self.container.input.editor.string.isEmpty else { return }
+                    self.container.input.editor.correction = first.command
+                    self.container.input.setHint(Autosuggest.correctionHint(command: first.command, explanation: first.explanation))
+                }
+            }
+        }
+    }
+
     func openHistorySearch() {
         guard let controller = windowController else { return }
         (NSApp.delegate as? AppDelegate)?.showPalette(for: controller, pane: self, query: "h:")

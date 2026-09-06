@@ -128,6 +128,9 @@ pub mod method {
     /// `{ limit?, payload? } -> [ { at, provider, model, purpose, bytes_sent, redactions, payload? } ]`
     /// newest first, from the egress log (docs/05 §4.2).
     pub const EGRESS_TAIL: &str = "egress.tail";
+    /// `{ session } -> { cmdline, exit, corrections: [ { command, rule, explanation } ] }`:
+    /// corrections for the session's last failed command (12 §B8).
+    pub const CORRECT_SUGGEST: &str = "correct.suggest";
     /// `{prefix?, limit?}` → `[cmdline]`: distinct command lines across all
     /// sessions, most recent first (the Warp-mode editor's history).
     pub const HISTORY_SEARCH: &str = "history.search";

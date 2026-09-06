@@ -2,6 +2,13 @@ import Foundation
 import Testing
 @testable import VambiantTerm
 
+struct CorrectionTests {
+    @Test func hintNamesTheCommandAndTheKeys() {
+        let hint = Autosuggest.correctionHint(command: "git status", explanation: "`gti` is not on PATH; `git` is")
+        #expect(hint == "✎ Did you mean `git status`? `gti` is not on PATH; `git` is  ·  → accepts  ·  ⎋ dismisses")
+    }
+}
+
 struct CommandHighlighterTests {
     private func kinds(_ text: String) -> [(String, ShellToken)] {
         let s = Array(text.unicodeScalars)

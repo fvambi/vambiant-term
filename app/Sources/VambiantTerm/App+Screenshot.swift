@@ -32,6 +32,10 @@ extension AppDelegate {
         Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
             MainActor.assumeIsolated { _ = pane.viewer?.send(text: "grep -c vambiant /nonexistent\r") }
         }
+        // A typo: the correction should be ghost text in the editor by 3.9 s.
+        Timer.scheduledTimer(withTimeInterval: 2.8, repeats: false) { _ in
+            MainActor.assumeIsolated { _ = pane.viewer?.send(text: "gti --version\r") }
+        }
         // Select the last block, bookmark the first, extend the selection
         // upwards: tint, tick and range are all in the shot.
         Timer.scheduledTimer(withTimeInterval: 3.3, repeats: false) { _ in
@@ -78,6 +82,7 @@ extension AppDelegate {
                     pane.view.findState.query, pane.view.findState.summary, sticky, top,
                     pane.blocks.command(at: top)?.seq ?? -1, pane.view.renderer.blockChrome.stickyHeader ? 1 : 0
                 )
+                NSLog("screenshot: correction %@", pane.container.input.editor.correction ?? "none")
                 // Typed text in the editor: history ghost text and token colours.
                 pane.container.input.editor.string = "grep -c"
                 pane.container.input.editor.didChangeText()

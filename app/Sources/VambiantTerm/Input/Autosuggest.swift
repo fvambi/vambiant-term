@@ -5,6 +5,11 @@
 import Foundation
 
 enum Autosuggest {
+    /// The hint line for a correction: `✎ Did you mean \`git status\`? …`.
+    static func correctionHint(command: String, explanation: String) -> String {
+        "✎ Did you mean `\(command)`? \(explanation)  ·  → accepts  ·  ⎋ dismisses"
+    }
+
     /// The suffix to show after `text`, or nil.
     static func ghost(for text: String, history: [String]) -> String? {
         guard !text.isEmpty, !text.contains("\n") else { return nil }

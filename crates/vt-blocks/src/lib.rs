@@ -7,7 +7,9 @@
 //! guess, never presented as fact (CLAUDE.md non-negotiable 4).
 
 pub mod block;
+pub mod correct;
 pub mod segment;
 
 pub use block::{Block, BlockKind, Confidence};
+pub use correct::{Correction, Failed, suggest};
 pub use segment::{Segmented, Segmenter};

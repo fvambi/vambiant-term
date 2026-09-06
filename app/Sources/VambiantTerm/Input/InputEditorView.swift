@@ -27,6 +27,18 @@ final class InputEditorView: NSTextView {
     /// Colours for the tokenizer's kinds; set from the theme.
     var tokenColours: [ShellToken: NSColor] = [:]
     private(set) var ghost: String?
+    /// A correction for the last failed command (12 §B8): shown as ghost
+    /// text while the editor is empty, accepted with → / ⌃F, dropped by
+    /// typing or ⎋. Never run on its own.
+    var correction: String? {
+        didSet {
+            if string.isEmpty {
+                ghost = correction
+                needsDisplay = true
+            }
+        }
+    }
+
     private var historyMatches: [String] = []
     private var historyIndex: Int?
     private var draft = ""
@@ -42,6 +54,11 @@ final class InputEditorView: NSTextView {
             } else {
                 submit()
             }
+            return
+        case 0x35 where correction != nil && string.isEmpty: // ⎋ drops the correction
+            correction = nil
+            ghost = nil
+            needsDisplay = true
             return
         case 0x35 where ghost == nil && historyIndex == nil: // ⎋
             onEscape?()
@@ -153,7 +170,12 @@ final class InputEditorView: NSTextView {
         super.didChangeText()
         historyIndex = nil
         highlight()
-        ghost = Autosuggest.ghost(for: string, history: historyProvider?(string) ?? [])
+        if string.isEmpty {
+            ghost = correction
+        } else {
+            correction = nil
+            ghost = Autosuggest.ghost(for: string, history: historyProvider?(string) ?? [])
+        }
         needsDisplay = true
     }
 
