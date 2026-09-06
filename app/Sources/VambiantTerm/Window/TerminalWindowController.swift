@@ -101,7 +101,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             pane.view.scroll(step)
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
-             .clearScrollback, .block:
+             .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -123,6 +123,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .blockBookmarkPrevious: pane.jumpBookmark(previous: true)
         case .blockBookmarkNext: pane.jumpBookmark(previous: false)
         case .clearScrollback: pane.clearScrollback()
+        case .findOpen: pane.view.showFind()
+        case .findNext: pane.findStep(forward: true)
+        case .findPrevious: pane.findStep(forward: false)
+        case .stickyHeaderToggle: pane.view.toggleStickyHeader(nil)
         case let .block(blockAction):
             if let block = pane.view.selectedBlock.flatMap(pane.blocks.command(seq:)) {
                 pane.perform(blockAction, on: block)

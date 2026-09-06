@@ -121,7 +121,8 @@ final class GridRenderer {
     /// `origin` (device pixels). Returns false if the atlas was cleared
     /// mid-build and the caller should run it again.
     func build(
-        _ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true, decorations: [BlockDecoration] = []
+        _ view: VtGridView, origin: CGPoint, focused: Bool, cursorOn: Bool = true, decorations: [BlockDecoration] = [],
+        matches: [MatchDecoration] = []
     ) -> Bool {
         let generation = atlas.generation
         bg.removeAll(keepingCapacity: true)
@@ -200,7 +201,22 @@ final class GridRenderer {
         for d in decorations {
             appendBlockChrome(d, cells: cells, cols: cols, origin: SIMD2(ox, oy), cell: SIMD2(cw, ch))
         }
+        appendMatches(matches, cols: cols, rows: rows, origin: SIMD2(ox, oy), cell: SIMD2(cw, ch))
         return atlas.generation == generation
+    }
+
+    /// Find highlights sit over the cell backgrounds and under the glyphs
+    /// (the glyph pass runs after): yellow for matches, the current one
+    /// stronger, clamped to the grid.
+    private func appendMatches(_ matches: [MatchDecoration], cols: Int, rows: Int, origin: SIMD2<Float>, cell: SIMD2<Float>) {
+        let hit = theme.background.mixed(with: theme.palette[3], 0.45).simd
+        let now = theme.background.mixed(with: theme.palette[3], 0.85).simd
+        for m in matches where m.row < rows && m.col < cols {
+            let width = Float(min(m.len, cols - m.col)) * cell.x
+            let o = SIMD2(origin.x + Float(m.col) * cell.x, origin.y + Float(m.row) * cell.y)
+            let c = m.current ? now : hit
+            bg.append(CellInstance(origin: o, size: SIMD2(width, cell.y), uv: .zero, fg: c, bg: c, flags: 0))
+        }
     }
 
     /// Rows a selected or failed block tints. Only default-background cells

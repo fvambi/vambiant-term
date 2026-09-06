@@ -86,6 +86,20 @@ final class MetalGridView: NSView {
     /// Precise trackpad deltas accumulate until they add up to a row.
     var scrollRemainder: CGFloat = 0
     let blockStatus = NSTextField(labelWithString: "")
+    let findBar = FindBar()
+    let stickyHeader = StickyHeaderView()
+    var findState = FindState()
+    /// Per-pane override of `[blocks] sticky_header`.
+    var stickyHeaderEnabled = true
+    /// Find requests and steps go to the pane, which has the daemon.
+    var onFindChange: ((FindState) -> Void)?
+    var onFindStep: ((Bool) -> Void)?
+
+    /// Forces the next render even when the grid's sequence is unchanged.
+    func lastSeqReset() {
+        lastSeq = .max
+        markDirty()
+    }
 
     var viewer: SessionViewer? {
         didSet {
@@ -142,6 +156,7 @@ final class MetalGridView: NSView {
         blockStatus.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         blockStatus.lineBreakMode = .byTruncatingTail
         addSubview(blockStatus)
+        installOverlays()
     }
 
     @available(*, unavailable)
@@ -186,6 +201,7 @@ final class MetalGridView: NSView {
         super.layout()
         banner.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 22)
         blockStatus.frame = CGRect(x: 0, y: bounds.height - 18, width: bounds.width, height: 18)
+        layoutOverlays()
         updateBacking()
     }
 
@@ -317,9 +333,15 @@ final class MetalGridView: NSView {
         var summary: FrameSummary?
         let built: Bool = viewer.withGrid { view in
             let decor = BlockDecor.decorations(for: blocks, top: view.top, rows: Int(view.rows), selected: selectedBlocks)
-            var ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor)
+            let marks = findState.visible(top: view.top, rows: Int(view.rows))
+            updateStickyHeader(top: view.top)
+            var ok = renderer.build(
+                view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor, matches: marks
+            )
             if !ok {
-                ok = renderer.build(view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor)
+                ok = renderer.build(
+                    view, origin: origin, focused: focused, cursorOn: cursorOn, decorations: decor, matches: marks
+                )
             }
             if onPresented != nil {
                 summary = FrameSummary(seq: view.seq, text: view.text())

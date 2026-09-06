@@ -222,6 +222,9 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
     ("block.export", "Copy the selected block as HTML", "M5"),
     ("block.menu", "Open the selected block's menu", "M5"),
     ("scrollback.clear", "Clear the scrollback", "M5"),
+    ("find.next", "Next find match", "M5"),
+    ("find.previous", "Previous find match", "M5"),
+    ("block.sticky_toggle", "Toggle the sticky command header in this pane", "M5"),
     (
         "block.copy_command",
         "Copy the selected block's command",
@@ -261,6 +264,8 @@ pub const MACOS: &[(&str, &str)] = &[
     ("cmd+shift+n", "task.new"),
     ("cmd+.", "agent.interrupt"),
     ("cmd+f", "scrollback.search"),
+    ("cmd+g", "find.next"),
+    ("cmd+shift+g", "find.previous"),
     ("cmd+up", "prompt.previous"),
     ("cmd+down", "prompt.next"),
     ("ctrl+cmd+up", "block.select_previous"),

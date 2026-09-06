@@ -135,6 +135,8 @@ Two keymap profiles ship: **`macos`** (⌘-based, Ghostty-like) and **`tmux`** (
 | Re-input command (plain / with sudo); re-run | `⌘I` / `⌘⇧I`; menu | — |
 | Block menu from the keyboard | `⌃M` | — |
 | Clear scrollback | `⌘⇧K` | — |
+| Find in scrollback; next / previous match | `⌘F`; `⌘G` / `⌘⇧G` (↩ / ⇧↩ and ⎋ in the bar) | — |
+| Sticky command header | on by default (`[blocks] sticky_header`); Blocks › Toggle Sticky Command Header per pane | — |
 | Scroll back / forward a page | `⇧PgUp` / `⇧PgDn` | `<prefix> PgUp` / `<prefix> PgDn` |
 | Scroll to oldest line / live end | `⇧Home` / `⇧End` | — |
 

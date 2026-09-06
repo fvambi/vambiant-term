@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Something worth looking at: attributes, colours, CJK, emoji.
             let demo = "clear; printf '\\e[1mbold\\e[0m \\e[3mitalic\\e[0m \\e[4munderline\\e[0m "
                 + "\\e[31mred\\e[0m \\e[42m bg \\e[0m \\e[38;5;208m256\\e[0m \\e[38;2;122;162;247mrgb\\e[0m "
-                + "世界 😀\\n'; ls -la | head -6\r"
+                + "世界 😀\\n'; ls -la | head -6; seq 1 40\r"
             Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
                 MainActor.assumeIsolated { _ = pane.viewer?.send(text: demo) }
             }
@@ -108,8 +108,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     pane.view.extendSelection(previous: true)
                 }
             }
-            Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { _ in
-                MainActor.assumeIsolated { pane.view.captureNext(to: shot) }
+            // Scroll the first command line off the top and search, so the
+            // sticky header and the find highlights are in the shot too.
+            Timer.scheduledTimer(withTimeInterval: 3.4, repeats: false) { _ in
+                MainActor.assumeIsolated {
+                    pane.view.selectedBlock = nil
+                    _ = pane.viewer?.scroll(VtScrollTo_Lines, n: 2)
+                    pane.view.showFind()
+                    pane.view.findBar.field.stringValue = "fwartner"
+                    pane.runFind(FindState(query: "fwartner"))
+                }
+            }
+            // Below the first command line, so its header is pinned.
+            Timer.scheduledTimer(withTimeInterval: 3.7, repeats: false) { _ in
+                MainActor.assumeIsolated { _ = pane.viewer?.scroll(VtScrollTo_Row, n: 10) }
+            }
+            Timer.scheduledTimer(withTimeInterval: 3.9, repeats: false) { _ in
+                MainActor.assumeIsolated {
+                    // The overlays are AppKit views the Metal capture cannot
+                    // see; log their state so a run still verifies them.
+                    let sticky = pane.view.stickyHeader.isHidden ? "hidden" : "block \(pane.view.stickyHeader.seq ?? -1)"
+                    let top = pane.view.viewportTop
+                    NSLog(
+                        "screenshot: find '%@' -> %@; sticky header %@ (top %llu, block at top %lld, chrome %d)",
+                        pane.view.findState.query, pane.view.findState.summary, sticky, top,
+                        pane.blocks.command(at: top)?.seq ?? -1, pane.view.renderer.blockChrome.stickyHeader ? 1 : 0
+                    )
+                    pane.view.captureNext(to: shot)
+                }
             }
         }
     }
@@ -251,6 +277,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Copy", action: #selector(MetalGridView.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(MetalGridView.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Find…", action: #selector(MetalGridView.findAction(_:)), keyEquivalent: "")
+        editMenu.addItem(withTitle: "Find Next", action: #selector(MetalGridView.findNextAction(_:)), keyEquivalent: "")
+        editMenu.addItem(withTitle: "Find Previous", action: #selector(MetalGridView.findPreviousAction(_:)), keyEquivalent: "")
         edit.submenu = editMenu
         main.addItem(edit)
 
@@ -277,6 +307,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         blocksMenu.addItem(.separator())
         blocksMenu.addItem(withTitle: "Toggle Bookmark", action: #selector(MetalGridView.toggleBookmark(_:)), keyEquivalent: "")
         blocksMenu.addItem(withTitle: "Clear Scrollback", action: #selector(MetalGridView.clearScrollback(_:)), keyEquivalent: "")
+        blocksMenu.addItem(
+            withTitle: "Toggle Sticky Command Header", action: #selector(MetalGridView.toggleStickyHeader(_:)), keyEquivalent: ""
+        )
         blocks.submenu = blocksMenu
         main.addItem(blocks)
 

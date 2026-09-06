@@ -24,6 +24,77 @@ final class PaneController {
         view = MetalGridView(renderer: renderer)
         view.onResize = { [weak self] cols, rows in self?.resize(cols: cols, rows: rows) }
         view.onBlockAction = { [weak self] action, block in self?.perform(action, on: block) }
+        view.onFindChange = { [weak self] state in self?.runFind(state) }
+        view.onFindStep = { [weak self] forward in self?.findStep(forward: forward) }
+    }
+
+    // MARK: Find
+
+    /// Runs `session.find` off the main thread; stale replies are dropped.
+    func runFind(_ state: FindState) {
+        guard let session else { return }
+        findGeneration += 1
+        let generation = findGeneration
+        guard !state.query.isEmpty else {
+            var cleared = state
+            cleared.matches = []
+            cleared.current = nil
+            view.applyFind(cleared)
+            return
+        }
+        let base = state
+        var from: UInt64?
+        var to: UInt64?
+        if state.inSelectedBlock, let block = view.selectedBlock.flatMap(blocks.command(seq:)) {
+            from = block.visualRows.lowerBound
+            to = block.visualRows.upperBound
+        }
+        let params = FindParams(
+            id: session.id, query: state.query, regex: state.regex, caseSensitive: state.caseSensitive,
+            from: from, to: to, limit: 5000
+        )
+        let daemon = daemon
+        let bottom = view.viewportTop + UInt64(max(1, view.viewportRows)) - 1
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result: Result<[FindMatch], Error> = Result { try daemon.call("session.find", params: params) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, generation == self.findGeneration else { return }
+                    var next = base
+                    switch result {
+                    case let .success(matches):
+                        next.replace(with: matches, viewportBottom: bottom)
+                    case let .failure(error):
+                        next.matches = []
+                        next.current = nil
+                        next.error = "\(error)".replacingOccurrences(of: "session.find: ", with: "")
+                    }
+                    self.view.applyFind(next)
+                    if let i = next.current {
+                        self.reveal(next.matches[i])
+                    }
+                }
+            }
+        }
+    }
+
+    func findStep(forward: Bool) {
+        var s = view.findState
+        guard let m = s.step(forward: forward) else {
+            NSSound.beep()
+            return
+        }
+        view.applyFind(s)
+        reveal(m)
+    }
+
+    /// Scrolls so the match is inside the viewport, centred when it was off-screen.
+    private func reveal(_ m: FindMatch) {
+        let top = view.viewportTop
+        let rows = UInt64(max(1, view.viewportRows))
+        if m.row < top || m.row >= top + rows {
+            viewer?.scroll(VtScrollTo_Row, n: Int64(m.row > rows / 2 ? m.row - rows / 2 : 0))
+        }
     }
 
     /// Spawns the login shell in `cwd` and attaches, or records why not.
@@ -109,6 +180,8 @@ final class PaneController {
         let seq: Int64
         let on: Bool
     }
+
+    private var findGeneration = 0
 
     private struct TextReply: Decodable {
         let text: String
@@ -293,6 +366,21 @@ final class PaneController {
 private extension UInt64 {
     func saturating(minus n: UInt64) -> UInt64 {
         self > n ? self - n : 0
+    }
+}
+
+/// `session.find` request.
+private struct FindParams: Encodable {
+    let id: String
+    let query: String
+    let regex: Bool
+    let caseSensitive: Bool
+    let from: UInt64?
+    let to: UInt64?
+    let limit: Int
+    enum CodingKeys: String, CodingKey {
+        case id, query, regex, from, to, limit
+        case caseSensitive = "case_sensitive"
     }
 }
 
