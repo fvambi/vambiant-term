@@ -227,7 +227,14 @@ fn attach(
         .name(format!("vt-viewer-{id}"))
         .spawn(move || {
             let ctx = ctx;
+            let alive = Arc::clone(&al);
+            // Never call back after `vt_viewer_free`: the shell's context is
+            // gone by then, and the daemon closing the stream is exactly
+            // when a late disconnect signal would otherwise fire.
             let fire = || {
+                if !alive.load(Ordering::Relaxed) {
+                    return;
+                }
                 if let Some(cb) = on_dirty {
                     // SAFETY: the shell's callback with the shell's context.
                     unsafe { cb(ctx.0) };

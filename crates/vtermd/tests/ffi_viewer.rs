@@ -131,6 +131,9 @@ fn key(code: u16, text: &str) -> KeyEvent {
 
 #[test]
 fn viewer_sees_output_and_routes_keys() {
+    // Declared before the daemon so it outlives the daemon's shutdown, which
+    // is when a late dirty signal could still arrive.
+    let dirty = Box::new(AtomicUsize::new(0));
     let daemon = Daemon::start("viewer");
     let created = daemon.call(
         "session.new",
@@ -147,7 +150,6 @@ fn viewer_sees_output_and_routes_keys() {
         .expect("session id")
         .to_owned();
 
-    let dirty = Box::new(AtomicUsize::new(0));
     let ctx: *const AtomicUsize = &raw const *dirty;
     let session = CString::new(id.clone()).unwrap();
     let v = vt_viewer_attach(
