@@ -320,7 +320,11 @@ fn base16(text: &str) -> Colours {
 fn ghostty(text: &str) -> Colours {
     let mut c = Colours::new();
     for raw in text.lines() {
-        let line = strip_comment(raw).trim();
+        // Ghostty writes `foreground = #abb2bf`: `#` after `=` is the colour.
+        let line = raw.trim();
+        if line.starts_with('#') {
+            continue;
+        }
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
