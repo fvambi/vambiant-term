@@ -537,12 +537,28 @@ impl Agents {
         self.record_event(session, event);
     }
 
-    /// The session's display name. The registry handle is inserted only after
-    /// the child is spawned, so an agent that posts its first hook at startup
-    /// can beat it; the store record is persisted before the spawn and wins
-    /// that race.
+    /// The session's registry handle, waiting briefly for it: the handle is
+    /// inserted only after the child is spawned, and an agent that posts
+    /// its first hook at startup can arrive before that (the inbox test
+    /// on slow CI runners). Two seconds covers the spawn; a session that
+    /// never registers yields `None` and the caller degrades.
+    fn handle(&self, session: &SessionId) -> Option<crate::registry::SessionHandle> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(h) = self.registry.find(&session.0) {
+                return Some(h);
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// The session's display name, from the store record (persisted before
+    /// the spawn) when the handle never arrives.
     fn session_name(&self, session: &SessionId) -> String {
-        if let Some(h) = self.registry.find(&session.0) {
+        if let Some(h) = self.handle(session) {
             return h
                 .info
                 .lock()
@@ -560,7 +576,7 @@ impl Agents {
     }
 
     fn set_state(&self, session: &SessionId, state: AgentState) {
-        if let Some(h) = self.registry.find(&session.0) {
+        if let Some(h) = self.handle(session) {
             let mut info = h.info.lock().unwrap_or_else(PoisonError::into_inner);
             if info.state != state {
                 let from = info.state;
