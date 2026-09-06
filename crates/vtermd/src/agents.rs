@@ -74,6 +74,13 @@ pub struct InboxItem {
     /// Reminders raised so far (every [`reminder_interval`]).
     #[serde(default)]
     pub reminders: u32,
+    /// The command's safety classification, when the request carries a
+    /// command line (docs/06 §3: the verdict is inline).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<vt_policy::Verdict>,
+    /// Why it can never be auto-approved, when it cannot (ADR-0009).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floor: Option<vt_policy::FloorReason>,
 }
 
 /// An approval waiting for a decision.
@@ -575,6 +582,29 @@ impl Agents {
             .unwrap_or_default()
     }
 
+    /// The verdict for a request that carries a command line (`Bash`,
+    /// Codex `shell`): classified from the session's cwd. The generic
+    /// adapter puts every command on the floor.
+    fn classify_request(
+        &self,
+        session: &SessionId,
+        req: &vt_proto::approval::ApprovalRequest,
+    ) -> (Option<vt_policy::Verdict>, Option<vt_policy::FloorReason>) {
+        let Some(command) = req.input.get("command").and_then(|c| c.as_str()) else {
+            return (None, None);
+        };
+        let (cwd, generic) = self.handle(session).map_or((None, false), |h| {
+            let info = h.info.lock().unwrap_or_else(PoisonError::into_inner);
+            (
+                Some(info.cwd.clone()),
+                info.agent == vt_proto::agent::AgentKind::Generic,
+            )
+        });
+        let cwd = cwd.unwrap_or_else(|| std::path::PathBuf::from("/"));
+        let c = crate::policy::classify(command, &cwd, generic);
+        (Some(c.verdict), c.floor)
+    }
+
     fn set_state(&self, session: &SessionId, state: AgentState) {
         if let Some(h) = self.handle(session) {
             let mut info = h.info.lock().unwrap_or_else(PoisonError::into_inner);
@@ -639,6 +669,7 @@ impl Agents {
                 }
                 AgentEvent::ApprovalNeeded(req) => {
                     let name = self.session_name(session);
+                    let (verdict, floor) = self.classify_request(session, req);
                     let pending = Arc::new(PendingApproval {
                         item: InboxItem {
                             id: req.id.clone(),
@@ -650,6 +681,8 @@ impl Agents {
                             waiting_secs: 0,
                             prompt_shown: false,
                             reminders: 0,
+                            verdict,
+                            floor,
                         },
                         since: Instant::now(),
                         decision: Mutex::new(None),

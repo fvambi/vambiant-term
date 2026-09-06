@@ -150,6 +150,22 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Safety classification of a command line (docs/05 §5), as the
+    /// daemon would attach it to an approval request.
+    Classify {
+        /// The command line (words are joined with spaces).
+        #[arg(required = true)]
+        command: Vec<String>,
+        /// Session id or name whose cwd is the context.
+        #[arg(long)]
+        session: Option<String>,
+        /// Directory the command would run in (defaults to the session's cwd, else here).
+        #[arg(long)]
+        cwd: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
     /// Provider layer: keys, health, models.
     Ai {
         /// What to do.

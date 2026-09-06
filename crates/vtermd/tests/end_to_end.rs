@@ -494,6 +494,14 @@ fn claude_permission_request_flows_through_the_inbox() {
     };
     assert_eq!(item["request"]["tool"], "Bash");
     assert_eq!(item["session_name"], "fake-claude");
+    // `rm -rf build` from /tmp: destructive, and outside any worktree,
+    // so the floor says it can never be auto-approved.
+    assert_eq!(item["verdict"]["class"], "destructive", "{item}");
+    assert_eq!(item["verdict"]["findings"][0]["rule"], "rm-recursive");
+    assert_eq!(
+        item["floor"]["reason"], "destructive_outside_worktree",
+        "{item}"
+    );
     let got: SessionInfo = serde_json::from_value(
         c.call(
             method::SESSION_GET,

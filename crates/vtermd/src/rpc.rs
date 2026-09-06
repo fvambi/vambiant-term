@@ -326,6 +326,17 @@ impl Handler for Rpc {
                 )
             }
             method::AI_DOCTOR => crate::ai::doctor(&self.registry),
+            method::POLICY_CLASSIFY => {
+                let command: String = Self::param(req, "command")?;
+                let session: Option<String> = Self::param(req, "session").ok();
+                let cwd: Option<String> = Self::param(req, "cwd").ok();
+                crate::policy::classify_rpc(
+                    &self.registry,
+                    &command,
+                    session.as_deref(),
+                    cwd.as_deref(),
+                )
+            }
             method::HISTORY_SEARCH => {
                 let prefix: String = Self::param(req, "prefix").unwrap_or_default();
                 let limit: usize = Self::param(req, "limit").unwrap_or(200);

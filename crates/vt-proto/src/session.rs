@@ -119,6 +119,9 @@ pub mod method {
     /// `{}` → `{providers_path, profiles: [{name, kind, base_url, model,
     /// key, reachable, models|error}], routes}`.
     pub const AI_DOCTOR: &str = "ai.doctor";
+    /// `{ command, session?, cwd? } -> { verdict, floor?, decision }`:
+    /// the safety classification of a command line (docs/05 §5).
+    pub const POLICY_CLASSIFY: &str = "policy.classify";
     /// `{prefix?, limit?}` → `[cmdline]`: distinct command lines across all
     /// sessions, most recent first (the Warp-mode editor's history).
     pub const HISTORY_SEARCH: &str = "history.search";

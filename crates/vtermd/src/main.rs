@@ -21,6 +21,7 @@ mod codex;
 mod config;
 mod holder;
 mod observe;
+mod policy;
 mod registry;
 mod rpc;
 mod session;

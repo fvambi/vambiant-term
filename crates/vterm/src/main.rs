@@ -53,6 +53,18 @@ fn main() {
             json,
         } => ask(&cli, &prompt.join(" "), session.as_deref(), feature, *json),
         Command::Ai { cmd } => ai(&cli, cmd),
+        Command::Classify {
+            command,
+            session,
+            cwd,
+            json,
+        } => classify(
+            &cli,
+            &command.join(" "),
+            session.as_deref(),
+            cwd.as_deref(),
+            *json,
+        ),
         Command::Ls { json } => {
             let mut c = client(&cli);
             let v = c
@@ -336,6 +348,56 @@ fn daemon(cli: &Cli, cmd: &DaemonCmd) {
             Ok(()) => println!("removed the vtermd LaunchAgent"),
             Err(e) => fail(e),
         },
+    }
+}
+
+fn classify(cli: &Cli, command: &str, session: Option<&str>, cwd: Option<&str>, json: bool) {
+    let mut c = client(cli);
+    let mut params = serde_json::json!({ "command": command });
+    if let Some(s) = session {
+        params["session"] = serde_json::Value::String(s.to_owned());
+    }
+    if let Some(d) = cwd {
+        params["cwd"] = serde_json::Value::String(d.to_owned());
+    }
+    let v = c
+        .call(vt_proto::session::method::POLICY_CLASSIFY, Some(params))
+        .unwrap_or_else(|e| fail(e));
+    if json {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        return;
+    }
+    let class = v
+        .pointer("/verdict/class")
+        .and_then(|x| x.as_str())
+        .unwrap_or("?");
+    let decision = v.get("decision").and_then(|x| x.as_str()).unwrap_or("?");
+    println!("{class}  ({decision})");
+    for f in v
+        .pointer("/verdict/findings")
+        .and_then(|x| x.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let rule = f.get("rule").and_then(|x| x.as_str()).unwrap_or("?");
+        let token = f.get("token").and_then(|x| x.as_str()).unwrap_or("");
+        let detail = f.get("detail").and_then(|x| x.as_str()).unwrap_or("");
+        let outside = f
+            .get("outside_worktree")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        println!(
+            "  {rule}: `{token}` — {detail}{}",
+            if outside {
+                " (outside the worktree)"
+            } else {
+                ""
+            }
+        );
+    }
+    if let Some(floor) = v.get("floor") {
+        let reason = floor.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
+        println!("  never auto-approved: {reason}");
     }
 }
 
