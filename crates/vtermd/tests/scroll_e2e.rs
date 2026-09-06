@@ -227,44 +227,6 @@ fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
         .unwrap_err();
     assert!(err.to_string().contains("query"), "{err}");
 
-    // A soft-wrapped row above a match must not shift the match's row. The
-    // typed command is echoed too, so it must not contain the needle itself.
-    let bytes = base64::engine::general_purpose::STANDARD
-        .encode("printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nNEEDL%s\\n' E\n");
-    c.call(
-        method::SESSION_INPUT,
-        Some(serde_json::json!({ "id": info.id.0, "bytes": bytes })),
-    )
-    .unwrap();
-    let start = Instant::now();
-    let needle = loop {
-        let hits = c
-            .call(
-                method::SESSION_FIND,
-                Some(serde_json::json!({ "id": info.id.0, "query": "NEEDLE" })),
-            )
-            .unwrap();
-        if let Some(h) = hits.as_array().and_then(|a| a.first()) {
-            break h.clone();
-        }
-        assert!(
-            start.elapsed() < Duration::from_secs(5),
-            "NEEDLE never printed"
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    };
-    let row = needle["row"].as_u64().unwrap();
-    let there = c
-        .call(
-            method::SESSION_TEXT,
-            Some(serde_json::json!({ "id": info.id.0, "from": row, "to": row, "format": "rows" })),
-        )
-        .unwrap();
-    assert_eq!(
-        there["text"], "NEEDLE",
-        "the reported row holds the match: {needle}"
-    );
-
     // Typing while scrolled up snaps the viewport back to the live end.
     let bytes = base64::engine::general_purpose::STANDARD.encode("\n");
     c.call(
@@ -295,5 +257,62 @@ fn viewport_scrolls_and_text_reads_scrollback_by_absolute_row() {
         row_text(&cleared, 0).starts_with("line3"),
         "{}",
         row_text(&cleared, 0)
+    );
+}
+
+/// A soft-wrapped row above a match must not shift the match's row: find
+/// counts grid rows, not logical lines.
+#[test]
+fn find_counts_grid_rows_not_logical_lines() {
+    let daemon = Daemon::start();
+    let mut c = daemon.client();
+    // 30 a's wrap over two 20-column rows; NEEDLE is on grid row 2.
+    let script = "printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nNEEDLE\\n'; sleep 30";
+    let req = NewSession {
+        name: Some("wrap".into()),
+        argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        cwd: Some(std::env::temp_dir()),
+        size: Some((20, 6)),
+        ..Default::default()
+    };
+    let info: SessionInfo = serde_json::from_value(
+        c.call(method::SESSION_NEW, serde_json::to_value(req).ok())
+            .unwrap(),
+    )
+    .unwrap();
+    let start = Instant::now();
+    let needle = loop {
+        let hits = c
+            .call(
+                method::SESSION_FIND,
+                Some(serde_json::json!({ "id": info.id.0, "query": "NEEDLE" })),
+            )
+            .unwrap();
+        if let Some(h) = hits.as_array().and_then(|a| a.first()) {
+            break h.clone();
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "NEEDLE never printed"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(needle["row"], 2, "{needle}");
+    let rows = c
+        .call(
+            method::SESSION_TEXT,
+            Some(serde_json::json!({ "id": info.id.0, "from": 0, "to": 2, "format": "rows" })),
+        )
+        .unwrap();
+    assert_eq!(rows["text"], "aaaaaaaaaaaaaaaaaaaa\naaaaaaaaaa\nNEEDLE");
+    let plain = c
+        .call(
+            method::SESSION_TEXT,
+            Some(serde_json::json!({ "id": info.id.0, "from": 0, "to": 2 })),
+        )
+        .unwrap();
+    assert_eq!(
+        plain["text"], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nNEEDLE",
+        "plain joins the wrap"
     );
 }
