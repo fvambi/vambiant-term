@@ -15,6 +15,7 @@ extension PaneController {
         container.input.editor.onEscape = { [weak self] in self?.hideAgent() }
         agentPanel.onClose = { [weak self] in self?.hideAgent() }
         agentPanel.onStage = { [weak self] command in self?.stage(command) }
+        agentPanel.classify = { [weak self] command in self?.safetyLabel(command) }
     }
 
     /// The editor's text as a question; empty text just opens the panel.

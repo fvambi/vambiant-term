@@ -14,6 +14,10 @@ final class AgentPanel: NSView {
     /// A command to put in the editor, verbatim; the user still presses ↩.
     var onStage: ((String) -> Void)?
     var onClose: (() -> Void)?
+    /// The safety label for a proposed command (`destructive · never auto`),
+    /// nil when benign; shown on the stage button so the verdict is seen
+    /// before the command is even in the editor.
+    var classify: ((String) -> String?)?
 
     private let title = NSTextField(labelWithString: "Agent")
     private let hint = NSTextField(labelWithString: "ESC for terminal")
@@ -104,7 +108,8 @@ final class AgentPanel: NSView {
         }
         if case let .answer(answer) = conversation.turns.last {
             for command in answer.commands.prefix(4) {
-                let button = NSButton(title: "Stage: \(Self.short(command))", target: self, action: #selector(stageAction(_:)))
+                let label = classify?(command).map { " · \($0)" } ?? ""
+                let button = NSButton(title: "Stage: \(Self.short(command))\(label)", target: self, action: #selector(stageAction(_:)))
                 button.bezelStyle = .rounded
                 button.controlSize = .small
                 button.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)

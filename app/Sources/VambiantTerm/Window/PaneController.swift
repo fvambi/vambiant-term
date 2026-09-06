@@ -90,10 +90,15 @@ final class PaneController {
         return responder === view || responder.isDescendant(of: container)
     }
 
-    /// The editor's text to the shell; multi-line input goes as one paste.
+    /// The editor's text, through the safety classifier first
+    /// (`PaneController+Policy`), then to the shell.
     func submit(_ text: String) {
+        submitChecked(text)
+    }
+
+    /// To the shell; multi-line input goes as one paste.
+    func send(_ line: String) {
         guard let viewer else { return }
-        let line = text.replacingOccurrences(of: "\r\n", with: "\n")
         viewer.send(text: line + "\r")
         if !line.isEmpty {
             phase = .running

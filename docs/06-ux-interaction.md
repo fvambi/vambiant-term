@@ -87,6 +87,8 @@ A block is one command (from OSC 133) or one agent event. Rendering:
 - Never suggest inside a running program's input (we know from OSC 133 whether we are at a prompt).
 - A suggestion classified above `benign` renders with a coloured underline; accepting it still requires Enter, and the safety confirm applies.
 
+> **As built (safety confirm, 2026-09-06):** in Warp mode every submitted line goes through `policy.classify` (docs/05 §5) before it reaches the shell. `confirm` opens a sheet titled with the class ("Run destructive command?") showing the line and one row per finding — rule, token, what it does, "(outside the worktree)" or "(protected branch)" — with Run and Cancel; Cancel puts the line back in the editor. `block` refuses with the same explanation and keeps the line. `warn` runs and shows the verdict in the hint line. If the classifier does not answer, the sheet says so and asks anyway. The coloured underline while typing is not built yet; the inbox card shows the verdict and the floor reason on every request that carries a command (§3), and Agent Mode's stage buttons show the class next to the command.
+
 ## 6. ⌘K — natural language to command
 
 ```

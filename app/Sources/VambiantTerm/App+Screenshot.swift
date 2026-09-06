@@ -109,6 +109,11 @@ extension AppDelegate {
                 pane.askFromEditor("what does grep -c do?")
             }
         }
+        scheduleAgentCaptures(pane: pane, shot: shot)
+    }
+
+    /// The Agent Mode panel mid-answer, then the safety confirm sheet.
+    private func scheduleAgentCaptures(pane: PaneController, shot: String) {
         Timer.scheduledTimer(withTimeInterval: 5.5, repeats: false) { _ in
             MainActor.assumeIsolated {
                 NSLog(
@@ -117,7 +122,31 @@ extension AppDelegate {
                     AgentPanel.title(for: pane.agentPanel.conversation)
                 )
                 Self.captureAppKit(pane.container.window?.contentView, to: shot + ".agent.png")
+                // The safety confirm: a destructive line from the editor.
+                pane.hideAgent()
+                pane.submit("rm -rf /")
             }
         }
+        Timer.scheduledTimer(withTimeInterval: 5.9, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                // NSAlert's labels do not survive the display cache; log them.
+                let sheet = pane.container.window?.attachedSheet
+                let labels = (sheet?.contentView.map(Self.labels) ?? []).joined(separator: " | ")
+                NSLog("screenshot: confirm sheet %@: %@", sheet == nil ? "absent" : "shown", labels)
+                Self.captureAppKit(sheet?.contentView, to: shot + ".confirm.png")
+            }
+        }
+    }
+
+    /// Every text field's text under `view`, in order.
+    static func labels(in view: NSView) -> [String] {
+        var out: [String] = []
+        if let field = view as? NSTextField, !field.stringValue.isEmpty {
+            out.append(field.stringValue)
+        }
+        for sub in view.subviews {
+            out += labels(in: sub)
+        }
+        return out
     }
 }
