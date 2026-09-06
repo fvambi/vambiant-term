@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var keymap = Keymap()
     private var appearanceObservation: NSKeyValueObservation?
     lazy var palette = CommandPalette()
+    /// Every pending approval, from `inbox.list` then `inbox.changed`.
+    private(set) var inbox = InboxList()
+    lazy var inboxSheet = InboxSheet()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let abi = vt_ffi_abi_version()
@@ -62,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             NSLog("event stream unavailable: \(error); config changes made outside the app will not be picked up")
         }
+        reloadInbox()
         appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.configModel.reload() }
@@ -148,6 +152,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configModel.reload()
             return
         }
+        if method == "inbox.changed" {
+            if let data = params.data(using: .utf8), let items = try? JSONDecoder().decode([InboxItem].self, from: data) {
+                apply(inbox: items)
+            } else {
+                NSLog("inbox.changed: unreadable payload; reloading")
+                reloadInbox()
+            }
+            return
+        }
         guard method == "session.block" || method == "session.event" || method == "session.changed"
             || method == "session.block_changed" || method.hasPrefix("ai."),
             let data = params.data(using: .utf8),
@@ -156,6 +169,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for pane in windows.flatMap(\.container.panes) {
             pane.handle(event: method, params: json)
         }
+    }
+
+    // MARK: Approval inbox
+
+    func reloadInbox() {
+        let items: [InboxItem] = (try? daemon.call("inbox.list")) ?? []
+        apply(inbox: items)
+    }
+
+    private func apply(inbox items: [InboxItem]) {
+        inbox.replace(with: items)
+        for pane in windows.flatMap(\.container.panes) {
+            let mine = pane.session.map { inbox.pending(for: $0.id) } ?? []
+            if mine != pane.approvals {
+                pane.approvals = mine
+            }
+        }
+        inboxSheet.update(items: inbox.items)
+        for w in windows {
+            w.refreshSidebar()
+        }
+    }
+
+    /// The inbox sheet over `window` (docs/06 §3, ⌘⇧A).
+    func showInbox(for window: NSWindow) {
+        guard inboxSheet.window.sheetParent == nil else { return }
+        inboxSheet.canEdit = { [weak self] item in
+            let pane = self?.windows.flatMap(\.container.panes).first { $0.session?.id == item.session }
+            return pane?.agentKind != "codex"
+        }
+        inboxSheet.onDecide = { [weak self] item, decision in
+            guard let self else { return }
+            do {
+                try daemon.invoke("inbox.decide", params: InboxDecideParams(id: item.id, decision: decision))
+                reloadInbox()
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "The daemon refused the decision"
+                alert.informativeText = "\(error)".replacingOccurrences(of: "inbox.decide: ", with: "")
+                alert.beginSheetModal(for: inboxSheet.window) { _ in }
+            }
+        }
+        inboxSheet.update(items: inbox.items)
+        window.beginSheet(inboxSheet.window) { _ in }
     }
 
     /// Applies what the shell honours (docs/09 `applied: now`): fonts,
@@ -270,6 +327,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         newWindow(tabbedWith: NSApp.keyWindow)
     }
 
+    /// Agent Mode and the approval inbox; chords live in the keymap.
+    private func agentMenu() -> NSMenuItem {
+        let agent = NSMenuItem()
+        let agentMenu = NSMenu(title: "Agent")
+        agentMenu.addItem(withTitle: "Ask the Agent", action: #selector(MetalGridView.askAgentAction(_:)), keyEquivalent: "")
+        agentMenu.addItem(
+            withTitle: "Explain Last Failure", action: #selector(MetalGridView.explainFailureAction(_:)), keyEquivalent: ""
+        )
+        agentMenu.addItem(.separator())
+        agentMenu.addItem(withTitle: "Approvals…", action: #selector(TerminalWindowController.showInboxAction(_:)), keyEquivalent: "")
+        agent.submenu = agentMenu
+        return agent
+    }
+
     private func installMenu() {
         let main = NSMenu()
         let appItem = NSMenuItem()
@@ -336,14 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         blocks.submenu = blocksMenu
         main.addItem(blocks)
 
-        let agent = NSMenuItem()
-        let agentMenu = NSMenu(title: "Agent")
-        agentMenu.addItem(withTitle: "Ask the Agent", action: #selector(MetalGridView.askAgentAction(_:)), keyEquivalent: "")
-        agentMenu.addItem(
-            withTitle: "Explain Last Failure", action: #selector(MetalGridView.explainFailureAction(_:)), keyEquivalent: ""
-        )
-        agent.submenu = agentMenu
-        main.addItem(agent)
+        main.addItem(agentMenu())
 
         let view = NSMenuItem()
         let viewMenu = NSMenu(title: "View")

@@ -134,6 +134,38 @@ extension AppDelegate {
                 let labels = (sheet?.contentView.map(Self.labels) ?? []).joined(separator: " | ")
                 NSLog("screenshot: confirm sheet %@: %@", sheet == nil ? "absent" : "shown", labels)
                 Self.captureAppKit(sheet?.contentView, to: shot + ".confirm.png")
+                if let sheet {
+                    pane.container.window?.endSheet(sheet, returnCode: .cancel)
+                }
+                if let script = ProcessInfo.processInfo.environment["VAMBIANT_TERM_SCREENSHOT_AGENT"] {
+                    self.scheduleInboxCaptures(script: script, shot: shot)
+                }
+            }
+        }
+    }
+
+    /// `VAMBIANT_TERM_SCREENSHOT_AGENT=<script>`: a fake agent that posts a
+    /// permission request; the approval card and the inbox sheet follow.
+    private func scheduleInboxCaptures(script: String, shot: String) {
+        guard let controller = windows.first else { return }
+        let agentPane = controller.openAgentPane(argv: ["/bin/sh", script], agent: "claude")
+        NSLog("screenshot: fake agent pane %@", agentPane?.session?.id ?? agentPane?.lastError ?? "not created")
+        Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                let cards = controller.container.panes.compactMap { p in p.container.approval.isHidden ? nil : p }
+                let labels = cards.map { Self.labels(in: $0.container.approval).joined(separator: " | ") }
+                NSLog("screenshot: inbox %d pending, cards %d: %@", self.inbox.count, cards.count, labels.joined(separator: " || "))
+                Self.captureAppKit(controller.window?.contentView, to: shot + ".inbox-card.png")
+                if let window = controller.window {
+                    self.showInbox(for: window)
+                }
+            }
+        }
+        Timer.scheduledTimer(withTimeInterval: 3.2, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                let content = self.inboxSheet.window.contentView
+                NSLog("screenshot: inbox sheet: %@", (content.map(Self.labels) ?? []).joined(separator: " | "))
+                Self.captureAppKit(content, to: shot + ".inbox.png")
             }
         }
     }

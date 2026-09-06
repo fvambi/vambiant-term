@@ -69,11 +69,12 @@ struct KeymapTests {
 
     @Test func unimplementedBindingsAreNamedNotSilent() {
         var km = Keymap()
-        if case let .action(.unavailable(what)) = km.resolve(KeyChord("a", command: true, shift: true)) {
-            #expect(what.contains("inbox"))
-        } else {
-            Issue.record("⌘⇧A must resolve to a named unavailable action")
-        }
+        #expect(km.resolve(KeyChord("a", command: true, shift: true)) == .action(.inboxOpen))
+        #expect(km.resolve(KeyChord("k", command: true)) == .action(.askAgent))
+        // An action the daemon lists but the shell has not built resolves
+        // to a named unavailable action, never to silence or the terminal.
+        let unbuilt = ShellAction.from(id: "task.new", label: "New agent task (worktree)", milestone: "M6")
+        #expect(unbuilt == .unavailable("New agent task (worktree) (task.new, M6)"))
     }
 }
 

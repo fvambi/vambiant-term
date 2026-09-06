@@ -51,11 +51,7 @@ struct ChordParsingTests {
         #expect(km.resolve(KeyChord("t", command: true)) == .action(.newTab))
         #expect(km.resolve(KeyChord("a", control: true)) == .prefixArmed, "the configured prefix, not C-b")
         #expect(km.resolve(KeyChord("n", shift: true)) == .action(.unavailable("task.new (task.new, ?)")))
-        if case .action(.unavailable(let what)) = km.resolve(KeyChord("j", command: true)) {
-            #expect(what.contains("Approval inbox"))
-        } else {
-            Issue.record("cmd+j must be the named unavailable action")
-        }
+        #expect(km.resolve(KeyChord("j", command: true)) == .action(.inboxOpen), "keymap.toml rebinds the inbox")
         #expect(km.isCommandBinding(KeyChord("t", command: true)))
         #expect(!km.isCommandBinding(KeyChord("q", command: true)))
     }

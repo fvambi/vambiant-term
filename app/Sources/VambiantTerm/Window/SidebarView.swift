@@ -145,6 +145,7 @@ final class SidebarSessionCell: NSView {
         let badge = NSTextField(labelWithString: s.stateGlyph)
         badge.font = NSFont.systemFont(ofSize: 10)
         let badgeColour: RGBA = switch s.state {
+        case _ where s.pending > 0: theme.palette[3]
         case "awaiting_input": theme.palette[3]
         case "thinking", "tool_running": theme.palette[5]
         case "crashed": theme.palette[1]
@@ -152,7 +153,7 @@ final class SidebarSessionCell: NSView {
         }
         badge.textColor = badgeColour.nsColor
         badge.toolTip = s.stateLabel
-        badge.frame = CGRect(x: 30, y: 8, width: 14, height: 14)
+        badge.frame = CGRect(x: 30, y: 8, width: s.pending > 0 ? 26 : 14, height: 14)
         addSubview(badge)
         let title = NSTextField(labelWithString: s.title)
         title.font = NSFont.systemFont(ofSize: 12, weight: .medium)

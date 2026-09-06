@@ -41,6 +41,15 @@ final class PaneController {
         didSet { view.blocks = blocks }
     }
 
+    /// Pending approvals for this session, oldest first (`inbox.changed`).
+    var approvals: [InboxItem] = [] {
+        didSet {
+            container.approval.show(approvals.first, pending: approvals.count)
+            container.needsLayout = true
+            onChange?()
+        }
+    }
+
     init(daemon: DaemonClient, renderer: GridRenderer) {
         self.daemon = daemon
         view = MetalGridView(renderer: renderer)
@@ -59,6 +68,7 @@ final class PaneController {
         container.input.editor.historyProvider = { [weak self] prefix in self?.history(prefix: prefix) ?? [] }
         container.input.setHint("⌘↩ for new agent  ·  ⇧↩ newline")
         wireAgent()
+        wireInbox()
     }
 
     // MARK: Warp-mode input
@@ -72,6 +82,7 @@ final class PaneController {
         container.warpMode = warp
         container.input.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
         container.agent.apply(theme: view.renderer.theme, font: view.renderer.nsFont)
+        container.approval.apply(theme: view.renderer.theme)
         refreshChips()
     }
 
@@ -226,9 +237,9 @@ final class PaneController {
     }
 
     /// Spawns the login shell in `cwd` and attaches, or records why not.
-    func start(cwd: String?, cols: UInt16, rows: UInt16) {
+    func start(cwd: String?, cols: UInt16, rows: UInt16, argv: [String] = [], agent: String? = nil) {
         do {
-            let info = try daemon.newSession(cols: cols, rows: rows, cwd: cwd)
+            let info = try daemon.newSession(cols: cols, rows: rows, cwd: cwd, argv: argv, agent: agent)
             attach(to: info)
         } catch {
             lastError = "cannot create a session: \(error)"

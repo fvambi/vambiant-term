@@ -85,6 +85,23 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         sidebar.apply(theme: renderer.theme)
     }
 
+    @objc func showInboxAction(_ sender: Any?) {
+        guard let window else { return }
+        (NSApp.delegate as? AppDelegate)?.showInbox(for: window)
+    }
+
+    /// A pane running `argv` under the named adapter, split from the
+    /// focused one; the screenshot diagnostic uses it for a fake agent.
+    @discardableResult
+    func openAgentPane(argv: [String], agent: String) -> PaneController? {
+        guard let pane = container.focused else { return nil }
+        let newPane = makePane()
+        container.split(pane, with: newPane, vertical: true)
+        container.layoutSubtreeIfNeeded()
+        newPane.start(cwd: NSHomeDirectory(), cols: max(newPane.view.cols, 2), rows: max(newPane.view.rows, 1), argv: argv, agent: agent)
+        return newPane
+    }
+
     @objc func toggleSidebar(_ sender: Any?) {
         sidebar.isHidden.toggle()
         split.adjustSubviews()
@@ -102,7 +119,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             SidebarSession(
                 id: ObjectIdentifier(p), name: p.title, cwd: p.cwd, branch: p.branch,
                 lastCommand: p.blocks.commands.last?.cmdline, state: p.sessionState, agent: p.agentKind,
-                diff: p.diffStats, focused: p === focused
+                diff: p.diffStats, focused: p === focused, pending: p.approvals.count
             )
         }
         sidebar.update(rows: SidebarModel.rows(for: sessions, repoRoot: GitProbe.repoRoot(for:)))
@@ -173,7 +190,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .promptPrevious, .promptNext, .blockSelectPrevious, .blockSelectNext, .blockExtendPrevious,
              .blockExtendNext, .blockTop, .blockBottom, .blockBookmarkPrevious, .blockBookmarkNext,
              .clearScrollback, .block, .findOpen, .findNext, .findPrevious, .stickyHeaderToggle, .sidebarToggle,
-             .paletteOpen, .askAgent, .explainLastFailure:
+             .paletteOpen, .askAgent, .explainLastFailure, .inboxOpen, .inboxNext:
             break // handled above
         case let .unavailable(what):
             NSLog("not available yet: %@", what)
@@ -186,6 +203,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         switch action {
         case .askAgent: pane.askFromEditor()
         case .explainLastFailure: pane.explainLastFailure()
+        case .inboxOpen, .inboxNext: showInboxAction(nil)
         default: return false
         }
         return true

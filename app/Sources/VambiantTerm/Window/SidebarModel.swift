@@ -17,11 +17,13 @@ struct SidebarSession: Equatable, Sendable, Identifiable {
     let agent: String?
     let diff: (added: Int, removed: Int)?
     let focused: Bool
+    /// Approvals waiting in this session (the tab badge, 12 §G3).
+    var pending = 0
 
     static func == (a: SidebarSession, b: SidebarSession) -> Bool {
         a.id == b.id && a.name == b.name && a.cwd == b.cwd && a.branch == b.branch && a.lastCommand == b.lastCommand
             && a.state == b.state && a.agent == b.agent && a.diff?.added == b.diff?.added
-            && a.diff?.removed == b.diff?.removed && a.focused == b.focused
+            && a.diff?.removed == b.diff?.removed && a.focused == b.focused && a.pending == b.pending
     }
 
     /// Warp's primary line: the last command, else the cwd, else the name.
@@ -35,9 +37,13 @@ struct SidebarSession: Equatable, Sendable, Identifiable {
         return name
     }
 
-    /// docs/06 §2 state glyphs: shapes, never colour alone.
+    /// docs/06 §2 state glyphs: shapes, never colour alone. A pending
+    /// approval count outranks the state.
     var stateGlyph: String {
-        switch state {
+        if pending > 0 {
+            return "✋\(pending)"
+        }
+        return switch state {
         case "thinking": "◐"
         case "tool_running": "⚙"
         case "awaiting_input": "✋"
@@ -49,7 +55,10 @@ struct SidebarSession: Equatable, Sendable, Identifiable {
     }
 
     var stateLabel: String {
-        switch state {
+        if pending > 0 {
+            return "\(pending) approval\(pending == 1 ? "" : "s") waiting"
+        }
+        return switch state {
         case "thinking": "thinking"
         case "tool_running": "tool running"
         case "awaiting_input": "waiting for you"

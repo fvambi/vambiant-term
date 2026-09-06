@@ -97,6 +97,8 @@ struct NewSessionRequest: Encodable {
     var cwd: String?
     var env: [[String]] = []
     var size: [UInt16]?
+    /// `claude`, `codex`; nil is a plain shell under generic observation.
+    var agent: String?
 }
 
 extension DaemonClient {
@@ -104,8 +106,8 @@ extension DaemonClient {
         try call("daemon.status")
     }
 
-    func newSession(cols: UInt16, rows: UInt16, cwd: String?) throws -> SessionInfo {
-        try call("session.new", params: NewSessionRequest(cwd: cwd, size: [cols, rows]))
+    func newSession(cols: UInt16, rows: UInt16, cwd: String?, argv: [String] = [], agent: String? = nil) throws -> SessionInfo {
+        try call("session.new", params: NewSessionRequest(argv: argv, cwd: cwd, size: [cols, rows], agent: agent))
     }
 
     func sessions() throws -> [SessionInfo] {

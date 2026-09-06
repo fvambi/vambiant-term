@@ -27,6 +27,7 @@ enum ShellAction: Equatable, Sendable {
     case sidebarToggle
     case paletteOpen
     case askAgent, explainLastFailure
+    case inboxOpen, inboxNext
     case scroll(ScrollStep)
     case unavailable(String)
 
@@ -81,6 +82,8 @@ enum ShellAction: Equatable, Sendable {
         "palette.open": .paletteOpen,
         "ai.ask": .askAgent,
         "ai.explain_last_failure": .explainLastFailure,
+        "inbox.open": .inboxOpen,
+        "inbox.next_pending": .inboxNext,
         "scrollback.page_up": .scroll(.pageUp),
         "scrollback.page_down": .scroll(.pageDown),
         "scrollback.top": .scroll(.top),
@@ -177,9 +180,9 @@ struct Keymap: Sendable {
             KeyChord("pagedown", shift: true): .scroll(.pageDown),
             KeyChord("home", shift: true): .scroll(.top),
             KeyChord("end", shift: true): .scroll(.bottom),
-            KeyChord("a", command: true, shift: true): .unavailable("Approval inbox (inbox.open, M5)"),
+            KeyChord("a", command: true, shift: true): .inboxOpen,
             KeyChord("p", command: true, shift: true): .paletteOpen,
-            KeyChord("k", command: true): .unavailable("⌘K assistant (ai.ask, M-AI)"),
+            KeyChord("k", command: true): .askAgent,
         ]
         prefixed = [
             KeyChord("c"): .newTab,
@@ -194,7 +197,7 @@ struct Keymap: Sendable {
             KeyChord("x"): .closePane,
             KeyChord("c", control: true): .interruptAgent,
             KeyChord("b", control: true): .sendPrefix,
-            KeyChord("a"): .unavailable("Approval inbox (inbox.open, M5)"),
+            KeyChord("a"): .inboxOpen,
             KeyChord("["): .promptPrevious,
             KeyChord("]"): .promptNext,
             KeyChord("pageup"): .scroll(.pageUp),
