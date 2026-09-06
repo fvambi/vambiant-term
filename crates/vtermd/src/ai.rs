@@ -162,11 +162,63 @@ pub(crate) struct Prepared {
     pub(crate) feature: String,
     pub(crate) session: Option<String>,
     pub(crate) limits: BudgetLimits,
+    /// The next profile in the chain, when this one fails hard.
+    pub(crate) fallback: Option<String>,
     pub(crate) provider: Box<dyn vt_ai::Provider>,
     pub(crate) req: Request,
     pub(crate) pricing: vt_ai::cost::Pricing,
     pub(crate) redactions: u64,
     pub(crate) bytes_sent: u64,
+}
+
+/// Open circuit breakers by profile (docs/04 §8): a 429 closes a profile
+/// for the policy's cooldown; requests walk its `fallback` chain meanwhile.
+fn breakers() -> &'static Mutex<vt_ai::resilience::Breakers> {
+    static BREAKERS: std::sync::OnceLock<Mutex<vt_ai::resilience::Breakers>> =
+        std::sync::OnceLock::new();
+    BREAKERS.get_or_init(|| Mutex::new(vt_ai::resilience::Breakers::default()))
+}
+
+/// The retry policy in force.
+fn policy() -> vt_ai::resilience::Policy {
+    vt_ai::resilience::Policy::default()
+}
+
+/// The first profile in `start`'s fallback chain whose breaker is closed,
+/// with the profile after it. A chain that is entirely cooling off is an
+/// error naming the wait.
+fn pick<'a>(
+    file: &'a ProvidersFile,
+    start: &'a Profile,
+) -> Result<(&'a Profile, Option<String>), RpcError> {
+    let mut current = start;
+    let mut seen = vec![current.name.clone()];
+    loop {
+        let cooling = breakers()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .cooling(&current.name);
+        let next = current.fallback.as_deref().and_then(|n| file.profile(n));
+        match cooling {
+            None => return Ok((current, current.fallback.clone())),
+            Some(left) => match next {
+                Some(n) if !seen.contains(&n.name) => {
+                    seen.push(n.name.clone());
+                    current = n;
+                }
+                _ => {
+                    return Err(RpcError::new(
+                        RpcError::INTERNAL,
+                        format!(
+                            "profile `{}` was rate-limited and is cooling off for {}s (no fallback left in its chain)",
+                            current.name,
+                            left.as_secs()
+                        ),
+                    ));
+                }
+            },
+        }
+    }
 }
 
 pub(crate) fn prepare(
@@ -177,6 +229,19 @@ pub(crate) fn prepare(
     session: Option<&str>,
     history: &[HistoryTurn],
 ) -> Result<Prepared, RpcError> {
+    prepare_from(registry, store, prompt, feature, session, history, None)
+}
+
+/// [`prepare`] starting at `start` (a fallback profile) instead of the route.
+pub(crate) fn prepare_from(
+    registry: &Arc<Registry>,
+    store: &Arc<Mutex<Store>>,
+    prompt: &str,
+    feature: &str,
+    session: Option<&str>,
+    history: &[HistoryTurn],
+    start: Option<&str>,
+) -> Result<Prepared, RpcError> {
     let cfg = registry.cfg();
     if !cfg.ai.enabled {
         return Err(RpcError::new(
@@ -185,7 +250,16 @@ pub(crate) fn prepare(
         ));
     }
     let file = ProvidersFile::load(&providers_path()).map_err(internal)?;
-    let profile = route(&cfg, &file, feature)?;
+    let routed = match start {
+        Some(name) => file.profile(name).ok_or_else(|| {
+            RpcError::new(
+                RpcError::INVALID_PARAMS,
+                format!("no profile `{name}` to fall back to"),
+            )
+        })?,
+        None => route(&cfg, &file, feature)?,
+    };
+    let (profile, fallback) = pick(&file, routed)?;
     // Budgets (docs/04 §7): a hard stop refuses here, loudly, before anything leaves.
     let budget = budget_status(&cfg, store);
     if cfg.ai.budget.hard_stop {
@@ -262,6 +336,7 @@ pub(crate) fn prepare(
         feature: feature.to_owned(),
         session: session.map(str::to_owned),
         limits: limits_of(&cfg),
+        fallback,
         provider,
         req,
         pricing: file.pricing(&profile.model),
@@ -364,6 +439,77 @@ fn budget_with(limits: BudgetLimits, store: &Arc<Mutex<Store>>) -> BudgetStatus 
     }
 }
 
+/// One provider, with the retry policy; a 429 opens the profile's breaker.
+/// `Err(Some(next))` means "try `next`", `Err(None)` means give up.
+pub(crate) fn run_stream(
+    p: &Prepared,
+    on_chunk: &mut dyn FnMut(vt_ai::Chunk),
+) -> Result<vt_ai::Completion, (vt_ai::ProviderError, Option<String>)> {
+    match vt_ai::resilience::stream_with_retry(p.provider.as_ref(), &p.req, &policy(), on_chunk) {
+        Ok(a) => Ok(a.completion),
+        Err((e, verdict)) => {
+            if matches!(e, vt_ai::ProviderError::Status { status: 429, .. }) {
+                breakers()
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .open(&p.profile, policy().cooldown);
+            }
+            let next = if verdict == vt_ai::resilience::Verdict::Fallback {
+                p.fallback.clone()
+            } else {
+                None
+            };
+            Err((e, next))
+        }
+    }
+}
+
+/// Prepare and run down the fallback chain until a provider answers.
+pub(crate) fn run_chain(
+    registry: &Arc<Registry>,
+    store: &Arc<Mutex<Store>>,
+    prompt: &str,
+    feature: &str,
+    session: Option<&str>,
+    history: &[HistoryTurn],
+    on_chunk: &mut dyn FnMut(vt_ai::Chunk),
+) -> Result<(Prepared, vt_ai::Completion), RpcError> {
+    let mut start: Option<String> = None;
+    let mut tried: Vec<String> = Vec::new();
+    loop {
+        let p = prepare_from(
+            registry,
+            store,
+            prompt,
+            feature,
+            session,
+            history,
+            start.as_deref(),
+        )?;
+        tried.push(p.profile.clone());
+        match run_stream(&p, on_chunk) {
+            Ok(done) => return Ok((p, done)),
+            Err((e, Some(next))) if !tried.contains(&next) => {
+                eprintln!(
+                    "vtermd: profile `{}` failed ({e}); falling back to `{next}`",
+                    p.profile
+                );
+                start = Some(next);
+            }
+            Err((e, _)) => {
+                return Err(RpcError::new(
+                    RpcError::INTERNAL,
+                    if tried.len() > 1 {
+                        format!("{e} (after trying {})", tried.join(" → "))
+                    } else {
+                        e.to_string()
+                    },
+                ));
+            }
+        }
+    }
+}
+
 /// `ai.ask`: the whole answer in the reply.
 pub fn ask(
     registry: &Arc<Registry>,
@@ -373,11 +519,15 @@ pub fn ask(
     session: Option<&str>,
     history: &[HistoryTurn],
 ) -> Result<serde_json::Value, RpcError> {
-    let p = prepare(registry, store, prompt, feature, session, history)?;
-    let done = p
-        .provider
-        .stream(&p.req, &mut |_| {})
-        .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+    let (p, done) = run_chain(
+        registry,
+        store,
+        prompt,
+        feature,
+        session,
+        history,
+        &mut |_| {},
+    )?;
     Ok(finish(store, &p, &done))
 }
 
@@ -424,31 +574,24 @@ pub fn ask_streaming(
                     .map_or(serde_json::Value::Null, serde_json::Value::String);
                 Some(v)
             };
-            let p = match prepare(
+            let outcome = run_chain(
                 &registry,
                 &store,
                 &prompt,
                 &feature,
                 session.as_deref(),
                 &history,
-            ) {
-                Ok(p) => p,
+                &mut |chunk| {
+                    if let vt_ai::Chunk::TextDelta(delta) = chunk {
+                        server.broadcast(AI_CHUNK, tag(serde_json::json!({ "delta": delta })));
+                    }
+                },
+            );
+            match outcome {
+                Ok((p, done)) => server.broadcast(AI_DONE, tag(finish(&store, &p, &done))),
                 Err(e) => {
                     server.broadcast(AI_ERROR, tag(serde_json::json!({ "message": e.message })));
-                    return;
                 }
-            };
-            let outcome = p.provider.stream(&p.req, &mut |chunk| {
-                if let vt_ai::Chunk::TextDelta(delta) = chunk {
-                    server.broadcast(AI_CHUNK, tag(serde_json::json!({ "delta": delta })));
-                }
-            });
-            match outcome {
-                Ok(done) => server.broadcast(AI_DONE, tag(finish(&store, &p, &done))),
-                Err(e) => server.broadcast(
-                    AI_ERROR,
-                    tag(serde_json::json!({ "message": e.to_string() })),
-                ),
             }
         })
         .map_err(|e| internal(format!("cannot start the request thread: {e}")))?;
@@ -471,8 +614,14 @@ pub fn doctor(registry: &Arc<Registry>) -> Result<serde_json::Value, RpcError> {
                 Ok(models) => (true, serde_json::json!(models)),
                 Err(e) => (false, serde_json::json!(e.to_string())),
             };
+            let cooling = breakers()
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .cooling(&p.name)
+                .map(|d| d.as_secs());
             serde_json::json!({
                 "name": p.name, "kind": p.kind, "base_url": p.base_url, "model": p.model,
+                "fallback": p.fallback, "cooling_down_secs": cooling,
                 "key": has_key, "reachable": reachable,
                 "models": if reachable { detail.clone() } else { serde_json::Value::Null },
                 "error": if reachable { serde_json::Value::Null } else { detail },

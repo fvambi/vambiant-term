@@ -141,6 +141,8 @@ suggest_debounce_ms = 40
 suggest_budget_ms   = 120                 # a late suggestion is discarded, not shown
 explain_on_failure  = true
 
+# A profile may name a `fallback` profile in providers.toml: tried when it is
+# rate-limited (60 s breaker), down (after three attempts) or unreachable.
 # Profile names come from providers.toml next to this file (`vterm ai doctor`
 # prints its path); a bundled default set is used until you write one.
 [ai.routes]

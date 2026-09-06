@@ -45,6 +45,10 @@ pub struct Profile {
     /// Models whose sampling parameters must stay at defaults (Anthropic).
     #[serde(default)]
     pub default_only_sampling: Vec<String>,
+    /// The profile to try when this one is rate-limited, down, or cooling
+    /// off (docs/04 §8); chains are followed until one answers.
+    #[serde(default)]
+    pub fallback: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

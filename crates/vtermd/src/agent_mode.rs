@@ -19,7 +19,7 @@ use vt_proto::session::notification::{
 use vt_store::Store;
 
 use crate::agents::{Agents, InboxItem};
-use crate::ai::{HistoryTurn, finish, internal, prepare, request_id};
+use crate::ai::{HistoryTurn, Prepared, finish, internal, prepare, request_id};
 use crate::registry::{Registry, SessionHandle, now};
 use crate::session::SessionCmd;
 
@@ -124,14 +124,30 @@ fn drive(
     let mut cost = 0.0;
     let mut text_so_far = String::new();
     for _ in 0..MAX_TURNS {
-        let outcome = p.provider.stream(&p.req, &mut |chunk| {
+        let outcome = crate::ai::run_stream(&p, &mut |chunk| {
             if let vt_ai::Chunk::TextDelta(delta) = chunk {
                 server.broadcast(AI_CHUNK, tag(serde_json::json!({ "delta": delta })));
             }
         });
         let done = match outcome {
             Ok(d) => d,
-            Err(e) => {
+            Err((e, next)) => {
+                // Fall back only before anything was sent on this provider's behalf.
+                if p.req.messages.len() <= 1
+                    && let Some(again) = fall_back(
+                        registry,
+                        store,
+                        prompt,
+                        session,
+                        history,
+                        next.as_deref(),
+                        &p.profile,
+                        &e,
+                    )
+                {
+                    p = again;
+                    continue;
+                }
                 server.broadcast(
                     AI_ERROR,
                     tag(serde_json::json!({ "message": e.to_string() })),
@@ -162,27 +178,7 @@ fn drive(
             role: Role::Assistant,
             content: done.content.clone(),
         });
-        let mut results = Vec::with_capacity(calls.len());
-        for (tool_use, name, input) in calls {
-            let result = if name == "run_command" {
-                run_command(
-                    registry,
-                    &server,
-                    &tag,
-                    session,
-                    handle_of(registry, session).as_ref(),
-                    &tool_use,
-                    &input,
-                )
-            } else {
-                Content::ToolResult {
-                    tool_use_id: tool_use,
-                    content: format!("unknown tool `{name}`"),
-                    is_error: true,
-                }
-            };
-            results.push(result);
-        }
+        let results = dispatch(registry, &server, &tag, session, calls);
         p.req.messages.push(Message {
             role: Role::User,
             content: results,
@@ -194,6 +190,71 @@ fn drive(
             serde_json::json!({ "message": format!("agent stopped after {MAX_TURNS} tool calls") }),
         ),
     );
+}
+
+/// Every tool call of one turn, in order; unknown tools get an error result.
+fn dispatch(
+    registry: &Arc<Registry>,
+    server: &vt_ipc::Server,
+    tag: &dyn Fn(serde_json::Value) -> Option<serde_json::Value>,
+    session: &SessionId,
+    calls: Vec<(String, String, serde_json::Value)>,
+) -> Vec<Content> {
+    let handle = handle_of(registry, session);
+    calls
+        .into_iter()
+        .map(|(tool_use, name, input)| {
+            if name == "run_command" {
+                run_command(
+                    registry,
+                    server,
+                    tag,
+                    session,
+                    handle.as_ref(),
+                    &tool_use,
+                    &input,
+                )
+            } else {
+                Content::ToolResult {
+                    tool_use_id: tool_use,
+                    content: format!("unknown tool `{name}`"),
+                    is_error: true,
+                }
+            }
+        })
+        .collect()
+}
+
+/// The next profile in the chain, prepared for agent mode, or `None`.
+#[allow(clippy::too_many_arguments)] // one call site; the pieces are the turn's own facts
+fn fall_back(
+    registry: &Arc<Registry>,
+    store: &Arc<Mutex<Store>>,
+    prompt: &str,
+    session: &SessionId,
+    history: &[HistoryTurn],
+    next: Option<&str>,
+    failed: &str,
+    err: &vt_ai::ProviderError,
+) -> Option<Prepared> {
+    let next = next?;
+    let mut again = crate::ai::prepare_from(
+        registry,
+        store,
+        prompt,
+        "agent",
+        Some(&session.0),
+        history,
+        Some(next),
+    )
+    .ok()?;
+    eprintln!("vtermd: agent profile `{failed}` failed ({err}); falling back to `{next}`");
+    again.req.tools = vec![run_command_tool()];
+    again.req.system = Some(format!(
+        "{}\n\n{AGENT_RULES}",
+        again.req.system.take().unwrap_or_default()
+    ));
+    Some(again)
 }
 
 /// Totals across turns; the text the user saw streamed, joined.

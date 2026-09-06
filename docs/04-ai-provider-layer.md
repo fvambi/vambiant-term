@@ -155,6 +155,8 @@ Cancellation is mandatory and immediate: one in-flight suggestion request per pa
 | Timeout | Cancel, no retry for suggestions; one retry with jitter for ⌘K |
 | 429 / rate limit | Circuit breaker opens for that provider; fall back down the route chain; show the reset time when the provider reports one |
 | 5xx / overloaded | Exponential backoff, jittered, capped at 3 attempts |
+
+> **As built (2026-09-06):** `vt_ai::resilience` — 5xx and transport errors retry on the same profile with jittered backoff (500 ms · 2ⁿ, three attempts); a 429 opens the profile's breaker for 60 s; the daemon then walks `fallback` (a new per-profile key in `providers.toml`, chains followed until one answers, never twice through the same profile) for `ai.ask`, streaming and Agent Mode's first turn. No retry once a chunk has been delivered: a duplicated answer is worse than a failed one. 4xx other than 429, a missing key and an unknown model give up at once. `vterm ai doctor` shows `fallback` and `cooling_down_secs`. Reset times from `Retry-After` are not read yet; the cooldown is fixed.
 | Local model not running | Detect once, offer the exact command to start it, disable the feature until it is |
 | Budget exceeded | Hard stop with a clear banner. Never a silent quality drop |
 | Redaction failure | **Request is not sent.** Fail closed, always |

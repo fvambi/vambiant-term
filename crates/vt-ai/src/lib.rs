@@ -19,6 +19,7 @@ pub mod keychain;
 pub mod local;
 pub mod openai;
 pub mod provider;
+pub mod resilience;
 pub mod route;
 pub mod sse;
 

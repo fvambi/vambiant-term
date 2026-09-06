@@ -322,3 +322,136 @@ fn a_hard_budget_stop_refuses_before_anything_leaves() {
     assert!((spend["spend"]["total_usd"].as_f64().unwrap() - cost).abs() < 1e-12);
     assert_eq!(spend["spend"]["by_purpose"][0][0], "ask");
 }
+
+/// Serves `replies` (status, body) to successive requests, recording each.
+fn mock_statuses(replies: Vec<(u16, String)>) -> (String, mpsc::Receiver<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        for (status, body) in replies {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 8192];
+            loop {
+                let n = stream.read(&mut chunk).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&buf);
+                if let Some(head_end) = text.find("\r\n\r\n") {
+                    let len: usize = text[..head_end]
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if buf.len() >= head_end + 4 + len {
+                        break;
+                    }
+                }
+            }
+            let _ = tx.send(String::from_utf8_lossy(&buf).into_owned());
+            let reason = if status == 200 { "OK" } else { "Error" };
+            let response = format!(
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+    (format!("http://{addr}"), rx)
+}
+
+fn ok_body(text: &str) -> String {
+    format!(
+        "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{text}\"}}}}]}}\n\n\
+         data: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"stop\"}}],\"usage\":{{\"prompt_tokens\":3,\"completion_tokens\":2}}}}\n\n\
+         data: [DONE]\n\n"
+    )
+}
+
+#[test]
+fn a_5xx_is_retried_and_a_429_falls_back_down_the_chain() {
+    let (flaky, flaky_rx) = mock_statuses(vec![
+        (503, String::new()),
+        (500, String::new()),
+        (200, ok_body("Third time.")),
+    ]);
+    let (limited, limited_rx) = mock_statuses(vec![(429, "{\"error\":\"slow down\"}".into())]);
+    let (steady, steady_rx) = mock_statuses(vec![
+        (200, ok_body("Steady.")),
+        (200, ok_body("Still steady.")),
+    ]);
+    let providers = format!(
+        "[[profile]]\nname = \"flaky\"\nkind = \"compat\"\nbase_url = \"{flaky}\"\nmodel = \"m\"\n\n\
+         [[profile]]\nname = \"limited\"\nkind = \"compat\"\nbase_url = \"{limited}\"\nmodel = \"m\"\nfallback = \"steady\"\n\n\
+         [[profile]]\nname = \"steady\"\nkind = \"compat\"\nbase_url = \"{steady}\"\nmodel = \"m\"\n"
+    );
+    let daemon = Daemon::start("resilience", &providers);
+    std::fs::write(
+        daemon.dir.join("config/config.toml"),
+        "[ai.routes]\nask = \"flaky\"\nexplain = \"limited\"\n",
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    let mut c = daemon.client();
+
+    // Two 5xx answers, then success: three attempts on the same provider.
+    let v = c
+        .call(method::AI_ASK, Some(serde_json::json!({ "prompt": "hi" })))
+        .unwrap();
+    assert_eq!(v["text"], "Third time.", "{v}");
+    assert_eq!(v["profile"], "flaky");
+    let mut seen = 0;
+    while flaky_rx.recv_timeout(Duration::from_millis(300)).is_ok() {
+        seen += 1;
+    }
+    assert_eq!(seen, 3, "three attempts reach the provider");
+
+    // A 429 opens the breaker and the chain moves to `steady`.
+    let v = c
+        .call(
+            method::AI_ASK,
+            Some(serde_json::json!({ "prompt": "explain", "feature": "explain" })),
+        )
+        .unwrap();
+    assert_eq!(v["text"], "Steady.", "{v}");
+    assert_eq!(v["profile"], "steady");
+    assert!(limited_rx.recv_timeout(Duration::from_secs(2)).is_ok());
+    assert!(steady_rx.recv_timeout(Duration::from_secs(2)).is_ok());
+
+    // While the breaker is open the request goes straight to `steady`.
+    let v = c
+        .call(
+            method::AI_ASK,
+            Some(serde_json::json!({ "prompt": "again", "feature": "explain" })),
+        )
+        .unwrap();
+    assert_eq!(v["profile"], "steady", "{v}");
+    assert!(
+        limited_rx.recv_timeout(Duration::from_millis(300)).is_err(),
+        "the limited profile is not asked again"
+    );
+    let doctor = c.call(method::AI_DOCTOR, None).unwrap();
+    let limited_profile = doctor["profiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "limited")
+        .unwrap()
+        .clone();
+    assert!(
+        limited_profile["cooling_down_secs"].as_u64().unwrap_or(0) > 0,
+        "{limited_profile}"
+    );
+    assert_eq!(limited_profile["fallback"], "steady");
+}
