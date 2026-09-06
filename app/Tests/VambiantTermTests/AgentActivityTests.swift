@@ -14,14 +14,9 @@ struct AgentActivityTests {
         #expect(a.headline == "⚙ Bash · cargo test")
         a.apply(event(#"{"type":"tool_call_end","id":"t1","ok":true,"output":"ok","duration_ms":1200}"#))
         #expect(a.headline == "✔ Bash · cargo test · 1.2s")
-        a
-            .apply(
-                event(
-                    let todos = #"[{"content":"Write the parser","status":"in_progress"},{"content":"Add tests","status":"pending"},"# +
-                        #"{"content":"Read spec","status":"completed"}]"#
-                    a.apply(event(#"{"type":"tool_call_start","id":"t2","name":"TodoWrite","input":{"todos":"# + todos + "}}"))
-                )
-            )
+        let todos = ##"[{"content":"Write the parser","status":"in_progress"},{"content":"Add tests","status":"pending"},"## +
+            ##"{"content":"Read spec","status":"completed"}]"##
+        a.apply(event(##"{"type":"tool_call_start","id":"t2","name":"TodoWrite","input":{"todos":"## + todos + "}}"))
         #expect(a.tasks.count == 3)
         #expect(a.taskLine == "1/3 tasks · ● Write the parser")
         #expect(a.headline == "⚙ TodoWrite · 3 tasks")

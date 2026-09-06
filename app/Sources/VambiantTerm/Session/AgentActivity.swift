@@ -144,6 +144,7 @@ struct AgentActivity: Equatable, Sendable {
         case "assistant_text":
             if event[path: "streaming"]?.boolValue != true, let text = event[path: "text"]?.stringValue, !text.isEmpty {
                 lastText = text
+                lastDone = nil // the text is newer than the last result
                 thinking = false
                 append("💬 \(text.split(separator: "\n").first.map(String.init) ?? text)", at: now)
             }
