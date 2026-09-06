@@ -149,6 +149,13 @@ pub mod notification {
     pub const SESSION_BLOCK: &str = "session.block";
     /// `{id, seq, bookmarked}` — a stored block's user flags changed.
     pub const SESSION_BLOCK_CHANGED: &str = "session.block_changed";
+    /// `{ request, id, delta }` — one text delta of a streaming `ai.ask`;
+    /// `id` is the session it was asked for, or null.
+    pub const AI_CHUNK: &str = "ai.chunk";
+    /// `{ request, id, text, profile, model, usage, cost_usd_estimate, redactions, stop }`.
+    pub const AI_DONE: &str = "ai.done";
+    /// `{ request, id, message }` — the request was refused or failed.
+    pub const AI_ERROR: &str = "ai.error";
     /// `{ id, exit_code? , signal? }` — child exited.
     pub const SESSION_EXITED: &str = "session.exited";
     /// `SessionInfo` — a session was created, renamed or removed.

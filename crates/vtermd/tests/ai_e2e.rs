@@ -203,3 +203,44 @@ fn ask_routes_redacts_and_answers() {
     assert_eq!(d["profiles"][0]["name"], "mock");
     assert_eq!(d["routes"]["ask"], "mock");
 }
+
+#[test]
+fn ask_streams_deltas_as_notifications() {
+    use vt_proto::session::notification::{AI_CHUNK, AI_DONE};
+    let (base, _rx) = mock_server("Run pwd.");
+    let providers = format!(
+        "[[profile]]\nname = \"mock\"\nkind = \"compat\"\nbase_url = \"{base}\"\nmodel = \"test-model\"\n"
+    );
+    let daemon = Daemon::start("ask-stream", &providers);
+    let mut watcher = daemon.client();
+    let mut c = daemon.client();
+
+    let v = c
+        .call(
+            method::AI_ASK,
+            Some(serde_json::json!({ "prompt": "where am I?", "stream": true })),
+        )
+        .unwrap();
+    let request = v["request"].as_str().expect("request id").to_owned();
+
+    let mut deltas = String::new();
+    let start = Instant::now();
+    let done = loop {
+        assert!(start.elapsed() < Duration::from_secs(10), "no ai.done");
+        let n = watcher.next_notification().unwrap().expect("notification");
+        let params = n.params.clone().unwrap_or_default();
+        if params["request"] != request {
+            continue;
+        }
+        if n.method == AI_CHUNK {
+            deltas.push_str(params["delta"].as_str().unwrap());
+        } else if n.method == AI_DONE {
+            break params;
+        }
+    };
+    assert_eq!(deltas, "Run pwd.");
+    assert_eq!(done["text"], "Run pwd.");
+    assert_eq!(done["profile"], "mock");
+    assert!(done["id"].is_null(), "no session was named: {done}");
+    assert_eq!(done["usage"]["output_tokens"], 6);
+}

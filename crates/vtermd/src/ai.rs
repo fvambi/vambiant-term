@@ -155,15 +155,26 @@ fn history_messages(history: &[HistoryTurn]) -> Result<(Vec<Message>, usize), Rp
     Ok((out, replaced))
 }
 
-/// `ai.ask`.
-pub fn ask(
+/// A request that passed routing and redaction; nothing has left yet.
+struct Prepared {
+    profile: String,
+    model: String,
+    feature: String,
+    provider: Box<dyn vt_ai::Provider>,
+    req: Request,
+    pricing: vt_ai::cost::Pricing,
+    redactions: u64,
+    bytes_sent: u64,
+}
+
+fn prepare(
     registry: &Arc<Registry>,
     store: &Arc<Mutex<Store>>,
     prompt: &str,
     feature: &str,
     session: Option<&str>,
     history: &[HistoryTurn],
-) -> Result<serde_json::Value, RpcError> {
+) -> Result<Prepared, RpcError> {
     let cfg = registry.cfg();
     if !cfg.ai.enabled {
         return Err(RpcError::new(
@@ -209,9 +220,20 @@ pub fn ask(
         stop: vec![],
     };
     let bytes_sent = u64::try_from(serde_json::to_vec(&req).map_or(0, |v| v.len())).unwrap_or(0);
-    let done = provider
-        .stream(&req, &mut |_| {})
-        .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+    Ok(Prepared {
+        profile: profile.name.clone(),
+        model: profile.model.clone(),
+        feature: feature.to_owned(),
+        provider,
+        req,
+        pricing: file.pricing(&profile.model),
+        redactions,
+        bytes_sent,
+    })
+}
+
+/// Records the egress and shapes the reply once the stream ended.
+fn finish(store: &Arc<Mutex<Store>>, p: &Prepared, done: &vt_ai::Completion) -> serde_json::Value {
     let text: String = done
         .content
         .iter()
@@ -221,27 +243,118 @@ pub fn ask(
         })
         .collect::<Vec<_>>()
         .join("");
-    let cost = file.pricing(&profile.model).estimate(done.usage);
+    let cost = p.pricing.estimate(done.usage);
     if let Ok(store) = store.lock() {
         let _ = store.record_egress(&EgressRecord {
             at: now(),
-            provider: profile.name.clone(),
-            model: profile.model.clone(),
-            purpose: feature.to_owned(),
-            bytes_sent,
-            redactions,
+            provider: p.profile.clone(),
+            model: p.model.clone(),
+            purpose: p.feature.clone(),
+            bytes_sent: p.bytes_sent,
+            redactions: p.redactions,
             payload: None,
         });
     }
-    Ok(serde_json::json!({
+    serde_json::json!({
         "text": text,
-        "profile": profile.name,
-        "model": profile.model,
+        "profile": p.profile,
+        "model": p.model,
         "usage": done.usage,
         "cost_usd_estimate": cost,
-        "redactions": redactions,
+        "redactions": p.redactions,
         "stop": done.stop,
-    }))
+    })
+}
+
+/// `ai.ask`: the whole answer in the reply.
+pub fn ask(
+    registry: &Arc<Registry>,
+    store: &Arc<Mutex<Store>>,
+    prompt: &str,
+    feature: &str,
+    session: Option<&str>,
+    history: &[HistoryTurn],
+) -> Result<serde_json::Value, RpcError> {
+    let p = prepare(registry, store, prompt, feature, session, history)?;
+    let done = p
+        .provider
+        .stream(&p.req, &mut |_| {})
+        .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+    Ok(finish(store, &p, &done))
+}
+
+fn request_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!("{:x}-{:x}", nanos, COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
+/// `ai.ask` with `stream = true`: replies `{ request }` at once and
+/// broadcasts `ai.chunk { request, id, delta }` per text delta, then
+/// `ai.done { request, id, …the plain reply }` or `ai.error { request,
+/// id, message }`. `id` is the session so viewers route it like output.
+pub fn ask_streaming(
+    registry: &Arc<Registry>,
+    store: &Arc<Mutex<Store>>,
+    prompt: &str,
+    feature: &str,
+    session: Option<&str>,
+    history: &[HistoryTurn],
+) -> Result<serde_json::Value, RpcError> {
+    use vt_proto::session::notification::{AI_CHUNK, AI_DONE, AI_ERROR};
+    let request = request_id();
+    let registry = Arc::clone(registry);
+    let store = Arc::clone(store);
+    let prompt = prompt.to_owned();
+    let feature = feature.to_owned();
+    let session = session.map(str::to_owned);
+    let history = history.to_vec();
+    let id = request.clone();
+    std::thread::Builder::new()
+        .name(format!("ai-ask-{request}"))
+        .spawn(move || {
+            let Some(server) = registry.server() else {
+                return;
+            };
+            let tag = |mut v: serde_json::Value| {
+                v["request"] = serde_json::Value::String(id.clone());
+                v["id"] = session
+                    .clone()
+                    .map_or(serde_json::Value::Null, serde_json::Value::String);
+                Some(v)
+            };
+            let p = match prepare(
+                &registry,
+                &store,
+                &prompt,
+                &feature,
+                session.as_deref(),
+                &history,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    server.broadcast(AI_ERROR, tag(serde_json::json!({ "message": e.message })));
+                    return;
+                }
+            };
+            let outcome = p.provider.stream(&p.req, &mut |chunk| {
+                if let vt_ai::Chunk::TextDelta(delta) = chunk {
+                    server.broadcast(AI_CHUNK, tag(serde_json::json!({ "delta": delta })));
+                }
+            });
+            match outcome {
+                Ok(done) => server.broadcast(AI_DONE, tag(finish(&store, &p, &done))),
+                Err(e) => server.broadcast(
+                    AI_ERROR,
+                    tag(serde_json::json!({ "message": e.to_string() })),
+                ),
+            }
+        })
+        .map_err(|e| internal(format!("cannot start the request thread: {e}")))?;
+    Ok(serde_json::json!({ "request": request }))
 }
 
 /// `ai.doctor`: what is configured, what has a key, what answers.

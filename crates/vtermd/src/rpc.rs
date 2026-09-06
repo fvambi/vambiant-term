@@ -310,7 +310,13 @@ impl Handler for Rpc {
                 let session: Option<String> = Self::param(req, "session").ok();
                 let history: Vec<crate::ai::HistoryTurn> =
                     Self::param(req, "history").unwrap_or_default();
-                crate::ai::ask(
+                let stream: bool = Self::param(req, "stream").unwrap_or(false);
+                let run = if stream {
+                    crate::ai::ask_streaming
+                } else {
+                    crate::ai::ask
+                };
+                run(
                     &self.registry,
                     &self.store,
                     &prompt,
