@@ -5,6 +5,12 @@ on:
   pull_request:
   schedule:
     - cron: "17 3 * * *"   # nightly
+env:
+  # mise installs tools in parallel by default; the cargo-installed tools
+  # (cbindgen, cargo-deny) then race rustup while it is still adding
+  # rustfmt/clippy to the toolchain. One job at a time is a few seconds
+  # slower and deterministic.
+  MISE_JOBS: "1"
 jobs:
   fast:
     runs-on: macos-15

@@ -1,6 +1,11 @@
 #!/bin/sh
-# See ../build-ghostty.sh. Only the SDK-path query is intercepted.
+# See ../build-ghostty.sh. Only the SDK-path query is intercepted, and only
+# when the pinned SDK is actually installed (this machine's 26.x Command
+# Line Tools ship an SDK zig 0.15 cannot use; CI runners have a normal one).
 if [ "$1" = "--sdk" ] && [ "$3" = "--show-sdk-path" ]; then
-  echo "${GHOSTTY_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}"; exit 0
+  sdk="${GHOSTTY_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk}"
+  if [ -d "$sdk" ]; then
+    echo "$sdk"; exit 0
+  fi
 fi
 exec /usr/bin/xcrun "$@"
