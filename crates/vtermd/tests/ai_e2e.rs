@@ -68,7 +68,7 @@ impl Drop for Daemon {
         let _ = self.child.wait();
         let _ = Command::new("pkill")
             .arg("-f")
-            .arg(self.dir.display().to_string())
+            .arg(format!("{}/", self.dir.display())) // never a prefix of another test's dir
             .status();
     }
 }
@@ -232,7 +232,7 @@ fn ask_streams_deltas_as_notifications() {
     let providers = format!(
         "[[profile]]\nname = \"mock\"\nkind = \"compat\"\nbase_url = \"{base}\"\nmodel = \"test-model\"\n"
     );
-    let daemon = Daemon::start("ask-stream", &providers);
+    let daemon = Daemon::start("streaming", &providers);
     let mut watcher = daemon.client();
     let mut c = daemon.client();
 

@@ -70,7 +70,7 @@ impl Drop for Daemon {
         let _ = self.child.wait();
         let _ = Command::new("pkill")
             .arg("-f")
-            .arg(self.dir.display().to_string())
+            .arg(format!("{}/", self.dir.display())) // never a prefix of another test's dir
             .status();
     }
 }
