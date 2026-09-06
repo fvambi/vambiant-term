@@ -45,6 +45,7 @@ fn main() {
         Command::Daemon { cmd } => daemon(&cli, cmd),
         Command::Config { cmd } => config(&cli, cmd),
         Command::Keys { json } => keys(&cli, *json),
+        Command::Blocks { session, json } => blocks(&cli, session, *json),
         Command::Ls { json } => {
             let mut c = client(&cli);
             let v = c
@@ -612,5 +613,43 @@ fn print_keys(keymap: &serde_json::Value) {
     }
     for e in keymap["conflicts"].as_array().into_iter().flatten() {
         println!("conflict: {}", e.as_str().unwrap_or(""));
+    }
+}
+
+fn blocks(cli: &Cli, session: &str, json: bool) {
+    let mut c = client(cli);
+    let v = c
+        .call(
+            vt_proto::session::method::SESSION_BLOCKS,
+            Some(serde_json::json!({ "id": session })),
+        )
+        .unwrap_or_else(|e| fail(e));
+    if json {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        return;
+    }
+    let Some(arr) = v.as_array() else { return };
+    if arr.is_empty() {
+        println!(
+            "no blocks (shell integration may be off; see `vterm config get shell_integration.enabled`)"
+        );
+        return;
+    }
+    for item in arr {
+        let b = &item["block"];
+        let mark = if b["confidence"] == "heuristic" {
+            "\u{2248}"
+        } else {
+            " "
+        };
+        match b["kind"].as_str() {
+            Some("command") => {
+                let exit = b["exit"].as_i64();
+                let chip = exit.map_or_else(|| "· running".to_owned(), |e| format!("exit {e}"));
+                let cmd = b["cmdline"].as_str().unwrap_or("<no command line>");
+                println!("{mark} [{chip}] {cmd}");
+            }
+            _ => println!("{mark} (prompt)"),
+        }
     }
 }

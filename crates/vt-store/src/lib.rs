@@ -6,6 +6,7 @@
 //! (docs/08 §8). Retention is a first-class setting and the sweep runs on
 //! daemon start. A corrupt database is reported, never crash-looped.
 
+pub mod blocks;
 pub mod egress;
 pub mod error;
 pub mod events;

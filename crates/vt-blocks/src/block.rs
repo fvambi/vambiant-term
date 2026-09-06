@@ -1,7 +1,7 @@
 //! Block model shared by the shell and agent timelines.
 
 /// A contiguous region of terminal history with a known meaning.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Block {
     /// What kind of region this is.
     pub kind: BlockKind,
@@ -14,7 +14,8 @@ pub struct Block {
 }
 
 /// Kinds of block. Agent-event blocks are added in M5 from `vt-proto`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BlockKind {
     /// Shell prompt (OSC 133 `A`..`B`).
     Prompt,
@@ -28,7 +29,8 @@ pub enum BlockKind {
 }
 
 /// Provenance of a block boundary. Surfaced in the UI verbatim.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Confidence {
     /// Delimited by well-formed shell-integration marks.
     Marked,

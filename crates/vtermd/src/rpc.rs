@@ -67,6 +67,26 @@ impl Rpc {
             )
         })
     }
+
+    /// The session id for `id` (name or id), running or ended, so history
+    /// queries work after the process is gone.
+    fn session_id_for(&self, req: &Request) -> Result<vt_proto::session::SessionId, RpcError> {
+        let key: String = Self::param(req, "id")?;
+        match self.session(req) {
+            Ok(h) => Ok(h
+                .info
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .id
+                .clone()),
+            Err(not_running) => {
+                let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+                Self::stored_session(&store, &key)
+                    .map(|r| r.info.id)
+                    .ok_or(not_running)
+            }
+        }
+    }
 }
 
 impl Handler for Rpc {
@@ -216,6 +236,24 @@ impl Handler for Rpc {
                         Ok(serde_json::json!({ "text": text, "live": false }))
                     }
                 }
+            }
+            method::SESSION_BLOCKS => {
+                let after: i64 = req
+                    .params
+                    .as_ref()
+                    .and_then(|p| p.get("after"))
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                let sid = self.session_id_for(req)?;
+                let store = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+                let blocks = store
+                    .blocks(&sid, after, 10_000)
+                    .map_err(|e| RpcError::new(RpcError::INTERNAL, e.to_string()))?;
+                let out: Vec<_> = blocks
+                    .into_iter()
+                    .map(|b| serde_json::json!({ "seq": b.seq, "block": b.block }))
+                    .collect();
+                Ok(serde_json::json!(out))
             }
             method::CONFIG_GET => {
                 let config = self

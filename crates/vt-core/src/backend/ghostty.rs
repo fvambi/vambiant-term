@@ -44,6 +44,8 @@ pub struct GhosttyCore {
     reported: Rc<RefCell<(GridSize, (u32, u32))>>,
     /// Set by resize; the next `take_damage` reports `Full` regardless of rows.
     force_full: bool,
+    /// OSC 133/633 scanner, fed the same bytes as the terminal.
+    marks: crate::osc::Scanner,
 }
 
 impl std::fmt::Debug for GhosttyCore {
@@ -114,6 +116,7 @@ impl GhosttyCore {
             size,
             reported,
             force_full: true,
+            marks: crate::osc::Scanner::default(),
         })
     }
 
@@ -131,7 +134,20 @@ impl GhosttyCore {
 
 impl TerminalCore for GhosttyCore {
     fn advance(&mut self, bytes: &[u8]) {
-        self.term.vt_write(bytes);
+        // Feed up to and including each shell mark, then read where the
+        // cursor is: that row is the mark's position for block boundaries.
+        let marks = self.marks.scan(bytes);
+        let mut fed = 0usize;
+        for (end, mark) in marks {
+            self.term.vt_write(&bytes[fed..end]);
+            fed = end;
+            let row = self.term.scrollback_rows().unwrap_or(0) as u64
+                + u64::from(self.term.cursor_y().unwrap_or(0));
+            self.events
+                .borrow_mut()
+                .push(TermEvent::ShellMark { mark, row });
+        }
+        self.term.vt_write(&bytes[fed..]);
     }
 
     fn resize(&mut self, size: GridSize) -> Result<(), CoreError> {
@@ -460,6 +476,35 @@ mod tests {
                     .to_owned()
             })
             .collect()
+    }
+
+    #[test]
+    fn shell_marks_are_emitted_with_absolute_rows() {
+        use crate::ShellMark;
+        let mut core = GhosttyCore::new(GridSize { cols: 20, rows: 3 }).unwrap();
+        // Scroll the prompt off the top so the mark's row exceeds the
+        // viewport: three newlines fill the 3-row grid, then the prompt.
+        core.advance(b"one\r\ntwo\r\nthree\r\n\x1b]133;A\x07$ \x1b]133;B\x07ls\r\n\x1b]133;C\x07\x1b]133;D;0\x07");
+        let events = core.take_events();
+        let marks: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                TermEvent::ShellMark { mark, row } => Some((mark.clone(), *row)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(marks.len(), 4, "A B C D: {marks:?}");
+        assert!(matches!(marks[0].0, ShellMark::PromptStart { .. }));
+        assert!(matches!(
+            marks[3].0,
+            ShellMark::CommandFinished { exit: Some(0) }
+        ));
+        // The prompt row is at least 3 (three lines scrolled above it).
+        assert!(
+            marks[0].1 >= 3,
+            "absolute row past the viewport: {}",
+            marks[0].1
+        );
     }
 
     #[test]

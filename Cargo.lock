@@ -870,6 +870,10 @@ dependencies = [
 [[package]]
 name = "vt-blocks"
 version = "0.0.0"
+dependencies = [
+ "serde",
+ "vt-core",
+]
 
 [[package]]
 name = "vt-config"
@@ -958,6 +962,7 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "thiserror",
+ "vt-blocks",
  "vt-proto",
 ]
 
@@ -1004,6 +1009,7 @@ dependencies = [
  "serde",
  "serde_json",
  "vt-agent",
+ "vt-blocks",
  "vt-config",
  "vt-core",
  "vt-ffi",

@@ -9,7 +9,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-
+vt-core.workspace = true
+serde.workspace = true
 
 [lints]
 workspace = true

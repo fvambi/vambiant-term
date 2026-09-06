@@ -135,6 +135,14 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Command blocks of a session (OSC 133/633 segmentation).
+    Blocks {
+        /// Session id or unique name.
+        session: String,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// `vterm config …`.

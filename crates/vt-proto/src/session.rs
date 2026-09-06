@@ -98,6 +98,8 @@ pub mod method {
     pub const SESSION_DETACH: &str = "session.detach";
     /// `{ id, lines? } -> { text }` — last `lines` of the visible grid as text.
     pub const SESSION_LOGS: &str = "session.logs";
+    /// `{ id, after? }` → the session's command blocks (OSC 133/633).
+    pub const SESSION_BLOCKS: &str = "session.blocks";
     /// → everything in `vt_config::Loaded` plus field metadata and actions.
     pub const CONFIG_GET: &str = "config.get";
     /// `{ key, value }` → the new `Config`; errors name file and key.
@@ -118,6 +120,8 @@ pub mod notification {
     pub const SESSION_STATE: &str = "session.state";
     /// `{ id, event: TermEvent }` — bell, title, cwd, clipboard.
     pub const SESSION_EVENT: &str = "session.event";
+    /// `{ id, block }` — a command block closed (OSC 133/633).
+    pub const SESSION_BLOCK: &str = "session.block";
     /// `{ id, exit_code? , signal? }` — child exited.
     pub const SESSION_EXITED: &str = "session.exited";
     /// `SessionInfo` — a session was created, renamed or removed.

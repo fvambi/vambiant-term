@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use vt_blocks::{Segmented, Segmenter};
 use vt_core::backend::GhosttyCore;
 use vt_core::cell::{CellSnapshot, GridSize};
 use vt_core::damage::DamageSet;
@@ -157,6 +158,7 @@ fn run(
         .unwrap_or_else(PoisonError::into_inner)
         .readopted;
     let mut observer = Observer::new(registry, &id, info);
+    let mut segmenter = Segmenter::default();
     let mut pending = DamageSet::Full;
     let mut last_flush = Instant::now()
         .checked_sub(FLUSH_INTERVAL)
@@ -184,7 +186,14 @@ fn run(
                     }
                     core.advance(&bytes);
                     let _ = core.take_responses();
-                    let _ = core.take_events();
+                    // For a fresh session the replay is its first output, so
+                    // its shell marks are real; for a re-adopted holder they
+                    // are already-seen history and must not re-emit blocks.
+                    for ev in core.take_events() {
+                        if fresh && let TermEvent::ShellMark { mark, row } = &ev {
+                            segment(registry, &id, &mut segmenter, mark, *row);
+                        }
+                    }
                     let _ = core.take_damage();
                     pending = DamageSet::Full;
                 }
@@ -198,6 +207,9 @@ fn run(
                 }
                 merge_damage(&mut pending, core.take_damage());
                 for ev in core.take_events() {
+                    if let TermEvent::ShellMark { mark, row } = &ev {
+                        segment(registry, &id, &mut segmenter, mark, *row);
+                    }
                     publish_event(registry, &id, info, &ev);
                 }
             }
@@ -304,6 +316,46 @@ fn merge_damage(pending: &mut DamageSet, new: DamageSet) {
     }
 }
 
+/// Feed one mark to the segmenter; persist and broadcast a closed block,
+/// and warn once when the marks turn out to be corrupted.
+fn segment(
+    registry: &Registry,
+    id: &vt_proto::session::SessionId,
+    segmenter: &mut Segmenter,
+    mark: &vt_core::ShellMark,
+    row: u64,
+) {
+    match segmenter.on_mark(mark, row) {
+        Segmented::Pending => {}
+        Segmented::Closed(block) => {
+            let now = crate::registry::now();
+            if let Ok(store) = registry.store().lock() {
+                let _ = store.append_block(id, &now, &block);
+            }
+            if let Some(server) = registry.server() {
+                server.broadcast(
+                    notification::SESSION_BLOCK,
+                    serde_json::to_value(&block)
+                        .ok()
+                        .map(|b| serde_json::json!({ "id": id.0, "block": b })),
+                );
+            }
+        }
+        Segmented::Corrupted(why) => {
+            eprintln!("vtermd: session {}: {why}", id.0);
+            if let Some(server) = registry.server() {
+                server.broadcast(
+                    notification::SESSION_EVENT,
+                    Some(serde_json::json!({
+                        "id": id.0,
+                        "event": { "kind": "blocks_degraded", "reason": why }
+                    })),
+                );
+            }
+        }
+    }
+}
+
 fn publish_event(
     registry: &Registry,
     id: &vt_proto::session::SessionId,
@@ -324,6 +376,8 @@ fn publish_event(
                 "target": format!("{target:?}").to_lowercase(),
                 "bytes": contents.len(),
             }),
+            // Marks drive the segmenter (see `segment`), not the event feed.
+            TermEvent::ShellMark { .. } => return,
         };
         server.broadcast(
             notification::SESSION_EVENT,

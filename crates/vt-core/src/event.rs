@@ -30,6 +30,14 @@ pub enum TermEvent {
         /// Decoded contents.
         contents: Vec<u8>,
     },
+    /// A shell-integration mark (OSC 133 / 633) and the absolute row —
+    /// scrollback rows plus cursor row — the cursor was on right after it.
+    ShellMark {
+        /// The mark.
+        mark: crate::osc::ShellMark,
+        /// Absolute row from the top of scrollback.
+        row: u64,
+    },
 }
 
 /// Decode an OSC 7 / OSC 1337 `CurrentDir` value into a filesystem path.
